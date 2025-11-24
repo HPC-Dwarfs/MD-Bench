@@ -157,12 +157,19 @@ __global__ void computeForceLJCudaSup_warp(MD_FLOAT* cuda_cl_x,
         MD_FLOAT xjtmp  = cj_x[CL_X_INDEX(cjj)];
         MD_FLOAT yjtmp  = cj_x[CL_Y_INDEX(cjj)];
         MD_FLOAT zjtmp  = cj_x[CL_Z_INDEX(cjj)];
-        int cj_sc       = cj / SCLUSTER_SIZE;
-        int sci_cj      = cj % SCLUSTER_SIZE;
 
         #pragma unroll
         for(int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
-            if(sci != cj_sc || sci_ci != sci_cj || cii != cjj) {
+            const int ci = sci * SCLUSTER_SIZE + sci_ci;
+            bool skip    = false;
+
+            if (half_neigh) {
+                skip = (ci > cj) || (ci == cj && cii >= cjj);
+            } else {
+                skip = (ci == cj && cii == cjj);
+            }
+
+            if(!skip) {
                 int ai = sci_ci * CLUSTER_M + cii;
                 MD_FLOAT delx = sh_sci_x[ai].x - xjtmp;
                 MD_FLOAT dely = sh_sci_x[ai].y - yjtmp;
@@ -201,27 +208,34 @@ __global__ void computeForceLJCudaSup_warp(MD_FLOAT* cuda_cl_x,
         // It is very unlikely that M > 32, but we keep this check here to
         // avoid any issues in such situations
         #if CLUSTER_M <= 32
-        MD_FLOAT fix  = fbuf[sci_ci].x;
-        MD_FLOAT fiy  = fbuf[sci_ci].y;
-        MD_FLOAT fiz  = fbuf[sci_ci].z;
-        unsigned mask = 0xffffffff;
+	if (half_neigh) {
+		atomicAdd(&sci_f[CL_X_INDEX_3D(ai)], fbuf[sci_ci].x);
+		atomicAdd(&sci_f[CL_Y_INDEX_3D(ai)], fbuf[sci_ci].y);
+		atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fbuf[sci_ci].z);
+	} else {
+		MD_FLOAT fix  = fbuf[sci_ci].x;
+		MD_FLOAT fiy  = fbuf[sci_ci].y;
+		MD_FLOAT fiz  = fbuf[sci_ci].z;
+		unsigned mask = 0xffffffff;
 
-        for (int offset = CLUSTER_M / 2; offset > 0; offset /= 2) {
-            fix += __shfl_down_sync(mask, fix, offset);
-            fiy += __shfl_down_sync(mask, fiy, offset);
-            fiz += __shfl_down_sync(mask, fiz, offset);
-        }
+		for (int offset = CLUSTER_M / 2; offset > 0; offset /= 2) {
+		    fix += __shfl_down_sync(mask, fix, offset);
+		    fiy += __shfl_down_sync(mask, fiy, offset);
+		    fiz += __shfl_down_sync(mask, fiz, offset);
+		}
 
-        if (cjj == 0) {
-            sci_f[CL_X_INDEX_3D(ai)] = fix;
-            sci_f[CL_Y_INDEX_3D(ai)] = fiy;
-            sci_f[CL_Z_INDEX_3D(ai)] = fiz;
-        }
-        #else
-        atomicAdd(&sci_f[CL_X_INDEX_3D(ai)], fbuf[sci_ci].x);
-        atomicAdd(&sci_f[CL_Y_INDEX_3D(ai)], fbuf[sci_ci].y);
-        atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fbuf[sci_ci].z);
-        #endif
+		if (cjj == 0) {
+		    sci_f[CL_X_INDEX_3D(ai)] = fix;
+		    sci_f[CL_Y_INDEX_3D(ai)] = fiy;
+		    sci_f[CL_Z_INDEX_3D(ai)] = fiz;
+		}
+	}
+
+	#else
+	atomicAdd(&sci_f[CL_X_INDEX_3D(ai)], fbuf[sci_ci].x);
+	atomicAdd(&sci_f[CL_Y_INDEX_3D(ai)], fbuf[sci_ci].y);
+	atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fbuf[sci_ci].z);
+	#endif
     }
 }
 
