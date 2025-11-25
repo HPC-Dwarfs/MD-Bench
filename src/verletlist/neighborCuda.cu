@@ -199,7 +199,7 @@ __global__ void compute_neighborhood(DeviceAtom a,
 #endif
 
             if (rsq <= cutoff) {
-                neighs(neighbor->neighbors, i, n, nlocal, maxneigh) = j;
+                neighs(neighbor->neighbors, i, n, nlocal, maxneighs) = j;
                 n++;
             }
         }
