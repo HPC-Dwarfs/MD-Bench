@@ -133,7 +133,7 @@ else
 endif
 endif
 ifeq ($(strip $(ATOM_DATA_LAYOUT)),AOS)
-    DEFINES +=  -DPOSITION_AOS
+    DEFINES +=  -DATOM_POSITION_AOS
 endif
 ifeq ($(strip $(NBLIST_DATA_LAYOUT)),auto)
     NBLIST_DATA_LAYOUT=$(NBLIST_DATA_LAYOUT_DEFAULT)
