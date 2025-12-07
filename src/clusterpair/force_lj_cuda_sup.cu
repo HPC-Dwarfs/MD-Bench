@@ -133,6 +133,7 @@ __global__ void computeForceLJCudaSup_warp(MD_FLOAT* cuda_cl_x,
     #else
     int cii = threadIdx.x;
     int cjj = threadIdx.y;
+    MD_FLOAT3 fcj_buf;
     #endif
     MD_FLOAT* sci_x  = &cuda_cl_x[SCI_VECTOR_BASE_INDEX(sci)];
     MD_FLOAT* sci_f  = &cuda_cl_f[SCI_VECTOR3_BASE_INDEX(sci)];
@@ -158,10 +159,15 @@ __global__ void computeForceLJCudaSup_warp(MD_FLOAT* cuda_cl_x,
     for(int k = 0; k < cuda_numneigh[sci]; k++) {
         int cj          = neighs(cuda_neighs, sci, k, Nclusters_local, maxneighs);
         MD_FLOAT* cj_x  = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
-        MD_FLOAT* cj_f  = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
         MD_FLOAT xjtmp  = cj_x[CL_X_INDEX(cjj)];
         MD_FLOAT yjtmp  = cj_x[CL_Y_INDEX(cjj)];
         MD_FLOAT zjtmp  = cj_x[CL_Z_INDEX(cjj)];
+
+        #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+        MD_FLOAT* cj_f  = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
+        #else
+        fcj_buf = float3{0.0f, 0.0f, 0.0f};
+        #endif
 
         #pragma unroll
         for(int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
@@ -195,13 +201,46 @@ __global__ void computeForceLJCudaSup_warp(MD_FLOAT* cuda_cl_x,
                     fbuf[sci_ci].z += fz;
 
                     if (half_neigh) {
+                        #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
                         atomicAdd(&cj_f[CL_X_INDEX_3D(cjj)], -fx);
                         atomicAdd(&cj_f[CL_Y_INDEX_3D(cjj)], -fy);
                         atomicAdd(&cj_f[CL_Z_INDEX_3D(cjj)], -fz);
+                        #else
+                        fcj_buf.x -= fx;
+                        fcj_buf.y -= fy;
+                        fcj_buf.z -= fz;
+                        #endif
                     }
+ 
                 }
             }
         }
+        #ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+        if(half_neigh){
+            int aj = cj * CLUSTER_N + cjj;
+            unsigned mask = 0xffffffff;
+            fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 1);
+            fcj_buf.y += __shfl_up_sync(mask, fcj_buf.y, 1);
+            fcj_buf.z += __shfl_down_sync(mask, fcj_buf.z, 1);
+            
+            if(cii & 1){
+                fcj_buf.x = fcj_buf.y;
+            }
+
+            fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 2);
+            fcj_buf.z += __shfl_up_sync(mask, fcj_buf.z, 2);
+
+            if (cii & 2){
+                fcj_buf.x = fcj_buf.z;
+            }
+
+            fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 4);
+
+            if (cii < 3){
+                atomicAdd(&cuda_cl_f[aj * 3 + cii], fcj_buf.x);
+            }
+        }
+        #endif
     }
 
     #pragma unroll
