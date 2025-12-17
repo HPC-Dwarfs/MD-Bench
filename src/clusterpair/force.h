@@ -193,27 +193,54 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define CJ_VECTOR_BASE_INDEX(a)  (CJ_BASE_INDEX(a, ATOM_DIM))
 
 
-// #ifndef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
-// #if CLUSTER_M >= CLUSTER_N
-// #define CL_X_OFFSET (0 * CLUSTER_M)
-// #define CL_Y_OFFSET (1 * CLUSTER_M)
-// #define CL_Z_OFFSET (2 * CLUSTER_M)
-// #define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
-// #define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
-// #define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
-// #else
-// #define CL_X_OFFSET (0 * CLUSTER_N)
-// #define CL_Y_OFFSET (1 * CLUSTER_N)
-// #define CL_Z_OFFSET (2 * CLUSTER_N)
-// #define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
-// #define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
-// #define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
-// #endif
-// #define CL_X_INDEX(i) CL_X_INDEX_3D(i)
-// #define CL_Y_INDEX(i) CL_Y_INDEX_3D(i)
-// #define CL_Z_INDEX(i) CL_Z_INDEX_3D(i)
-// #else
-#ifdef CUDA_TARGET
+#ifndef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+// CPU
+#ifndef CUDA_TARGET
+#if CLUSTER_M >= CLUSTER_N
+#define CL_X_OFFSET (0 * CLUSTER_M)
+#define CL_Y_OFFSET (1 * CLUSTER_M)
+#define CL_Z_OFFSET (2 * CLUSTER_M)
+#define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
+#define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
+#define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
+#else
+#define CL_X_OFFSET (0 * CLUSTER_N)
+#define CL_Y_OFFSET (1 * CLUSTER_N)
+#define CL_Z_OFFSET (2 * CLUSTER_N)
+#define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
+#define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
+#define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
+#endif
+#define CL_X_INDEX(i) CL_X_INDEX_3D(i)
+#define CL_Y_INDEX(i) CL_Y_INDEX_3D(i)
+#define CL_Z_INDEX(i) CL_Z_INDEX_3D(i)
+#else
+//gpusimple
+#if CLUSTER_M == CLUSTER_N
+#ifdef SOA_SUP
+#define CL_X_OFFSET (0 * CLUSTER_N)
+#define CL_Y_OFFSET (1 * CLUSTER_N)
+#define CL_Z_OFFSET (2 * CLUSTER_N)
+#define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
+#define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
+#define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
+#define CL_X_INDEX(i) CL_X_INDEX_3D(i)
+#define CL_Y_INDEX(i) CL_Y_INDEX_3D(i)
+#define CL_Z_INDEX(i) CL_Z_INDEX_3D(i)
+#else
+#define CL_X_INDEX_3D(i)  ((i) * 3 + 0)
+#define CL_Y_INDEX_3D(i)  ((i) * 3 + 1)
+#define CL_Z_INDEX_3D(i)  ((i) * 3 + 2)
+#define CL_X_INDEX(i)  CL_X_INDEX_3D(i)
+#define CL_Y_INDEX(i)  CL_Y_INDEX_3D(i)
+#define CL_Z_INDEX(i)  CL_Z_INDEX_3D(i)
+#endif
+#else
+#error "Invalid cluster configuration for CUDA!"
+#endif
+#endif
+#else
+// supercluster
 #ifdef SOA_SUP
 #define CL_X_OFFSET (0 * CLUSTER_N * SCLUSTER_SIZE)
 #define CL_Y_OFFSET (1 * CLUSTER_N * SCLUSTER_SIZE)
@@ -231,7 +258,6 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define CL_X_INDEX(i)  ((i) * ATOM_DIM + 0)
 #define CL_Y_INDEX(i)  ((i) * ATOM_DIM + 1)
 #define CL_Z_INDEX(i)  ((i) * ATOM_DIM + 2)
-
 #endif
 #endif
 
