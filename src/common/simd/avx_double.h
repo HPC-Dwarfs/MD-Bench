@@ -44,30 +44,63 @@ static inline void simd_real_store(MD_FLOAT* p, MD_SIMD_FLOAT a)
 }
 static inline MD_SIMD_FLOAT simd_real_load_h_duplicate(const MD_FLOAT* m)
 {
-    MD_SIMD_FLOAT ret;
-    fprintf(stderr,
-        "simd_load_h_duplicate(): Not implemented for AVX with double precision!");
-    exit(-1);
+    // Some variants to test performance differences
+    #ifdef RUNNER_ONE
+    // should be faster than the portable variant
+    __m128d t0 = _mm_loadu_pd(m);
+    __m256d ret = _mm256_broadcast_pd(&t0);
+    #elif defined(RUNNER_TWO)
+    // should also be faster, but only if data alignment is >=16
+    __m128d t0 = _mm_load_pd(m);
+    __m256d ret = _mm256_broadcast_pd(&t0);
+    #else
+    // most portable variant, should work fine always
+    __m256d ret = _mm256_loadu2_m128d(m, m);
+    #endif
+
     return ret;
 }
 
 static inline MD_SIMD_FLOAT simd_real_load_h_dual(const MD_FLOAT* m)
 {
-    MD_SIMD_FLOAT ret;
-    fprintf(stderr,
-        "simd_real_load_h_dual(): Not implemented for AVX with double precision!");
-    exit(-1);
+    // Some variants to test performance differences
+    #ifdef RUNNER_ONE
+    __m128d t0 = _mm_load1_pd(m);
+    __m128d t1 = _mm_load1_pd(m + 1);
+    __m256d ret = _mm256_castpd128_pd256(t0);
+    ret = _mm256_insertf128_pd(result, t1, 1);
+    #elif defined(RUNNER_TWO)
+    __m128d t0 = _mm_load_pd(m);
+    __m128d t1 = _mm_load_pd(m + 1);
+    __m256d ret = _mm256_castpd128_pd256(t0);
+    ret = _mm256_insertf128_pd(result, t1, 1);
+    #else
+    __m256d ret = _mm256_insertf128_pd(_mm256_broadcast_sd(m),
+        _mm_load1_pd(m + 1),
+        1);
+    #endif
     return ret;
 }
 
 static inline MD_FLOAT simd_real_h_dual_incr_reduced_sum(
     MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
 {
-    fprintf(stderr,
-        "simd_real_h_dual_incr_reduced_sum(): Not implemented for AVX with double "
-        "precision!");
-    exit(-1);
-    return 0.0;
+    __m256d t0, t1, t2, acc;
+    __m128d t3;
+
+    t0 = _mm256_add_pd(v0, _mm256_permute_pd(v0, 0x5));
+    t1 = _mm256_add_pd(v1, _mm256_permute_pd(v1, 0x5));
+    t2 = _mm256_add_pd(t0, t1);
+    t0 = _mm256_add_pd(t1, _mm256_permute_pd(t1, 0x55));
+
+    acc = _mm256_load_pd(m);
+    acc = _mm256_add_pd(acc, t2);
+    _mm256_store_pd(m, acc);
+
+    t3 = _mm_add_pd(_mm256_castpd256_pd128(t2), _mm256_extractf128_pd(t2, 1));
+    t3 = _mm_add_sd(t3, _mm_unpackhi_pd(t3, t3));
+
+    return _mm_cvtsd_f64(t3);
 }
 
 static inline MD_FLOAT simd_real_incr_reduced_sum(
@@ -141,8 +174,11 @@ static inline MD_SIMD_MASK simd_mask_from_u32(unsigned int a)
         (a & 0x2) ? all : none,
         (a & 0x1) ? all : none));
 }
-// TODO: Implement this, althrough it is just required for debugging
-static inline int simd_mask_to_u32(MD_SIMD_MASK a) { return 0; }
+
+static inline int simd_mask_to_u32(MD_SIMD_MASK a)
+{
+    return (unsigned int)_mm256_movemask_pd(a);
+}
 static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
 {
     __m128d a0, a1;
@@ -153,12 +189,28 @@ static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
     return *((MD_FLOAT*)&a0);
 }
 
+static inline void simd_h_decr(MD_FLOAT* m, MD_SIMD_FLOAT a)
+{
+    __m256d sum, t;
+    __m128d t0, t1;
+    t0  = _mm256_castpd256_pd128(a);
+    t1  = _mm256_extractf128_pd(a, 1);
+    t0  = _mm_add_pd(t0, t1);
+
+    sum = _mm256_castpd128_pd256(t0);
+    sum = _mm256_insertf128_pd(sum, t0, 1);
+
+    t = _mm256_load_pd(m);
+    t = _mm256_sub_pd(t, sum);
+    _mm256_store_pd(m, t);
+}
+
 static inline void simd_real_h_decr3(
     MD_FLOAT* m, MD_SIMD_FLOAT a0, MD_SIMD_FLOAT a1, MD_SIMD_FLOAT a2)
 {
-    fprintf(stderr,
-        "simd_real_h_decr3(): Not implemented for AVX with double precision!");
-    exit(-1);
+    simd_h_decr(m, a0);
+    simd_h_decr(m + CLUSTER_N, a1);
+    simd_h_decr(m + CLUSTER_N * 2, a2);
 }
 
 static inline MD_SIMD_INT simd_i32_broadcast(int scalar)
@@ -186,19 +238,26 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)
 {
-    MD_SIMD_INT ret;
-    fprintf(stderr,
-        "simd_i32_load_h_duplicate(): Not implemented for AVX2 with double precision!");
-    exit(-1);
+    #if defined(RUNNER_ONE) || defined(RUNNER_TWO)
+    __m128i t0 = _mm_loadl_epi64((__m128i*)m);
+    __m128i ret = _mm256_broadcastsi128_si256(t0);
+    #else
+    __m128i ret = _mm_set_epi32(m[1], m[0], m[1], m[0]);
+    #endif
     return ret;
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
 {
-    MD_SIMD_INT ret;
-    fprintf(stderr,
-        "simd_i32_load_h_dual_scaled(): Not implemented for AVX2 with double precision!");
-    exit(-1);
+    #if defined(RUNNER_ONE) || defined(RUNNER_TWO)
+    __m128i t0 = _mm_set1_epi32(m[0] * scale);
+    __m128i t1 = _mm_set1_epi32(m[1] * scale);
+    __m128i ret = _mm256_inserti128_si256(_mm256_castsi128_si256(t0), t1, 1);
+    #else
+    int i1 = m[0] * scale;
+    int i2 = m[1] * scale;
+    __m128i ret = _mm_set_epi32(i2, i2, i1, i1);
+    #endif
     return ret;
 }
 
