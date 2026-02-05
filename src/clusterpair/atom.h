@@ -13,6 +13,27 @@
 #ifndef __ATOM_H_
 #define __ATOM_H_
 
+/*
+    A little workaround to get also newer versions of ICX
+    to compile the code with a valid definition for INFINITY.
+    Also should support compiling with -Ofast, which falls
+    back to finit-math-only and renders the INFINITY macro
+    as undefinde value.
+*/
+#if !defined(SYCL_LANGUAGE_VERSION) && defined (__INTEL_LLVM_COMPILER)
+    #include <math.h>
+    #if defined(MD_FLOAT) && MD_FLOAT == double
+        #include <float.h>
+        #define INF DBL_MAX
+    #else
+        #include <float.h>
+        #define INF FLT_MAX
+    #endif
+#else
+    #include <math.h>
+    #define INF INFINITY
+#endif
+
 #define DELTA 100000
 
 #define CI_SCALAR_BASE_INDEX(a) (CI_BASE_INDEX(a, 1))

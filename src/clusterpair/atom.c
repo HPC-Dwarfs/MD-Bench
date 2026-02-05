@@ -906,11 +906,11 @@ void unpackForward(Atom* atom, int nc, int c0, MD_FLOAT* buf)
         MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
         int displ       = i * CLUSTER_N;
         for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
-            if (cj_x[CL_X_OFFSET + cjj] < INFINITY)
+            if (cj_x[CL_X_OFFSET + cjj] < INF)
                 cj_x[CL_X_OFFSET + cjj] = buf[3 * (displ + cjj) + 0];
-            if (cj_x[CL_Y_OFFSET + cjj] < INFINITY)
+            if (cj_x[CL_Y_OFFSET + cjj] < INF)
                 cj_x[CL_Y_OFFSET + cjj] = buf[3 * (displ + cjj) + 1];
-            if (cj_x[CL_Z_OFFSET + cjj] < INFINITY)
+            if (cj_x[CL_Z_OFFSET + cjj] < INF)
                 cj_x[CL_Z_OFFSET + cjj] = buf[3 * (displ + cjj) + 2];
         }
     }
@@ -927,9 +927,9 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc)
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
-        MD_FLOAT bbminx = INFINITY, bbmaxx = -INFINITY;
-        MD_FLOAT bbminy = INFINITY, bbmaxy = -INFINITY;
-        MD_FLOAT bbminz = INFINITY, bbmaxz = -INFINITY;
+        MD_FLOAT bbminx = INF, bbmaxx = -INF;
+        MD_FLOAT bbminy = INF, bbmaxy = -INF;
+        MD_FLOAT bbminz = INF, bbmaxz = -INF;
 
         buf[m++] = (MD_FLOAT)atom->jclusters[cj].natoms;
 
@@ -1014,9 +1014,9 @@ int unpackGhost(Atom* atom, int cj, MD_FLOAT* buf)
     }
 
     for (int cjj = atom->jclusters[cj].natoms; cjj < CLUSTER_N; cjj++) {
-        cj_x[CL_X_OFFSET + cjj]       = INFINITY;
-        cj_x[CL_Y_OFFSET + cjj]       = INFINITY;
-        cj_x[CL_Z_OFFSET + cjj]       = INFINITY;
+        cj_x[CL_X_OFFSET + cjj]       = INF;
+        cj_x[CL_Y_OFFSET + cjj]       = INF;
+        cj_x[CL_Z_OFFSET + cjj]       = INF;
         atom->cl_t[cj_sca_base + cjj] = -1;
         m += 4;
     }

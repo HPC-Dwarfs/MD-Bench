@@ -58,9 +58,9 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
         MD_FLOAT* cjX   = &atom->cl_x[cjVecBase];
         MD_FLOAT* bmapX = &atom->cl_x[bmapVecBase];
         int* bmapT      = &atom->cl_t[bmapScaBase];
-        MD_FLOAT bbminx = INFINITY, bbmaxx = -INFINITY;
-        MD_FLOAT bbminy = INFINITY, bbmaxy = -INFINITY;
-        MD_FLOAT bbminz = INFINITY, bbmaxz = -INFINITY;
+        MD_FLOAT bbminx = INF, bbmaxx = -INF;
+        MD_FLOAT bbminy = INF, bbmaxy = -INF;
+        MD_FLOAT bbminz = INF, bbmaxz = -INF;
 
         for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
             MD_FLOAT xtmp = bmapX[CL_X_OFFSET + cjj] + atom->PBCx[cg] * xprd;
@@ -97,9 +97,9 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
 
         if (firstUpdate) {
             for (int cjj = atom->jclusters[cj].natoms; cjj < CLUSTER_N; cjj++) {
-                cjX[CL_X_OFFSET + cjj] = INFINITY;
-                cjX[CL_Y_OFFSET + cjj] = INFINITY;
-                cjX[CL_Z_OFFSET + cjj] = INFINITY;
+                cjX[CL_X_OFFSET + cjj] = INF;
+                cjX[CL_Y_OFFSET + cjj] = INF;
+                cjX[CL_Z_OFFSET + cjj] = INF;
                 cjT[cjj]               = 0;
             }
 
@@ -310,9 +310,9 @@ void setupPbc(Atom* atom, Parameter* param)
     int* cjT      = &atom->cl_t[cjScaBase];
     MD_FLOAT* cjX = &atom->cl_x[cjVecBase];
     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
-        cjX[CL_X_OFFSET + cjj] = INFINITY;
-        cjX[CL_Y_OFFSET + cjj] = INFINITY;
-        cjX[CL_Z_OFFSET + cjj] = INFINITY;
+        cjX[CL_X_OFFSET + cjj] = INF;
+        cjX[CL_Y_OFFSET + cjj] = INF;
+        cjX[CL_Z_OFFSET + cjj] = INF;
         cjT[cjj]               = 0;
     }
 
