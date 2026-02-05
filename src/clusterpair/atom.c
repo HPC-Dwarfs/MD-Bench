@@ -1031,6 +1031,9 @@ int unpackGhost(Atom* atom, int cj, MD_FLOAT* buf)
     atom->PBCy[atom->Nclusters_ghost] = (int)buf[m++];
     atom->PBCz[atom->Nclusters_ghost] = (int)buf[m++];
     atom->Nclusters_ghost++;
+
+    // TODO rafaelravedutti: check what to return here; return statement was missing
+    return m;
 }
 
 void packReverse(Atom* atom, int nc, int c0, MD_FLOAT* buf)
