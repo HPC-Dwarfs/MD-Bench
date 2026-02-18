@@ -410,26 +410,49 @@ int readAtomGro(Atom* atom, Parameter* param) {
     }
 
     while (readAtoms < atomsToRead) {
-        if(fgets(line, MAXLINE, fp) == NULL) {
+        if (fgets(line, MAXLINE, fp) == NULL) {
             break;
         }
-
-        char* label = strtok(line, " ");
-        int type    = typeStr2int(strtok(NULL, " "));
-        int atomId  = atoi(strtok(NULL, " ")) - 1;
-        atomId      = readAtoms;
+    
+        if (strlen(line) < 10)
+            continue;
+    
+        int resnr, atomId;
+        char resname[32], atomname[32];
+        double x, y, z, vx, vy, vz;
+    
+        int ok = sscanf(line,
+                        "%d %31s %31s %d %lf %lf %lf %lf %lf %lf",
+                        &resnr,
+                        resname,
+                        atomname,
+                        &atomId,
+                        &x, &y, &z,
+                        &vx, &vy, &vz);
+        
+        if (ok != 10) {
+            printf("Warning: malformed line: %s", line);
+            continue;
+        }
+    
+        int type = typeStr2int(atomname);
+    
+        atomId = readAtoms;
+    
         while (atomId + 1 >= atom->Nmax) {
             growAtom(atom);
         }
-
+    
+    
         atom->type[atomId] = type;
-        atom_x(atomId)     = atof(strtok(NULL, " "));
-        atom_y(atomId)     = atof(strtok(NULL, " "));
-        atom_z(atomId)     = atof(strtok(NULL, " "));
-        atom->vx[atomId]   = atof(strtok(NULL, " "));
-        atom->vy[atomId]   = atof(strtok(NULL, " "));
-        atom->vz[atomId]   = atof(strtok(NULL, " "));
-        atom->ntypes       = MAX(atom->type[atomId] + 1, atom->ntypes);
+        atom_x(atomId)     = x;
+        atom_y(atomId)     = y;
+        atom_z(atomId)     = z;
+        atom->vx[atomId]   = vx;
+        atom->vy[atomId]   = vy;
+        atom->vz[atomId]   = vz;
+    
+        atom->ntypes = MAX(type + 1, atom->ntypes);
         atom->Natoms++;
         atom->Nlocal++;
         readAtoms++;
