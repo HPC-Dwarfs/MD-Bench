@@ -491,7 +491,7 @@ int main(int argc, char** argv) {
 #ifdef COMPUTE_STATS
     displayStatistics(&atom, &param, &stats, timer);
 #endif
-    }
+
     endComm(&comm);
     LIKWID_MARKER_CLOSE;
     return EXIT_SUCCESS;

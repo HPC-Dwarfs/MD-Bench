@@ -12,7 +12,7 @@
 #include <force.h>
 #include <parameter.h>
 #include <util.h>
-#ifdef CLUSTERPAIR
+#if defined(CLUSTERPAIR) || !defined(USE_REFERENCE_KERNEL)
 #include <simd.h>
 #endif
 
