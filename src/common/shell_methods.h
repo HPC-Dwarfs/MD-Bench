@@ -9,15 +9,15 @@
 #include <limits.h>
 #include <math.h>
 #include <parameter.h>
+#include <pbc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <timing.h>
 #include <unistd.h>
 #include <util.h>
-#include <pbc.h>
 
-static void addDummyCluster(Atom*);
+static void addDummyCluster(Parameter*, Atom*);
 #ifdef CUDA_TARGET
 extern void copyGhostFromGPU(Atom*);
 extern void copyGhostToGPU(Atom*);
@@ -25,9 +25,7 @@ extern void copyForceFromGPU(Atom*);
 extern void copyForceToGPU(Atom*);
 #endif 
 
-
-double forward(Comm* comm, Atom* atom, Parameter* param)
-{
+double forward(Comm* comm, Atom* atom, Parameter* param) {
     double S, E;
     S = getTimeStamp();
 #ifdef _MPI
@@ -57,8 +55,7 @@ double forward(Comm* comm, Atom* atom, Parameter* param)
     return E - S;
 }
 
-double reverse(Comm* comm, Atom* atom, Parameter* param)
-{
+double reverse(Comm* comm, Atom* atom, Parameter* param) {
     double S, E;
     S = getTimeStamp();
 #ifdef _MPI
@@ -89,45 +86,46 @@ double reverse(Comm* comm, Atom* atom, Parameter* param)
 }
 
 #ifdef _MPI
-void ghostNeighbor(Comm* comm, Atom* atom, Parameter* param)
-{
+void ghostNeighbor(Comm* comm, Atom* atom, Parameter* param) {
 #ifdef CLUSTER_PAIR
     atom->Nclusters_ghost = 0;
 #endif
     atom->Nghost = 0;
     if (param->method == halfShell) {
         for (int iswap = 0; iswap < 5; iswap++)
-            ghostComm(comm, atom, iswap);
+            ghostComm(comm, param, atom, iswap);
     } else if (param->method == eightShell) {
         for (int iswap = 0; iswap < 6; iswap += 2)
-            ghostComm(comm, atom, iswap);
+            ghostComm(comm, param, atom, iswap);
     } else {
         for (int iswap = 0; iswap < 6; iswap++)
-            ghostComm(comm, atom, iswap);
+            ghostComm(comm, param, atom, iswap);
     }
 #ifdef CLUSTER_PAIR    
-    addDummyCluster(atom);    
+    addDummyCluster(param, atom);    
 #endif
 }
 #endif
 
 #ifdef CLUSTER_PAIR
 
-void addDummyCluster(Atom* atom)
-{
+void addDummyCluster(Parameter* param, Atom* atom) {
     // atom->Nclusters_ghost++; // GHOST J CLUSTERS
     // atom->Nclusters = atom->Nclusters_local + Nghost + 1;
     atom->dummy_cj = LOCAL + GHOST;
 
-    if ((LOCAL + GHOST) * JFAC >= atom->Nclusters_max) growClusters(atom);
+    if ((LOCAL + GHOST) * JFAC >= atom->Nclusters_max) {
+        growClusters(atom, param->super_clustering);
+    }
+
     // Add dummy cluster at the end
     int cjVecBase = CJ_VECTOR_BASE_INDEX(atom->dummy_cj);
     MD_FLOAT* cjX = &atom->cl_x[cjVecBase];
 
     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
-        cjX[CL_X_OFFSET + cjj] = INFINITY;
-        cjX[CL_Y_OFFSET + cjj] = INFINITY;
-        cjX[CL_Z_OFFSET + cjj] = INFINITY;
+        cjX[CL_X_INDEX(cjj)] = INFINITY;
+        cjX[CL_Y_INDEX(cjj)] = INFINITY;
+        cjX[CL_Z_INDEX(cjj)] = INFINITY;
     } 
 }
 #endif

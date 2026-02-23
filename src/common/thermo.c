@@ -13,8 +13,8 @@
 #include <util.h>
 
 #ifdef _MPI
-    #include <mpi.h>
-    static MPI_Datatype type_float = (sizeof(MD_FLOAT) == 4) ? MPI_FLOAT : MPI_DOUBLE;
+#include <mpi.h>
+static MPI_Datatype type_float = (sizeof(MD_FLOAT) == 4) ? MPI_FLOAT : MPI_DOUBLE;
 #endif
 
 static int* steparr;
@@ -30,7 +30,6 @@ static MD_FLOAT t_act;
 static MD_FLOAT p_act;
 static MD_FLOAT e_act;
 static int mstat;
-
 
 /* exported subroutines */
 void setupThermo(Parameter* param, int natoms)
@@ -60,7 +59,7 @@ void setupThermo(Parameter* param, int natoms)
 
 void computeThermo(int iflag, Parameter* param, Atom* atom)
 {
-    MD_FLOAT t = 0.0, p;
+    MD_FLOAT t     = 0.0, p;
     MD_FLOAT t_sum = 0.0;
     int me         = 0;
 
@@ -75,8 +74,8 @@ void computeThermo(int iflag, Parameter* param, Atom* atom)
     }
 #ifdef _MPI
     MPI_Reduce(&t, &t_sum, 1, type_float, MPI_SUM, 0, MPI_COMM_WORLD);
-    t=t_sum;
-#endif 
+    t = t_sum;
+#endif
 
     if (me == 0) {
         t         = t * t_scale;
@@ -94,7 +93,8 @@ void computeThermo(int iflag, Parameter* param, Atom* atom)
         tmparr[mstat]  = t;
         prsarr[mstat]  = p;
         mstat++;
-        fprintf(stdout, "%i\t%e\t%e\n", istep, t, p); fflush(stdout);
+        fprintf(stdout, "%i\t%e\t%e\n", istep, t, p);
+        fflush(stdout);
     }
 }
 
@@ -133,8 +133,8 @@ void adjustThermo(Parameter* param, Atom* atom)
         atom_vz(i) -= vztot;
     }
 
-    //t_act      = 0;
-    MD_FLOAT t = 0.0;
+    // t_act      = 0;
+    MD_FLOAT t     = 0.0;
     MD_FLOAT t_sum = 0.0;
 
     for (int i = 0; i < atom->Nlocal; i++) {
@@ -142,7 +142,6 @@ void adjustThermo(Parameter* param, Atom* atom)
                  atom_vz(i) * atom_vz(i)) *
              param->mass;
     }
-    
 #ifdef _MPI
     MPI_Allreduce(&t, &t_sum, 1, type_float, MPI_SUM, MPI_COMM_WORLD);
     t = t_sum;

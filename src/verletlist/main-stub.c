@@ -71,7 +71,6 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
     }
 
     for (int i = 0; i < atom->Nlocal; i++) {
-        int* neighptr = &(neighbor->neighbors[i * neighbor->maxneighs]);
         int j         = (pattern == P_SEQ) ? (i + 1) : 0;
         int m         = (pattern == P_SEQ) ? atom->Nlocal : nneighs;
 
@@ -89,14 +88,15 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
                     }
                 } while (found == 1);
             } else {
-                neighptr[k] = j;
+		neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor->maxneighs) = j;
                 j           = (j + 1) % m;
             }
         }
 
         for (int r = 1; r < nreps; r++) {
             for (int k = 0; k < nneighs; k++) {
-                neighptr[r * nneighs + k] = neighptr[k];
+		neighs(neighbor->neighbors, i, r * nneighs + k, atom->Nlocal, neighbor->maxneighs) = 
+		    neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor->maxneighs);
             }
         }
 

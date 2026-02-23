@@ -30,7 +30,9 @@ static inline MD_SIMD_FLOAT simd_real_load(const float* ptr)
 static inline MD_SIMD_FLOAT simd_real_gather(
     MD_SIMD_INT vidx, MD_FLOAT* base, const int scale)
 {
-    return svld1_gather_s32offset_f32(svptrue_b32(), base, vidx);
+    svint32_t offsets = svmul_n_s32_x(svptrue_b32(), vidx, scale);
+    return svld1_gather_s32offset_f32(svptrue_b32(), base, offsets);
+    //return svld1_gather_s32index_f32(svptrue_b32(), base, vidx);
 }
 
 static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)

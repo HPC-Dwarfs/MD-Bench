@@ -183,5 +183,13 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
 static inline MD_SIMD_FLOAT simd_real_gather(
     MD_SIMD_INT vidx, MD_FLOAT* base, const int scale)
 {
-    return _mm512_i32gather_ps(vidx, base, scale);
+    if (scale == 1) {
+        return _mm512_i32gather_ps(vidx, base, 1);
+    } else if (scale == 2) {
+        return _mm512_i32gather_ps(vidx, base, 2);
+    } else if (scale == 4) {
+        return _mm512_i32gather_ps(vidx, base, 4);
+    } else {
+        return _mm512_i32gather_ps(vidx, base, 8);
+    }
 }

@@ -14,30 +14,34 @@
 #include <util.h>
 
 #ifdef CUDA_TARGET
-IntegrationFunction initialIntegrate = initialIntegrateCUDA;
-IntegrationFunction finalIntegrate   = finalIntegrateCUDA;
+#ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+IntegrationFunction initialIntegrate = cudaInitialIntegrateSup;
+IntegrationFunction finalIntegrate   = cudaFinalIntegrateSup;
+#else
+IntegrationFunction initialIntegrate = cudaInitialIntegrate;
+IntegrationFunction finalIntegrate   = cudaFinalIntegrate;
+#endif
 #else
 IntegrationFunction initialIntegrate = initialIntegrateCPU;
 IntegrationFunction finalIntegrate   = finalIntegrateCPU;
 #endif
 
-void initialIntegrateCPU(Parameter* param, Atom* atom)
-{
+void initialIntegrateCPU(Parameter* param, Atom* atom) {
     DEBUG_MESSAGE("cpuInitialIntegrate start\n");
 
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
-        int ciVecBase = CI_VECTOR_BASE_INDEX(ci);
+        int ciVecBase = CI_VECTOR3_BASE_INDEX(ci);
         MD_FLOAT* ciX = &atom->cl_x[ciVecBase];
         MD_FLOAT* ciV = &atom->cl_v[ciVecBase];
         MD_FLOAT* ciF = &atom->cl_f[ciVecBase];
 
         for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
-            ciV[CL_X_OFFSET + cii] += param->dtforce * ciF[CL_X_OFFSET + cii];
-            ciV[CL_Y_OFFSET + cii] += param->dtforce * ciF[CL_Y_OFFSET + cii];
-            ciV[CL_Z_OFFSET + cii] += param->dtforce * ciF[CL_Z_OFFSET + cii];
-            ciX[CL_X_OFFSET + cii] += param->dt * ciV[CL_X_OFFSET + cii];
-            ciX[CL_Y_OFFSET + cii] += param->dt * ciV[CL_Y_OFFSET + cii];
-            ciX[CL_Z_OFFSET + cii] += param->dt * ciV[CL_Z_OFFSET + cii];
+            ciV[CL_X_INDEX_3D(cii)] += param->dtforce * ciF[CL_X_INDEX_3D(cii)];
+            ciV[CL_Y_INDEX_3D(cii)] += param->dtforce * ciF[CL_Y_INDEX_3D(cii)];
+            ciV[CL_Z_INDEX_3D(cii)] += param->dtforce * ciF[CL_Z_INDEX_3D(cii)];
+            ciX[CL_X_INDEX_3D(cii)] += param->dt * ciV[CL_X_INDEX_3D(cii)];
+            ciX[CL_Y_INDEX_3D(cii)] += param->dt * ciV[CL_Y_INDEX_3D(cii)];
+            ciX[CL_Z_INDEX_3D(cii)] += param->dt * ciV[CL_Z_INDEX_3D(cii)];
         }
 
         /*
@@ -45,11 +49,11 @@ void initialIntegrateCPU(Parameter* param, Atom* atom)
         MD_FLOAT threshold = 10000.0;
         for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
             if(
-                ciX[CL_X_OFFSET + cii] < -threshold || ciX[CL_X_OFFSET + cii] > threshold ||
-                ciX[CL_Y_OFFSET + cii] < -threshold || ciX[CL_Y_OFFSET + cii] > threshold ||
-                ciX[CL_Z_OFFSET + cii] < -threshold || ciX[CL_Z_OFFSET + cii] > threshold) {
+                ciX[CL_X_INDEX_3D(cii)] < -threshold || ciX[CL_X_INDEX_3D(cii)] > threshold ||
+                ciX[CL_Y_INDEX_3D(cii)] < -threshold || ciX[CL_Y_INDEX_3D(cii)] > threshold ||
+                ciX[CL_Z_INDEX_3D(cii)] < -threshold || ciX[CL_Z_INDEX_3D(cii)] > threshold) {
                 fprintf(stdout, "INVALID CLUSTER: %d\n", ci);
-                fprintf(stdout, "%f, %f, %f\n", ciX[CL_X_OFFSET + cii], ciX[CL_Y_OFFSET + cii], ciX[CL_Z_OFFSET + cii]);
+                fprintf(stdout, "%f, %f, %f\n", ciX[CL_X_INDEX_3D + cii], ciX[CL_Y_INDEX_3D(cii)], ciX[CL_Z_INDEX_3D(cii)]);
                 exit(-1);
                 break;
             }
@@ -60,19 +64,18 @@ void initialIntegrateCPU(Parameter* param, Atom* atom)
     DEBUG_MESSAGE("cpuInitialIntegrate end\n");
 }
 
-void finalIntegrateCPU(Parameter* param, Atom* atom)
-{
+void finalIntegrateCPU(Parameter* param, Atom* atom) {
     DEBUG_MESSAGE("cpuFinalIntegrate start\n");
 
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
-        int ciVecBase = CI_VECTOR_BASE_INDEX(ci);
+        int ciVecBase = CI_VECTOR3_BASE_INDEX(ci);
         MD_FLOAT* ciV = &atom->cl_v[ciVecBase];
         MD_FLOAT* ciF = &atom->cl_f[ciVecBase];
 
         for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
-            ciV[CL_X_OFFSET + cii] += param->dtforce * ciF[CL_X_OFFSET + cii];
-            ciV[CL_Y_OFFSET + cii] += param->dtforce * ciF[CL_Y_OFFSET + cii];
-            ciV[CL_Z_OFFSET + cii] += param->dtforce * ciF[CL_Z_OFFSET + cii];
+            ciV[CL_X_INDEX_3D(cii)] += param->dtforce * ciF[CL_X_INDEX_3D(cii)];
+            ciV[CL_Y_INDEX_3D(cii)] += param->dtforce * ciF[CL_Y_INDEX_3D(cii)];
+            ciV[CL_Z_INDEX_3D(cii)] += param->dtforce * ciF[CL_Z_INDEX_3D(cii)];
         }
     }
 

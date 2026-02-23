@@ -68,29 +68,29 @@
     if (TRACER_CONDITION) {                                                              \
         fprintf(index_tracer_fp, "A: %d\n", a);                                          \
     }
-#define INDEX_TRACE(l, e)                                                                \
+#define INDEX_TRACE(l, i, e, M, N)                                                       \
     if (TRACER_CONDITION) {                                                              \
         for (int __i = 0; __i < (e); __i += VECTOR_WIDTH) {                              \
             int __e = (((e)-__i) < VECTOR_WIDTH) ? ((e)-__i) : VECTOR_WIDTH;             \
             fprintf(index_tracer_fp, "I: ");                                             \
             for (int __j = 0; __j < __e; ++__j) {                                        \
-                fprintf(index_tracer_fp, "%d ", l[__i + __j]);                           \
+                fprintf(index_tracer_fp, "%d ", neighs(l, i, __i + __j, M, N));          \
             }                                                                            \
             fprintf(index_tracer_fp, "\n");                                              \
         }                                                                                \
     }
 
-#define DIST_TRACE_SORT(l, e)                                                            \
+#define DIST_TRACE_SORT(l, i, e, M, N)                                                   \
     if (TRACER_CONDITION) {                                                              \
         for (int __i = 0; __i < (e); __i += VECTOR_WIDTH) {                              \
             int __e = (((e)-__i) < VECTOR_WIDTH) ? ((e)-__i) : VECTOR_WIDTH;             \
             if (__e > 1) {                                                               \
                 for (int __j = __i; __j < __i + __e - 1; ++__j) {                        \
                     for (int __k = __i; __k < __i + __e - (__j - __i) - 1; ++__k) {      \
-                        if (l[__k] > l[__k + 1]) {                                       \
-                            int __t    = l[__k];                                         \
-                            l[__k]     = l[__k + 1];                                     \
-                            l[__k + 1] = __t;                                            \
+                        if (neighs(l, i, __k, M, N) > neighs(l, i, __k + 1, M, N)) {     \
+                            int __t    = neighs(l, i, __k, M, N);                        \
+                            neighs(l, i, __k, M, N)     = neighs(l, i, __k + 1, M, N);   \
+                            neighs(l, i, __k + 1, M, N) = __t;                           \
                         }                                                                \
                     }                                                                    \
                 }                                                                        \
@@ -98,14 +98,15 @@
         }                                                                                \
     }
 
-#define DIST_TRACE(l, e)                                                                 \
+#define DIST_TRACE(l, i, e, M, N)                                                        \
     if (TRACER_CONDITION) {                                                              \
         for (int __i = 0; __i < (e); __i += VECTOR_WIDTH) {                              \
             int __e = (((e)-__i) < VECTOR_WIDTH) ? ((e)-__i) : VECTOR_WIDTH;             \
             if (__e > 1) {                                                               \
                 fprintf(index_tracer_fp, "D: ");                                         \
                 for (int __j = 0; __j < __e - 1; ++__j) {                                \
-                    int __dist = abs(l[__i + __j + 1] - l[__i + __j]);                   \
+                    int __dist = abs(neighs(l, i, __i + __j + 1, M, N) -                 \
+                                     neighs(l, i, __i + __j, M, N));                     \
                     fprintf(index_tracer_fp, "%d ", __dist);                             \
                 }                                                                        \
                 fprintf(index_tracer_fp, "\n");                                          \
@@ -117,9 +118,9 @@
 #define INDEX_TRACER_END
 #define INDEX_TRACE_NATOMS(nl, ng, mn)
 #define INDEX_TRACE_ATOM(a)
-#define INDEX_TRACE(l, e)
-#define DIST_TRACE_SORT(l, e)
-#define DIST_TRACE(l, e)
+#define INDEX_TRACE(l, i, e, M, N)
+#define DIST_TRACE_SORT(l, i, e, M, N)
+#define DIST_TRACE(l, i, e, M, N)
 #endif
 
 extern void traceAddresses(

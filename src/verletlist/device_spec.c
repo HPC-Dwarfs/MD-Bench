@@ -5,11 +5,13 @@
  * license that can be found in the LICENSE file.
  */
 #include <device.h>
+#include <util.h>
 
 #ifdef CUDA_TARGET
 
-void initDevice(Atom* atom, Neighbor* neighbor)
-{
+void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor) {
+    DEBUG_MESSAGE("initDevice start\n");
+
     DeviceAtom* d_atom         = &(atom->d_atom);
     DeviceNeighbor* d_neighbor = &(neighbor->d_neighbor);
 
@@ -40,6 +42,8 @@ void initDevice(Atom* atom, Neighbor* neighbor)
         atom->cutforcesq,
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     memcpyToGPU(d_atom->type, atom->type, sizeof(int) * atom->Nmax);
+
+    DEBUG_MESSAGE("initDevice stop\n");
 }
 
 #endif

@@ -16,8 +16,7 @@
 #include <simd.h>
 #endif
 
-void initParameter(Parameter* param)
-{
+void initParameter(Parameter* param) {
     param->input_file      = NULL;
     param->vtk_file        = NULL;
     param->xtc_file        = NULL;
@@ -30,9 +29,9 @@ void initParameter(Parameter* param)
     param->sigma6          = 1.0;
     param->rho             = 0.8442;
 #ifdef ONE_ATOM_TYPE
-    param->ntypes = 1;
+    param->ntypes        = 1;
 #else
-    param->ntypes = 4;
+    param->ntypes        = 4;
 #endif
     param->ntimes        = 200;
     param->dt            = 0.005;
@@ -56,6 +55,11 @@ void initParameter(Parameter* param)
     param->v_out_every   = 5;
     param->half_neigh    = 0;
     param->proc_freq     = 2.4;
+#ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+    param->super_clustering = 1;
+#else
+    param->super_clustering = 0;
+#endif
     // MPI
     param->balance       = 0;
     param->method        = 0;
@@ -63,8 +67,7 @@ void initParameter(Parameter* param)
     param->setup         = 1;
 }
 
-void readParameter(Parameter* param, const char* filename)
-{
+void readParameter(Parameter* param, const char* filename) {
     FILE* fp = fopen(filename, "r");
     char line[MAXLINE];
     int i;
@@ -124,6 +127,7 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(method);
             PARSE_INT(balance);
             PARSE_INT(balance_every);
+            PARSE_INT(super_clustering);
         }
     }
 
@@ -139,8 +143,7 @@ void readParameter(Parameter* param, const char* filename)
     fclose(fp);
 }
 
-void printParameter(Parameter* param)
-{
+void printParameter(Parameter* param) {
     fprintf(stdout, "Parameters:\n");
     if (param->input_file != NULL) {
         fprintf(stdout, "\tInput file: %s\n", param->input_file);
@@ -170,10 +173,14 @@ void printParameter(Parameter* param)
     fprintf(stdout, "\tKernel: %s\n", KERNEL_NAME);
 #endif
 
-#ifdef CLUSTERPAIR
+#ifdef CUDA_TARGET
+    fprintf(stdout, "\tSIMD Intrinsics: CUDA\n");
+    fprintf(stdout, "\tSuper-clustering: %s\n", (param->super_clustering) ? "yes" : "no");
+#else
     fprintf(stdout, "\tSIMD Intrinsics: %s\n", SIMD_INTRINSICS);
 #endif
-    fprintf(stdout, "\tData layout: %s\n", POS_DATA_LAYOUT);
+    fprintf(stdout, "\tAtom data layout: %s\n", POS_DATA_LAYOUT);
+    fprintf(stdout, "\tNeighbor-lists data layout: %s\n", NBLIST_DATA_LAYOUT);
     fprintf(stdout, "\tFloating-point precision: %s\n", PRECISION_STRING);
     fprintf(stdout,
         "\tUnit cells (nx, ny, nz): %d, %d, %d\n",

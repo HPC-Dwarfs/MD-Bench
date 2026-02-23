@@ -56,7 +56,7 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                                     stats->total_force_neighs) *
                            sizeof(int);
 #endif
-    if (me == 0){
+    if (me == 0) {
         printf("Statistics:\n");
         printf("\tVector width: %d, Processor frequency: %.4f GHz\n",
             VECTOR_WIDTH,
@@ -88,7 +88,7 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                            (double)(stats->atoms_within_cutoff +
                                     stats->atoms_outside_cutoff) *
                            100.0;
-    if (me == 0){
+    if (me == 0) {
         printf("\tAtoms within/outside cutoff radius: %lld/%lld (%.2f%%)\n",
             stats->atoms_within_cutoff,
             stats->atoms_outside_cutoff,

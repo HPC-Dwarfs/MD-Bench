@@ -7,11 +7,19 @@
 #include <atom.h>
 #include <parameter.h>
 #ifdef _MPI
-    #include <mpi.h>
+#include <mpi.h>
 #endif
 
 #ifndef __NEIGHBOR_H_
 #define __NEIGHBOR_H_
+
+#ifdef NBLIST_AOS
+#define NBLIST_DATA_LAYOUT "AoS"
+#define neighs(nblist,i,j,M,N) nblist[(i) * N + (j)]
+#else
+#define NBLIST_DATA_LAYOUT "SoA"
+#define neighs(nblist,i,j,M,N) nblist[(j) * M + (i)]
+#endif
 
 typedef struct {
     int* neighbors;
@@ -53,7 +61,7 @@ typedef struct {
     int mbinx;
     int mbiny;
     int mbinz;
-    //Multigpu
+    // Multigpu
     int pad_x;
     int pad_y;
     int pad_z;

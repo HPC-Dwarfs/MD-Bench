@@ -38,14 +38,14 @@ typedef struct {
 
 enum { RCB = 1, meanTimeRCB, Staggered };
 #ifdef _MPI
-    void setupGrid(Grid*, Atom*, Parameter*);
-    void printGrid(Grid*);
-    typedef MD_FLOAT (*RCB_Method)(Atom*, MPI_Comm, int, double);
-    void cartisian3d(Grid*, Parameter*, Box*);
-    void rcbBalance(Grid*, Atom*, Parameter*, RCB_Method, int, double);
-    void staggeredBalance(Grid*, Atom*, Parameter*, double);
-    // rcb methods
-    MD_FLOAT meanBisect(Atom*, MPI_Comm, int, double);
-    MD_FLOAT meanTimeBisect(Atom*, MPI_Comm, int, double);
+void setupGrid(Grid*, Atom*, Parameter*);
+void printGrid(Grid*);
+typedef MD_FLOAT (*RCB_Method)(Atom*, MPI_Comm, int, double);
+void cartisian3d(Grid*, Parameter*, Box*);
+void rcbBalance(Grid*, Atom*, Parameter*, RCB_Method, int, double);
+void staggeredBalance(Grid*, Atom*, Parameter*, double);
+// rcb methods
+MD_FLOAT meanBisect(Atom*, MPI_Comm, int, double);
+MD_FLOAT meanTimeBisect(Atom*, MPI_Comm, int, double);
 #endif
 #endif

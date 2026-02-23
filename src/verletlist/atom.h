@@ -56,7 +56,7 @@ extern void growAtom(Atom*);
 extern void freeAtom(Atom*);
 
 int packGhost(Atom*, int, MD_FLOAT*, int*);
-int unpackGhost(Atom*, int, MD_FLOAT*);
+int unpackGhost(Parameter*, Atom*, int, MD_FLOAT*);
 int packExchange(Atom*, int, MD_FLOAT*);
 int unpackExchange(Atom*, int, MD_FLOAT*);
 void packForward(Atom*, int, int*, MD_FLOAT*, int*);
@@ -66,7 +66,7 @@ void unpackReverse(Atom*, int, int*, MD_FLOAT*);
 void pbc(Atom*);
 void copy(Atom*, int, int);
 
-#ifdef AOS
+#ifdef ATOM_POSITION_AOS
 #define POS_DATA_LAYOUT "AoS"
 #define atom_x(i)       atom->x[(i)*3 + 0]
 #define atom_y(i)       atom->x[(i)*3 + 1]

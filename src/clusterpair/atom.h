@@ -7,18 +7,13 @@
 #include <box.h>
 #include <parameter.h>
 #ifdef _MPI
-    #include <mpi.h>
+#include <mpi.h>
 #endif
 
 #ifndef __ATOM_H_
 #define __ATOM_H_
 
 #define DELTA 100000
-
-#define CI_SCALAR_BASE_INDEX(a) (CI_BASE_INDEX(a, 1))
-#define CI_VECTOR_BASE_INDEX(a) (CI_BASE_INDEX(a, 3))
-#define CJ_SCALAR_BASE_INDEX(a) (CJ_BASE_INDEX(a, 1))
-#define CJ_VECTOR_BASE_INDEX(a) (CJ_BASE_INDEX(a, 3))
 
 typedef struct {
     int natoms;
@@ -28,8 +23,15 @@ typedef struct {
 } Cluster;
 
 typedef struct {
+    int nclusters;
+    MD_FLOAT bbminx, bbmaxx;
+    MD_FLOAT bbminy, bbmaxy;
+    MD_FLOAT bbminz, bbmaxz;
+} SuperCluster;
+
+typedef struct {
     int Natoms, Nlocal, Nghost, Nmax;
-    int Nclusters, Nclusters_local, Nclusters_ghost, Nclusters_max, NmaxGhost, ncj;
+    int Nclusters_local, Nclusters_ghost, Nclusters_max, NmaxGhost, ncj;
     MD_FLOAT *x, *y, *z;
     MD_FLOAT *vx, *vy, *vz;
     int* border_map;
@@ -46,7 +48,8 @@ typedef struct {
     MD_FLOAT* cl_f;
     int* cl_t;
     Cluster *iclusters, *jclusters;
-    int* icluster_bin;
+    SuperCluster* siclusters;
+    int* cluster_bin;
     int dummy_cj;
     MD_UINT* exclusion_filter;
     MD_FLOAT* diagonal_4xn_j_minus_i;
@@ -69,10 +72,10 @@ extern int readAtomGro(Atom*, Parameter*);
 extern int readAtomDmp(Atom*, Parameter*);
 extern void growAtom(Atom*);
 extern void freeAtom(Atom*);
-extern void growClusters(Atom*);
+extern void growClusters(Atom*, int);
 
 int packGhost(Atom*, int, MD_FLOAT*, int*);
-int unpackGhost(Atom*, int, MD_FLOAT*);
+int unpackGhost(Parameter*, Atom*, int, MD_FLOAT*);
 int packExchange(Atom*, int, MD_FLOAT*);
 int unpackExchange(Atom*, int, MD_FLOAT*);
 void packForward(Atom*, int, int*, MD_FLOAT*, int*);
@@ -90,7 +93,7 @@ extern void growClustersCUDA(Atom*);
 #endif 
 
 
-#ifdef AOS
+#ifdef ATOM_POSITION_AOS
 #define POS_DATA_LAYOUT "AoS"
 #define atom_x(i)       atom->x[(i)*3 + 0]
 #define atom_y(i)       atom->x[(i)*3 + 1]

@@ -9,8 +9,10 @@
 
 #include <stdint.h>
 #if PRECISION == 1
-#define MD_FLOAT float
-#define MD_UINT  unsigned int
+#define MD_FLOAT  float
+#define MD_FLOAT3 float3
+#define MD_FLOAT4 float4
+#define MD_UINT   unsigned int
 /*
 #ifdef USE_REFERENCE_KERNEL
 #define MD_SIMD_FLOAT float
@@ -18,8 +20,10 @@
 #endif
 */
 #else
-#define MD_FLOAT double
-#define MD_UINT  unsigned long long int
+#define MD_FLOAT  double
+#define MD_FLOAT3 double3
+#define MD_FLOAT4 double4
+#define MD_UINT   unsigned long long int
 /*
 #ifdef USE_REFERENCE_KERNEL
 #define MD_SIMD_FLOAT double
@@ -62,6 +66,7 @@ typedef struct {
     MD_FLOAT xlo, xhi, ylo, yhi, zlo, zhi;
     MD_FLOAT xprd, yprd, zprd;
     double proc_freq;
+    int super_clustering;
     char* eam_file;
     // MPI implementation
     int balance;

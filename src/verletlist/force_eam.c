@@ -27,7 +27,6 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
     }
 
     int Nlocal = atom->Nlocal;
-    int* neighs;
     int ntypes            = atom->ntypes;
     MD_FLOAT* fp          = eam.fp;
     MD_FLOAT* rhor_spline = eam.rhor_spline;
@@ -47,7 +46,6 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 
 #pragma omp for
         for (int i = 0; i < Nlocal; i++) {
-            neighs        = &neighbor->neighbors[i * neighbor->maxneighs];
             int numneighs = neighbor->numneigh[i];
             MD_FLOAT xtmp = atom_x(i);
             MD_FLOAT ytmp = atom_y(i);
@@ -58,7 +56,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 #endif
 #pragma ivdep
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs[k];
+                int j         = neighs(neighbor->neighbors, i, k, Nlocal, neighbor->maxneighs);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -125,7 +123,6 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 
 #pragma omp for
         for (int i = 0; i < Nlocal; i++) {
-            neighs        = &neighbor->neighbors[i * neighbor->maxneighs];
             int numneighs = neighbor->numneigh[i];
             MD_FLOAT xtmp = atom_x(i);
             MD_FLOAT ytmp = atom_y(i);
@@ -139,7 +136,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 
 #pragma ivdep
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs[k];
+                int j         = neighs(neighbor->neighbors, i, k, Nlocal, neighbor->maxneighs);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);

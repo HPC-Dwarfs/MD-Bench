@@ -29,8 +29,7 @@ UpdatePbcFunction updateAtomsPbc = updateAtomsPbcCPU;
 static void growPbc(Atom*);
 
 /* exported subroutines */
-void initPbc(Atom* atom)
-{
+void initPbc(Atom* atom) {
     NmaxGhost        = 0;
     atom->border_map = NULL;
     atom->PBCx       = NULL;
@@ -40,8 +39,7 @@ void initPbc(Atom* atom)
 
 /* update coordinates of ghost atoms */
 /* uses mapping created in setupPbc */
-void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
-{
+void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate) {
     DEBUG_MESSAGE("updatePbc start\n");
     int ncj       = get_ncj_from_nci(atom->Nclusters_local);
     MD_FLOAT xprd = param->xprd;
@@ -63,13 +61,13 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
         MD_FLOAT bbminz = INFINITY, bbmaxz = -INFINITY;
 
         for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
-            MD_FLOAT xtmp = bmapX[CL_X_OFFSET + cjj] + atom->PBCx[cg] * xprd;
-            MD_FLOAT ytmp = bmapX[CL_Y_OFFSET + cjj] + atom->PBCy[cg] * yprd;
-            MD_FLOAT ztmp = bmapX[CL_Z_OFFSET + cjj] + atom->PBCz[cg] * zprd;
+            MD_FLOAT xtmp = bmapX[CL_X_INDEX(cjj)] + atom->PBCx[cg] * xprd;
+            MD_FLOAT ytmp = bmapX[CL_Y_INDEX(cjj)] + atom->PBCy[cg] * yprd;
+            MD_FLOAT ztmp = bmapX[CL_Z_INDEX(cjj)] + atom->PBCz[cg] * zprd;
 
-            cjX[CL_X_OFFSET + cjj] = xtmp;
-            cjX[CL_Y_OFFSET + cjj] = ytmp;
-            cjX[CL_Z_OFFSET + cjj] = ztmp;
+            cjX[CL_X_INDEX(cjj)] = xtmp;
+            cjX[CL_Y_INDEX(cjj)] = ytmp;
+            cjX[CL_Z_INDEX(cjj)] = ztmp;
             cjT[cjj]               = bmapT[cjj];
 
             if (firstUpdate) {
@@ -97,9 +95,9 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
 
         if (firstUpdate) {
             for (int cjj = atom->jclusters[cj].natoms; cjj < CLUSTER_N; cjj++) {
-                cjX[CL_X_OFFSET + cjj] = INFINITY;
-                cjX[CL_Y_OFFSET + cjj] = INFINITY;
-                cjX[CL_Z_OFFSET + cjj] = INFINITY;
+                cjX[CL_X_INDEX(cjj)] = INFINITY;
+                cjX[CL_Y_INDEX(cjj)] = INFINITY;
+                cjX[CL_Z_INDEX(cjj)] = INFINITY;
                 cjT[cjj]               = 0;
             }
 
@@ -117,8 +115,7 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
 
 /* relocate atoms that have left domain according
  * to periodic boundary conditions */
-void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy)
-{
+void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy) {
     MD_FLOAT xprd = param->xprd;
     MD_FLOAT yprd = param->yprd;
     MD_FLOAT zprd = param->zprd;
@@ -165,8 +162,7 @@ void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy)
     }
 
 /* internal subroutines */
-void growPbc(Atom* atom)
-{
+void growPbc(Atom* atom) {
     int nold = NmaxGhost;
     NmaxGhost += DELTA;
 
@@ -182,8 +178,7 @@ void growPbc(Atom* atom)
         reallocate(atom->PBCz, ALIGNMENT, NmaxGhost * sizeof(int), nold * sizeof(int));
 }
 
-void setupPbc(Atom* atom, Parameter* param)
-{
+void setupPbc(Atom* atom, Parameter* param) {
     DEBUG_MESSAGE("setupPbc start\n");
     MD_FLOAT xprd     = param->xprd;
     MD_FLOAT yprd     = param->yprd;
@@ -197,7 +192,7 @@ void setupPbc(Atom* atom, Parameter* param)
     for (int cj = 0; cj < ncj; cj++) {
         if (atom->jclusters[cj].natoms > 0) {
             if (atom->Nclusters_local + (Nghost + 7) * jfac >= atom->Nclusters_max) {
-                growClusters(atom);
+                growClusters(atom, param->super_clustering);
             }
 
             if ((Nghost + 7) * jfac >= NmaxGhost) {
@@ -301,7 +296,7 @@ void setupPbc(Atom* atom, Parameter* param)
     }
 
     if (ncj + (Nghost + 1) * jfac >= atom->Nclusters_max) {
-        growClusters(atom);
+        growClusters(atom, param->super_clustering);
     }
 
     // Add dummy cluster at the end
@@ -309,18 +304,18 @@ void setupPbc(Atom* atom, Parameter* param)
     int cjVecBase = CJ_VECTOR_BASE_INDEX(ncj + Nghost + 1);
     int* cjT      = &atom->cl_t[cjScaBase];
     MD_FLOAT* cjX = &atom->cl_x[cjVecBase];
+
     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
-        cjX[CL_X_OFFSET + cjj] = INFINITY;
-        cjX[CL_Y_OFFSET + cjj] = INFINITY;
-        cjX[CL_Z_OFFSET + cjj] = INFINITY;
+        cjX[CL_X_INDEX(cjj)] = INFINITY;
+        cjX[CL_Y_INDEX(cjj)] = INFINITY;
+        cjX[CL_Z_INDEX(cjj)] = INFINITY;
         cjT[cjj]               = 0;
     }
 
-    // increase by one to make it the ghost atom count
+    // Increase by one to make it the ghost atom count
     atom->dummy_cj        = ncj + Nghost + 1;
     atom->Nghost          = Nghost_atoms;
     atom->Nclusters_ghost = Nghost + 1;
-    atom->Nclusters       = atom->Nclusters_local + Nghost + 1;
 
     // Update created ghost clusters positions
     updatePbcCPU(atom, param, 1);

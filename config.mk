@@ -1,5 +1,5 @@
 # Compiler tool chain (GCC/CLANG/ICC/ICX/ONEAPI/NVCC/HIPCC)
-TOOLCHAIN ?= GCC
+TOOLCHAIN ?= NVCC
 # ISA of instruction code (X86/ARM)
 ISA ?= X86
 # Instruction set for instrinsic kernels (NONE/<X86-SIMD>/<ARM-SIMD>)
@@ -13,11 +13,15 @@ ENABLE_LIKWID ?= false
 # Enable OpenMP parallelization (true or false)
 ENABLE_OPENMP ?= false
 # Enable MPI parallelization
-ENABLE_MPI ?= true
+ENABLE_MPI ?= false
 # SP or DP
 DATA_TYPE ?= DP
 # AOS or SOA
-DATA_LAYOUT ?= AOS
+ATOM_DATA_LAYOUT ?= AOS
+# Neighbor-lists data layout (auto/AOS/SOA)
+# AOS="atom"-major, SOA="neighbor"-major
+# For CPU, auto=AOS; For GPU, auto=SOA
+NBLIST_DATA_LAYOUT ?= auto
 # Debug
 DEBUG ?= false
 
@@ -37,8 +41,13 @@ COMPUTE_STATS ?= false
 ENABLE_OMP_SIMD ?= true
 
 # Configurations for clusterpair optimization scheme
-# Cluster pair kernel variant (auto/4xN/2xNN)
+# Cluster pair kernel variant (auto/4xN/2xNN/gpusimple)
 CLUSTER_PAIR_KERNEL ?= auto
+# Data layout for super-clustering kernels (AOS3/AOS4/SOA)
+SUPERCLUSTER_DATA_LAYOUT ?= AOS3
+# Map threadIdx.y to cii and threadIdx.x to cjj (true or false)
+# If false, use same thread mapping and reduction instructions as Gromacs
+SUPERCLUSTER_INVERSE_THREAD_MAPPING ?= true
 # Use scalar version (and pray for the compiler to vectorize the code properly)
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)
@@ -47,8 +56,8 @@ USE_REFERENCE_KERNEL ?= false
 XTC_OUTPUT ?= false
 
 # Configurations for CUDA
-# Use CUDA pinned memory to optimize transfers
-USE_CUDA_HOST_MEMORY ?= true
+# Use CUDA host memory to optimize transfers
+USE_CUDA_HOST_MEMORY ?= false
 
 #Feature options
 OPTIONS =  -DALIGNMENT=64
@@ -58,30 +67,33 @@ OPTIONS =  -DALIGNMENT=64
 # DO NOT EDIT BELOW !!!
 ################################################################
 DEFINES =
+NBLIST_DATA_LAYOUT_DEFAULT=AOS
 
-ifeq ($(strip $(TOOLCHAIN)), HIPCC)
+ifeq ($(strip $(TOOLCHAIN)),HIPCC)
 	VECTOR_WIDTH=1
-	SIMD = NONE
-	USE_REFERENCE_KERNEL = true
+	SIMD=NONE
+	USE_REFERENCE_KERNEL=true
+	NBLIST_DATA_LAYOUT_DEFAULT=SOA
 endif
-ifeq ($(strip $(TOOLCHAIN)), NVCC)
+ifeq ($(strip $(TOOLCHAIN)),NVCC)
 	VECTOR_WIDTH=1
-	SIMD = NONE
-	USE_REFERENCE_KERNEL = true
+	SIMD=NONE
+	USE_REFERENCE_KERNEL=true
+	NBLIST_DATA_LAYOUT_DEFAULT=SOA
 endif
-ifeq ($(strip $(SIMD)), NONE)
+ifeq ($(strip $(SIMD)),NONE)
 	VECTOR_WIDTH=1
-	USE_REFERENCE_KERNEL = true
+	USE_REFERENCE_KERNEL=true
 else
 ifeq ($(strip $(ISA)),ARM)
-    ifeq ($(strip $(SIMD)), NEON)
+    ifeq ($(strip $(SIMD)),NEON)
         __ISA_NEON__=true
         __SIMD_WIDTH_DBL__=2
-    else ifeq ($(strip $(SIMD)), SVE)
+    else ifeq ($(strip $(SIMD)),SVE)
         __ISA_SVE__=true
 		# needs further specification
         __SIMD_WIDTH_DBL__=2
-    else ifeq ($(strip $(SIMD)), SVE2)
+    else ifeq ($(strip $(SIMD)),SVE2)
         __ISA_SVE__=true
         __ISA_SVE2__=true
         # needs further specification
@@ -89,39 +101,54 @@ ifeq ($(strip $(ISA)),ARM)
     endif
 else
 # X86
-    ifeq ($(strip $(SIMD)), SSE)
+    ifeq ($(strip $(SIMD)),SSE)
         __ISA_SSE__=true
         __SIMD_WIDTH_DBL__=2
-    else ifeq ($(strip $(SIMD)), AVX)
+    else ifeq ($(strip $(SIMD)),AVX)
         __ISA_AVX__=true
         __SIMD_WIDTH_DBL__=4
-    else ifeq ($(strip $(SIMD)), AVX_FMA)
+    else ifeq ($(strip $(SIMD)),AVX_FMA)
         __ISA_AVX__=true
         __ISA_AVX_FMA__=true
         __SIMD_WIDTH_DBL__=4
-    else ifeq ($(strip $(SIMD)), AVX2)
+    else ifeq ($(strip $(SIMD)),AVX2)
         #__SIMD_KERNEL__=true
         __ISA_AVX2__=true
         __SIMD_WIDTH_DBL__=4
-    else ifeq ($(strip $(SIMD)), AVX512)
+    else ifeq ($(strip $(SIMD)),AVX512)
         __ISA_AVX512__=true
         __SIMD_WIDTH_DBL__=8
-        ifeq ($(strip $(DATA_TYPE)), DP)
+        ifeq ($(strip $(DATA_TYPE)),DP)
             __SIMD_KERNEL__=true
         endif
     endif
 endif
 
-# SIMD width is specified in double-precision, hence it may
-# need to be adjusted for single-precision
+# SIMD width is specified in double-precision, hence it needs
+# to be adjusted for single-precision cases
 ifeq ($(strip $(DATA_TYPE)), SP)
     VECTOR_WIDTH=$(shell echo $$(( $(__SIMD_WIDTH_DBL__) * 2 )))
 else
     VECTOR_WIDTH=$(__SIMD_WIDTH_DBL__)
 endif
 endif
-ifeq ($(strip $(DATA_LAYOUT)),AOS)
-    DEFINES +=  -DAOS
+ifeq ($(strip $(ATOM_DATA_LAYOUT)),AOS)
+    DEFINES +=  -DATOM_POSITION_AOS
+endif
+ifeq ($(strip $(NBLIST_DATA_LAYOUT)),auto)
+    NBLIST_DATA_LAYOUT=$(NBLIST_DATA_LAYOUT_DEFAULT)
+endif
+ifeq ($(strip $(NBLIST_DATA_LAYOUT)),AOS)
+    DEFINES +=  -DNBLIST_AOS
+else
+    DEFINES +=  -DNBLIST_SOA
+endif
+ifeq ($(strip $(SUPERCLUSTER_DATA_LAYOUT)),AOS3)
+    DEFINES +=  -DPOSITION_AOS3_SUP
+else ifeq ($(strip $(SUPERCLUSTER_DATA_LAYOUT)),AOS4)
+    DEFINES +=  -DPOSITION_AOS4_SUP
+else
+    DEFINES +=  -DPOSITION_SOA_SUP
 endif
 ifeq ($(strip $(DATA_TYPE)),SP)
     DEFINES +=  -DPRECISION=1
@@ -213,10 +240,14 @@ ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     DEFINES += -DCLUSTER_PAIR
 endif
 
+ifeq ($(strip $(SUPERCLUSTER_INVERSE_THREAD_MAPPING)),true)
+    DEFINES += -DSUPERCLUSTER_INVERSE_THREAD_MAPPING
+endif
+
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL
 else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
-		OPT_TAG = CP
+		OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
 endif
 
 ifeq ($(strip $(SIMD)),NONE)
@@ -227,12 +258,14 @@ endif
 
 ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),auto)
-        DEFINES += -DCLUSTER_PAIR_KERNEL_AUTO
+        DEFINES += -DCLUSTERPAIR_KERNEL_AUTO
+    else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),gpusimple)
+        DEFINES += -DCLUSTERPAIR_KERNEL_GPU_SIMPLE
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),4xN)
         DEFINES += -DCLUSTERPAIR_KERNEL_4XN
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),2xNN)
         DEFINES += -DCLUSTERPAIR_KERNEL_2XNN
     else
-        $(error Invalid CLUSTER_PAIR_KERNEL, must be one of: auto, 4xN, 2xNN)
+        $(error Invalid CLUSTER_PAIR_KERNEL, must be one of: auto, 4xN, 2xNN, gpusimple)
     endif
 endif

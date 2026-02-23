@@ -1,10 +1,9 @@
+#include <atom.h>
 #include <comm.h>
 #include <grid.h>
-#include <atom.h>
-#include <parameter.h>
 #include <neighbor.h>
+#include <parameter.h>
 #include <timing.h>
-
 
 #ifdef _MPI
 double dynamicBalance(Comm* comm, Grid* grid, Atom* atom, Parameter* param, double time)
@@ -24,14 +23,19 @@ double dynamicBalance(Comm* comm, Grid* grid, Atom* atom, Parameter* param, doub
         exchangeComm(comm, atom);
     } else {
         // Do nothing
-    } 
-    //printGrid(grid);
-    //MPI_Barrier(world);
+    }
+    // printGrid(grid);
+    // MPI_Barrier(world);
     E = getTimeStamp();
     return E - S;
 }
 
-double initialBalance(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats, Comm* comm, Grid* grid)
+double initialBalance(Parameter* param,
+    Atom* atom,
+    Neighbor* neighbor,
+    Stats* stats,
+    Comm* comm,
+    Grid* grid)
 {
     double E, S, time;
     S = getTimeStamp();
@@ -40,19 +44,26 @@ double initialBalance(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* s
         neighComm(comm, param, grid);
     }
     MPI_Allreduce(&atom->Nlocal, &atom->Natoms, 1, MPI_INT, MPI_SUM, world);
-    //printf("Processor:%i, Local atoms:%i, Total atoms:%i\n",
-    //    comm->myproc,
-    //    atom->Nlocal,
-    //    atom->Natoms);
+    // printf("Processor:%i, Local atoms:%i, Total atoms:%i\n",
+    //     comm->myproc,
+    //     atom->Nlocal,
+    //     atom->Natoms);
     MPI_Barrier(world);
     E = getTimeStamp();
     return E - S;
 }
 #else
-double dynamicBalance(Comm* comm, Grid* grid, Atom* atom, Parameter* param, double time){
+double dynamicBalance(Comm* comm, Grid* grid, Atom* atom, Parameter* param, double time)
+{
     return 0;
 }
-double initialBalance(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats, Comm* comm, Grid* grid){
+double initialBalance(Parameter* param,
+    Atom* atom,
+    Neighbor* neighbor,
+    Stats* stats,
+    Comm* comm,
+    Grid* grid)
+{
     return 0;
 }
 #endif

@@ -34,11 +34,10 @@ int write_atoms_to_file(Atom* atom, char* name)
     
      Check if $FASTTMP is set
     if (file_system == NULL) {
-        fprintf(stderr, "Error: TMPDIR environment variable is not set!\n");
         return -1;
     }
 
-    char file_path[256]; 
+    char file_path[256];
     snprintf(file_path, sizeof(file_path), "%s/%s", file_system, name);
     FILE *fp = fopen(file_path, "wb");
 */
@@ -49,14 +48,21 @@ int write_atoms_to_file(Atom* atom, char* name)
     }
 
     for (int i = 0; i < atom->Nlocal; ++i) {
-        fprintf(fp, "%.15lf %.15lf %.15lf %.15lf %.15lf %.15lf %d\n", atom_x(i), atom_y(i), atom_z(i), atom_vx(i), atom_vy(i),atom_vz(i),atom->type[i]);
+        fprintf(fp,
+            "%.15lf %.15lf %.15lf %.15lf %.15lf %.15lf %d\n",
+            atom_x(i),
+            atom_y(i),
+            atom_z(i),
+            atom_vx(i),
+            atom_vy(i),
+            atom_vz(i),
+            atom->type[i]);
     }
     fclose(fp);
     return 0;
 }
 
-void initAtom(Atom* atom)
-{
+void initAtom(Atom* atom) {
     atom->x          = NULL;
     atom->y          = NULL;
     atom->z          = NULL;
@@ -100,13 +106,11 @@ void initAtom(Atom* atom)
     mybox->hi[0] = mybox->hi[1] = mybox->hi[2] = 0;
 }
 
-void createAtom(Atom* atom, Parameter* param)
-{
+void createAtom(Atom* atom, Parameter* param) {
     int me = 0;
-
-    #ifdef _MPI
+#ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
-    #endif
+#endif
 
     MD_FLOAT xlo  = 0.0;
     MD_FLOAT xhi  = param->xprd;
@@ -156,7 +160,7 @@ void createAtom(Atom* atom, Parameter* param)
     int oz        = 0;
     int subboxdim = 8;
 
-    if(me == 0 && param->setup) {
+    if (me == 0 && param->setup) {
         while (oz * subboxdim <= khi) {
             k = oz * subboxdim + sz;
             j = oy * subboxdim + sy;
@@ -169,10 +173,11 @@ void createAtom(Atom* atom, Parameter* param)
                 ytmp = 0.5 * alat * j;
                 ztmp = 0.5 * alat * k;
 
-                if (xtmp >= xlo && xtmp < xhi && ytmp >= ylo && ytmp < yhi && ztmp >= zlo &&
-                    ztmp < zhi) {
+                if (xtmp >= xlo && xtmp < xhi && ytmp >= ylo && ytmp < yhi &&
+                    ztmp >= zlo && ztmp < zhi) {
 
-                    n = k * (2 * param->ny) * (2 * param->nx) + j * (2 * param->nx) + i + 1;
+                    n = k * (2 * param->ny) * (2 * param->nx) + j * (2 * param->nx) + i +
+                        1;
 
                     for (m = 0; m < 5; m++) {
                         myrandom(&n);
@@ -232,8 +237,7 @@ void createAtom(Atom* atom, Parameter* param)
     }
 }
 
-int type_str2int(const char* type)
-{
+int type_str2int(const char* type) {
     // Argon
     if (strncmp(type, "Ar", 2) == 0) {
         return 0;
@@ -244,8 +248,7 @@ int type_str2int(const char* type)
     return -1;
 }
 
-int readAtom(Atom* atom, Parameter* param)
-{
+int readAtom(Atom* atom, Parameter* param) {
     int me = 0;
 
 #ifdef _MPI
@@ -280,8 +283,7 @@ int readAtom(Atom* atom, Parameter* param)
     return -1;
 }
 
-int readAtom_pdb(Atom* atom, Parameter* param)
-{
+int readAtom_pdb(Atom* atom, Parameter* param) {
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -379,8 +381,7 @@ int readAtom_pdb(Atom* atom, Parameter* param)
     return read_atoms;
 }
 
-int readAtom_gro(Atom* atom, Parameter* param)
-{
+int readAtom_gro(Atom* atom, Parameter* param) {
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -479,8 +480,7 @@ int readAtom_gro(Atom* atom, Parameter* param)
     return read_atoms;
 }
 
-int readAtom_dmp(Atom* atom, Parameter* param)
-{
+int readAtom_dmp(Atom* atom, Parameter* param) {
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -591,8 +591,7 @@ int readAtom_dmp(Atom* atom, Parameter* param)
     return natoms;
 }
 
-int readAtom_in(Atom* atom, Parameter* param)
-{
+int readAtom_in(Atom* atom, Parameter* param) {
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -678,8 +677,7 @@ int readAtom_in(Atom* atom, Parameter* param)
     return natoms;
 }
 
-void writeAtom(Atom* atom, Parameter* param)
-{
+void writeAtom(Atom* atom, Parameter* param) {
     FILE* fp = fopen(param->write_atom_file, "w");
 
     for (int i = 0; i < atom->Nlocal; i++) {
@@ -704,8 +702,7 @@ void writeAtom(Atom* atom, Parameter* param)
         param->zprd);
 }
 
-void growAtom(Atom* atom)
-{
+void growAtom(Atom* atom) {
     DeviceAtom* d_atom = &(atom->d_atom);
     int nold           = atom->Nmax;
     atom->Nmax += DELTA;
@@ -716,7 +713,7 @@ void growAtom(Atom* atom)
     atom->p        = (t*)reallocate(atom->p, ALIGNMENT, ns, os);                         \
     atom->d_atom.p = (t*)reallocateGPU(atom->d_atom.p, ns);
 
-#ifdef AOS
+#ifdef ATOM_POSITION_AOS
     REALLOC(x, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);
     REALLOC(vx, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);
     REALLOC(fx, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);
@@ -735,37 +732,36 @@ void growAtom(Atom* atom)
 }
 /* MPI added*/
 
-void freeAtom(Atom* atom)
-{
+void freeAtom(Atom* atom) {
 #undef FREE_ATOM
-#define FREE_ATOM(p);        \
-    free(atom->p);           \
-    GPUfree(atom->d_atom.p); \
-    atom->p        = NULL;   \
+#define FREE_ATOM(p)                                                                     \
+    ;                                                                                    \
+    free(atom->p);                                                                       \
+    GPUfree(atom->d_atom.p);                                                             \
+    atom->p        = NULL;                                                               \
     atom->d_atom.p = NULL;
-  
-#ifdef AOS
+
+#ifdef ATOM_POSITION_AOS
     FREE_ATOM(x);
     FREE_ATOM(vx);
-    FREE_ATOM(fx); 
+    FREE_ATOM(fx);
 #else
     FREE_ATOM(x);
-    FREE_ATOM(y);    
-    FREE_ATOM(z); 
+    FREE_ATOM(y);
+    FREE_ATOM(z);
     FREE_ATOM(vx);
-    FREE_ATOM(vy);    
-    FREE_ATOM(vz); 
+    FREE_ATOM(vy);
+    FREE_ATOM(vz);
     FREE_ATOM(fx);
-    FREE_ATOM(fy);    
-    FREE_ATOM(fz); 
+    FREE_ATOM(fy);
+    FREE_ATOM(fz);
 #endif
     FREE_ATOM(type);
 }
 
-
-void packForward(Atom* atom, int n, int* list, MD_FLOAT* buf, int* pbc)
-{
+void packForward(Atom* atom, int n, int* list, MD_FLOAT* buf, int* pbc) {
     int i, j;
+
     for (i = 0; i < n; i++) {
         j        = list[i];
         buf_x(i) = atom_x(j) + pbc[0] * atom->mybox.xprd;
@@ -774,8 +770,7 @@ void packForward(Atom* atom, int n, int* list, MD_FLOAT* buf, int* pbc)
     }
 }
 
-void unpackForward(Atom* atom, int n, int first, MD_FLOAT* buf)
-{
+void unpackForward(Atom* atom, int n, int first, MD_FLOAT* buf) {
     for (int i = 0; i < n; i++) {
         atom_x((first + i)) = buf_x(i);
         atom_y((first + i)) = buf_y(i);
@@ -783,8 +778,7 @@ void unpackForward(Atom* atom, int n, int first, MD_FLOAT* buf)
     }
 }
 
-int packGhost(Atom* atom, int i, MD_FLOAT* buf, int* pbc)
-{
+int packGhost(Atom* atom, int i, MD_FLOAT* buf, int* pbc) {
     int m    = 0;
     buf[m++] = atom_x(i) + pbc[0] * atom->mybox.xprd;
     buf[m++] = atom_y(i) + pbc[1] * atom->mybox.yprd;
@@ -793,20 +787,21 @@ int packGhost(Atom* atom, int i, MD_FLOAT* buf, int* pbc)
     return m;
 }
 
-int unpackGhost(Atom* atom, int i, MD_FLOAT* buf)
-{
-    while (i >= atom->Nmax) {growAtom(atom);}
+int unpackGhost(Parameter* param, Atom* atom, int i, MD_FLOAT* buf) {
+    while (i >= atom->Nmax) {
+        growAtom(atom);
+    }
+
     int m         = 0;
     atom_x(i)     = buf[m++];
     atom_y(i)     = buf[m++];
     atom_z(i)     = buf[m++];
-    atom->type[i] = (int) buf[m++];
+    atom->type[i] = (int)buf[m++];
     atom->Nghost++;
     return m;
 }
 
-void packReverse(Atom* atom, int n, int first, MD_FLOAT* buf)
-{
+void packReverse(Atom* atom, int n, int first, MD_FLOAT* buf) {
     for (int i = 0; i < n; i++) {
         buf_x(i) = atom_fx(first + i);
         buf_y(i) = atom_fy(first + i);
@@ -814,8 +809,7 @@ void packReverse(Atom* atom, int n, int first, MD_FLOAT* buf)
     }
 }
 
-void unpackReverse(Atom* atom, int n, int* list, MD_FLOAT* buf)
-{
+void unpackReverse(Atom* atom, int n, int* list, MD_FLOAT* buf) {
     int i, j;
     for (i = 0; i < n; i++) {
         j = list[i];
@@ -825,8 +819,7 @@ void unpackReverse(Atom* atom, int n, int* list, MD_FLOAT* buf)
     }
 }
 
-int packExchange(Atom* atom, int i, MD_FLOAT* buf)
-{
+int packExchange(Atom* atom, int i, MD_FLOAT* buf) {
     int m    = 0;
     buf[m++] = atom_x(i);
     buf[m++] = atom_y(i);
@@ -838,9 +831,11 @@ int packExchange(Atom* atom, int i, MD_FLOAT* buf)
     return m;
 }
 
-int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
-{
-    while (i >= atom->Nmax) {growAtom(atom);}
+int unpackExchange(Atom* atom, int i, MD_FLOAT* buf) {
+    while (i >= atom->Nmax) {
+        growAtom(atom);
+    }
+
     int m         = 0;
     atom_x(i)     = buf[m++];
     atom_y(i)     = buf[m++];
@@ -848,12 +843,11 @@ int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
     atom_vx(i)    = buf[m++];
     atom_vy(i)    = buf[m++];
     atom_vz(i)    = buf[m++];
-    atom->type[i] = (int) buf[m++];
+    atom->type[i] = (int)buf[m++];
     return m;
 }
 
-void pbc(Atom* atom)
-{
+void pbc(Atom* atom) {
     for (int i = 0; i < atom->Nlocal; i++) {
 
         MD_FLOAT xprd = atom->mybox.xprd;
@@ -869,8 +863,7 @@ void pbc(Atom* atom)
     }
 }
 
-void copy(Atom* atom, int i, int j)
-{
+void copy(Atom* atom, int i, int j) {
     atom_x(i)     = atom_x(j);
     atom_y(i)     = atom_y(j);
     atom_z(i)     = atom_z(j);

@@ -78,38 +78,39 @@ void createNeighbors(
     }
 
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
-        int* neighptr                = &(neighbor->neighbors[ci * neighbor->maxneighs]);
-        unsigned int* neighptr_imask = &(
-            neighbor->neighbors_imask[ci * neighbor->maxneighs]);
         int j = (pattern == P_SEQ) ? CJ0_FROM_CI(ci) : 0;
         int m = (pattern == P_SEQ) ? ncj : nneighs;
         int k = 0;
+	const int nbM = atom->Nclusters_local;
+	const int nbN = neighbor->maxneighs;
 
         for (int k = 0; k < nneighs; k++) {
             if (pattern == P_RAND) {
                 int found = 0;
                 do {
-                    int cj            = rand() % ncj;
-                    neighptr[k]       = cj;
-                    neighptr_imask[k] = imask;
-                    found             = 0;
+                    int cj = rand() % ncj;
+                    neighs(neighbor->neighbors, ci, k, nbM, nbN) = cj;
+                    neighs(neighbor->neighbors_imask, ci, k, nbM, nbN) = imask;
+                    found = 0;
                     for (int l = 0; l < k; l++) {
-                        if (neighptr[l] == cj) {
+                        if (neighs(neighbor->neighbors, ci, l, nbM, nbN) == cj) {
                             found = 1;
                         }
                     }
                 } while (found == 1);
             } else {
-                neighptr[k]       = j;
-                neighptr_imask[k] = imask;
-                j                 = (j + 1) % m;
+                neighs(neighbor->neighbors, ci, k, nbM, nbN) = cj;
+                neighs(neighbor->neighbors_imask, ci, k, nbM, nbN) = imask;
+                j = (j + 1) % m;
             }
         }
 
         for (int r = 1; r < nreps; r++) {
             for (int k = 0; k < nneighs; k++) {
-                neighptr[r * nneighs + k]       = neighptr[k];
-                neighptr_imask[r * nneighs + k] = neighptr_imask[k];
+                neighs(neighbor->neighbors, ci, r * nneighs + k, nbM, nbN) =
+                    neighs(neighbor->neighbors, ci, k, nbM, nbN);
+                neighs(neighbor->neighbors_imask, ci, r * nneighs + k, nbM, nbN) =
+                    neighs(neighbor->neighbors_imask, ci, k, nbM, nbN);
             }
         }
 
@@ -258,26 +259,26 @@ int main(int argc, const char* argv[])
 
     for (int ci = 0; ci < niclusters; ++ci) {
         int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
-        int ci_vec_base = CI_VECTOR_BASE_INDEX(ci);
+        int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
         MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
         MD_FLOAT* ci_v  = &atom->cl_v[ci_vec_base];
         int* ci_t       = &atom->cl_t[ci_sca_base];
 
         for (int cii = 0; cii < iclusters_natoms; ++cii) {
-            ci_x[CL_X_OFFSET + cii] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
-            ci_x[CL_Y_OFFSET + cii] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
-            ci_x[CL_Z_OFFSET + cii] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
-            ci_v[CL_X_OFFSET + cii] = 0.0;
-            ci_v[CL_Y_OFFSET + cii] = 0.0;
-            ci_v[CL_Z_OFFSET + cii] = 0.0;
+            ci_x[CL_X_INDEX_3D(cii)] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
+            ci_x[CL_Y_INDEX_3D(cii)] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
+            ci_x[CL_Z_INDEX_3D(cii)] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
+            ci_v[CL_X_INDEX_3D(cii)] = 0.0;
+            ci_v[CL_Y_INDEX_3D(cii)] = 0.0;
+            ci_v[CL_Z_INDEX_3D(cii)] = 0.0;
             ci_t[cii]               = rand() % atom->ntypes;
             atom->Nlocal++;
         }
 
         for (int cii = iclusters_natoms; cii < CLUSTER_M; cii++) {
-            ci_x[CL_X_OFFSET + cii] = INFINITY;
-            ci_x[CL_Y_OFFSET + cii] = INFINITY;
-            ci_x[CL_Z_OFFSET + cii] = INFINITY;
+            ci_x[CL_X_INDEX_3D(cii)] = INFINITY;
+            ci_x[CL_Y_INDEX_3D(cii)] = INFINITY;
+            ci_x[CL_Z_INDEX_3D(cii)] = INFINITY;
         }
 
         atom->iclusters[ci].natoms = iclusters_natoms;

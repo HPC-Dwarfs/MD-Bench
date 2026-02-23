@@ -19,7 +19,12 @@ extern void initialIntegrateCPU(Parameter*, Atom*);
 extern void finalIntegrateCPU(Parameter*, Atom*);
 
 #ifdef CUDA_TARGET
-extern void initialIntegrateCUDA(Parameter*, Atom*);
-extern void finalIntegrateCUDA(Parameter*, Atom*);
+#ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+extern void cudaInitialIntegrateSup(Parameter*, Atom*);
+extern void cudaFinalIntegrateSup(Parameter*, Atom*);
+#else
+extern void cudaInitialIntegrate(Parameter*, Atom*);
+extern void cudaFinalIntegrate(Parameter*, Atom*);
+#endif
 #endif
 #endif //_INTEGRATE_H_

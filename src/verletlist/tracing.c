@@ -14,11 +14,9 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
     MEM_TRACER_INIT;
     INDEX_TRACER_INIT;
     int Nlocal = atom->Nlocal;
-    int* neighs;
 
     INDEX_TRACE_NATOMS(Nlocal, atom->Nghost, neighbor->maxneighs);
     for (int i = 0; i < Nlocal; i++) {
-        neighs        = &neighbor->neighbors[i * neighbor->maxneighs];
         int numneighs = neighbor->numneigh[i];
         MEM_TRACE(atom_x(i), 'R');
         MEM_TRACE(atom_y(i), 'R');
@@ -29,12 +27,12 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
         MEM_TRACE(atom->type[i], 'R');
 #endif
 
-        DIST_TRACE_SORT(neighs, numneighs);
-        INDEX_TRACE(neighs, numneighs);
-        DIST_TRACE(neighs, numneighs);
+        DIST_TRACE_SORT(neighbor->neighbors, i, numneighs, Nlocal, neighbor->maxneighs);
+        INDEX_TRACE(neighbor->neighbors, i, numneighs, Nlocal, neighbor->maxneighs);
+        DIST_TRACE(neighbor->neighbors, i, numneighs, Nlocal, neighbor->maxneighs);
 
         for (int k = 0; k < numneighs; k++) {
-            MEM_TRACE(neighs[k], 'R');
+            MEM_TRACE(neighs(neighbor->neighbors, i, k, Nlocal, neighbor->maxneighs), 'R');
             MEM_TRACE(atom_x(j), 'R');
             MEM_TRACE(atom_y(j), 'R');
             MEM_TRACE(atom_z(j), 'R');

@@ -41,9 +41,9 @@ void xtc_write(Atom* atom, int timestep, int write_pos, int write_vel)
         int ci_vec_base = CI_VECTOR_BASE_INDEX(ci);
         MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
         for (int cii = 0; cii < atom->clusters[ci].natoms; ++cii) {
-            x_buf[i][XX] = ci_x[CL_X_OFFSET + cii];
-            x_buf[i][YY] = ci_x[CL_Y_OFFSET + cii];
-            x_buf[i][ZZ] = ci_x[CL_Z_OFFSET + cii];
+            x_buf[i][XX] = ci_x[CL_X_INDEX(cii)];
+            x_buf[i][YY] = ci_x[CL_Y_INDEX(cii)];
+            x_buf[i][ZZ] = ci_x[CL_Z_INDEX(cii)];
             i++;
         }
     }

@@ -9,14 +9,13 @@
 
 #include <atom.h>
 #include <util.h>
-
 #include <string.h>
 #include <vtk.h>
 
 #ifdef _MPI
-    #include <mpi.h>
-    static MPI_File _fh;
-    static inline void flushBuffer(char*);
+#include <mpi.h>
+static MPI_File _fh;
+static inline void flushBuffer(char*);
 #endif
 
 int write_atoms_to_vtk_file(const char* filename, Atom* atom, int timestep)
@@ -62,11 +61,9 @@ int write_atoms_to_vtk_file(const char* filename, Atom* atom, int timestep)
     fprintf(fp, "POINT_DATA %d\n", atom->Nlocal);
     fprintf(fp, "SCALARS mass double\n");
     fprintf(fp, "LOOKUP_TABLE default\n");
-
     for (int i = 0; i < atom->Nlocal; i++) {
         fprintf(fp, "1.0\n");
     }
-
     fprintf(fp, "\n\n");
     fclose(fp);
     return 0;
@@ -125,7 +122,6 @@ int printGhost(const char* filename, Atom* atom, int timestep, int me)
     return 0;
 }
 
-
 #ifdef _MPI
 int vtkOpen(const char* filename, Comm* comm, Atom* atom, int timestep)
 {
@@ -136,7 +132,6 @@ int vtkOpen(const char* filename, Comm* comm, Atom* atom, int timestep)
         "%s_%d.vtk",
         filename,
         timestep);
-
     MPI_File_open(MPI_COMM_WORLD,
         timestep_filename,
         MPI_MODE_WRONLY | MPI_MODE_CREATE,
@@ -171,6 +166,11 @@ int vtkVector(Comm* comm, Atom* atom, Parameter* param)
     int mysize    = 0;
     char* msg     = (char*)malloc(sizebuff);
     sprintf(msg, "");
+
+    if (msg == NULL) {
+        fprintf_once(comm->myproc, stderr, "Could not allocate memory for VTK buffer!\n");
+        return -1;
+    }
 
     for (int i = 0; i < atom->Nlocal; i++) {
         if (mysize + extrabuff >= sizebuff) {
@@ -225,7 +225,6 @@ int vtkVector(Comm* comm, Atom* atom, Parameter* param)
 
         for (int i = 0; i < atom->Natoms; i++)
             sprintf(msg, "%s1 %d\n", msg, i);
-
         flushBuffer(msg);
 
         sprintf(msg, "\n\n");
@@ -249,15 +248,12 @@ int vtkVector(Comm* comm, Atom* atom, Parameter* param)
     }
 }
 
-void vtkClose()
-{
+void vtkClose() {
     MPI_File_close(&_fh);
     _fh = MPI_FILE_NULL;
 }
 
-
-static inline void flushBuffer(char* msg)
-{
+static inline void flushBuffer(char* msg) {
     MPI_Offset displ;
     MPI_File_get_size(_fh, &displ);
     MPI_File_write_at(_fh, displ, msg, strlen(msg), MPI_CHAR, MPI_STATUS_IGNORE);

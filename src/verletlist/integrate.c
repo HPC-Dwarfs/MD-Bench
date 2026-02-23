@@ -18,8 +18,7 @@ IntegrationFunction initialIntegrate = initialIntegrateCPU;
 IntegrationFunction finalIntegrate   = finalIntegrateCPU;
 #endif
 
-void initialIntegrateCPU(bool reneigh, Parameter* param, Atom* atom)
-{
+void initialIntegrateCPU(bool reneigh, Parameter* param, Atom* atom) {
     for (int i = 0; i < atom->Nlocal; i++) {
         atom_vx(i) += param->dtforce * atom_fx(i);
         atom_vy(i) += param->dtforce * atom_fy(i);
@@ -30,8 +29,7 @@ void initialIntegrateCPU(bool reneigh, Parameter* param, Atom* atom)
     }
 }
 
-void finalIntegrateCPU(bool reneigh, Parameter* param, Atom* atom)
-{
+void finalIntegrateCPU(bool reneigh, Parameter* param, Atom* atom) {
     for (int i = 0; i < atom->Nlocal; i++) {
         atom_vx(i) += param->dtforce * atom_fx(i);
         atom_vy(i) += param->dtforce * atom_fy(i);

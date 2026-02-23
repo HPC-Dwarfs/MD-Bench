@@ -26,6 +26,12 @@ extern double computeForceLJ2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
+#ifdef CUDA_TARGET
+double computeForceLJCuda(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats);
+double computeForceLJCudaSup(
+    Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats);
+#endif
+
 // Nbnxn layouts (as of GROMACS):
 // Simd4xN: M=4, N=VECTOR_WIDTH
 // Simd2xNN: M=4, N=(VECTOR_WIDTH/2)
@@ -63,8 +69,11 @@ extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #undef VECTOR_WIDTH
 #define VECTOR_WIDTH 8
-#define CLUSTERPAIR_KERNEL_CUDA
-#define KERNEL_NAME "CUDA"
+#define CLUSTERPAIR_KERNEL_GPU
+#ifndef CLUSTERPAIR_KERNEL_GPU_SIMPLE
+#define CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+#endif
+#define KERNEL_NAME "GPU"
 #define CLUSTER_M   8
 #define CLUSTER_N   VECTOR_WIDTH
 #define UNROLL_J    1
@@ -78,47 +87,84 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define CLUSTER_M 4
 
 // Auto selection based on VECTOR_WIDTH and architecture
-#ifdef CLUSTER_PAIR_KERNEL_AUTO
-    #if (VECTOR_WIDTH > (CLUSTER_M * 2))
-        #define CLUSTERPAIR_KERNEL_2XNN
-    #else
-        #define CLUSTERPAIR_KERNEL_4XN
-    #endif
+#ifdef CLUSTERPAIR_KERNEL_AUTO
+#if (VECTOR_WIDTH > (CLUSTER_M * 2))
+#define CLUSTERPAIR_KERNEL_2XNN
+#else
+#define CLUSTERPAIR_KERNEL_4XN
+#endif
 #endif
 
 // Define the kernel-specific macros based on which kernel is selected
 #ifdef CLUSTERPAIR_KERNEL_4XN
-    #define KERNEL_NAME "Simd4xN"
-    #define CLUSTER_N   VECTOR_WIDTH
-    #define UNROLL_I    4
-    #define UNROLL_J    1
+#define KERNEL_NAME "Simd4xN"
+#define CLUSTER_N   VECTOR_WIDTH
+#define UNROLL_I    4
+#define UNROLL_J    1
 #endif
 
 #ifdef CLUSTERPAIR_KERNEL_2XNN
-    #define KERNEL_NAME "Simd2xNN"
-    #define CLUSTER_N   (VECTOR_WIDTH / 2)
-    #define UNROLL_I    4
-    #define UNROLL_J    2
+#define KERNEL_NAME "Simd2xNN"
+#define CLUSTER_N   (VECTOR_WIDTH / 2)
+#define UNROLL_I    4
+#define UNROLL_J    2
 #endif
 
 // Verify that one of the kernel variants is selected
 #if !defined(CLUSTERPAIR_KERNEL_4XN) && !defined(CLUSTERPAIR_KERNEL_2XNN)
-    #error "No cluster pair kernel variant selected"
+#error "No cluster pair kernel variant selected"
 #endif
 
 #endif
 #endif
 
-#if CLUSTER_M >= CLUSTER_N
-#define CL_X_OFFSET (0 * CLUSTER_M)
-#define CL_Y_OFFSET (1 * CLUSTER_M)
-#define CL_Z_OFFSET (2 * CLUSTER_M)
+#if CLUSTER_N != 2 && CLUSTER_N != 4 && CLUSTER_N != 8
+#error "Cluster N dimension can be only 2, 4 and 8"
+#endif
+
+// Super-clustering macros
+#if defined(CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS) && CLUSTER_M != CLUSTER_N
+#error "For super-clusters, M must be equal to N"
+#endif
+
+#ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+#define SCLUSTER_SIZE_X          2
+#define SCLUSTER_SIZE_Y          2
+#define SCLUSTER_SIZE_Z          2
+#define SCLUSTER_SIZE            (SCLUSTER_SIZE_X * SCLUSTER_SIZE_Y * SCLUSTER_SIZE_Z)
+#define SCI_BASE_INDEX(a, b)     ((a) * CLUSTER_N * SCLUSTER_SIZE * (b))
+#define SCI_FROM_CJ(a)           ((a) / SCLUSTER_SIZE)
+#ifdef POSITION_AOS4_SUP
+#define ATOM_DIM 4
 #else
-#define CL_X_OFFSET (0 * CLUSTER_N)
-#define CL_Y_OFFSET (1 * CLUSTER_N)
-#define CL_Z_OFFSET (2 * CLUSTER_N)
+#define ATOM_DIM 3
+#endif
+#else
+#define SCLUSTER_SIZE_X          1
+#define SCLUSTER_SIZE_Y          1
+#define SCLUSTER_SIZE_Z          1
+#define SCLUSTER_SIZE            1
+#define SCI_BASE_INDEX(a, b)     ((a) * CLUSTER_M * (b))
+#define SCI_FROM_CJ(a)           (a)
+#define ATOM_DIM 3
 #endif
 
+
+#define SCI_SCALAR_BASE_INDEX(a)  (SCI_BASE_INDEX(a, 1))
+#define SCI_VECTOR3_BASE_INDEX(a) (SCI_BASE_INDEX(a, 3))
+#define SCI_VECTOR_BASE_INDEX(a)  (SCI_BASE_INDEX(a, ATOM_DIM))
+
+#if defined(CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS)
+#define CJ0_FROM_CI(a)      (a)
+#define CJ1_FROM_CI(a)      (a)
+#define CI_BASE_INDEX(a, b) ((a)*CLUSTER_N * (b))
+#ifdef SOA_SUP
+#define CJ_BASE_INDEX(a, b) ((((a) / SCLUSTER_SIZE) * SCLUSTER_SIZE * CLUSTER_N * (b)) + \
+                             (((a) % SCLUSTER_SIZE) * CLUSTER_N))
+#else
+#define CJ_BASE_INDEX(a, b) ((a)*CLUSTER_N * (b))
+#endif
+#else
 #if CLUSTER_M == CLUSTER_N
 #define CJ0_FROM_CI(a)      (a)
 #define CJ1_FROM_CI(a)      (a)
@@ -137,9 +183,82 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #else
 #error "Invalid cluster configuration!"
 #endif
+#endif
 
-#if CLUSTER_N != 2 && CLUSTER_N != 4 && CLUSTER_N != 8
-#error "Cluster N dimension can be only 2, 4 and 8"
+#define CI_SCALAR_BASE_INDEX(a)  (CI_BASE_INDEX(a, 1))
+#define CJ_SCALAR_BASE_INDEX(a)  (CJ_BASE_INDEX(a, 1))
+#define CI_VECTOR3_BASE_INDEX(a)  (CI_BASE_INDEX(a, 3))
+#define CJ_VECTOR3_BASE_INDEX(a)  (CJ_BASE_INDEX(a, 3))
+#define CI_VECTOR_BASE_INDEX(a)  (CI_BASE_INDEX(a, ATOM_DIM))
+#define CJ_VECTOR_BASE_INDEX(a)  (CJ_BASE_INDEX(a, ATOM_DIM))
+
+
+#ifndef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+// CPU
+#ifndef CUDA_TARGET
+#if CLUSTER_M >= CLUSTER_N
+#define CL_X_OFFSET (0 * CLUSTER_M)
+#define CL_Y_OFFSET (1 * CLUSTER_M)
+#define CL_Z_OFFSET (2 * CLUSTER_M)
+#define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
+#define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
+#define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
+#else
+#define CL_X_OFFSET (0 * CLUSTER_N)
+#define CL_Y_OFFSET (1 * CLUSTER_N)
+#define CL_Z_OFFSET (2 * CLUSTER_N)
+#define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
+#define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
+#define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
+#endif
+#define CL_X_INDEX(i) CL_X_INDEX_3D(i)
+#define CL_Y_INDEX(i) CL_Y_INDEX_3D(i)
+#define CL_Z_INDEX(i) CL_Z_INDEX_3D(i)
+#else
+//gpusimple
+#if CLUSTER_M == CLUSTER_N
+#ifdef SOA_SUP
+#define CL_X_OFFSET (0 * CLUSTER_N)
+#define CL_Y_OFFSET (1 * CLUSTER_N)
+#define CL_Z_OFFSET (2 * CLUSTER_N)
+#define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
+#define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
+#define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
+#define CL_X_INDEX(i) CL_X_INDEX_3D(i)
+#define CL_Y_INDEX(i) CL_Y_INDEX_3D(i)
+#define CL_Z_INDEX(i) CL_Z_INDEX_3D(i)
+#else
+#define CL_X_INDEX_3D(i)  ((i) * 3 + 0)
+#define CL_Y_INDEX_3D(i)  ((i) * 3 + 1)
+#define CL_Z_INDEX_3D(i)  ((i) * 3 + 2)
+#define CL_X_INDEX(i)  CL_X_INDEX_3D(i)
+#define CL_Y_INDEX(i)  CL_Y_INDEX_3D(i)
+#define CL_Z_INDEX(i)  CL_Z_INDEX_3D(i)
+#endif
+#else
+#error "Invalid cluster configuration for CUDA!"
+#endif
+#endif
+#else
+// supercluster
+#ifdef SOA_SUP
+#define CL_X_OFFSET (0 * CLUSTER_N * SCLUSTER_SIZE)
+#define CL_Y_OFFSET (1 * CLUSTER_N * SCLUSTER_SIZE)
+#define CL_Z_OFFSET (2 * CLUSTER_N * SCLUSTER_SIZE)
+#define CL_X_INDEX_3D(i) ((i) + CL_X_OFFSET)
+#define CL_Y_INDEX_3D(i) ((i) + CL_Y_OFFSET)
+#define CL_Z_INDEX_3D(i) ((i) + CL_Z_OFFSET)
+#define CL_X_INDEX(i) CL_X_INDEX_3D(i)
+#define CL_Y_INDEX(i) CL_Y_INDEX_3D(i)
+#define CL_Z_INDEX(i) CL_Z_INDEX_3D(i)
+#else
+#define CL_X_INDEX_3D(i)  ((i) * 3 + 0)
+#define CL_Y_INDEX_3D(i)  ((i) * 3 + 1)
+#define CL_Z_INDEX_3D(i)  ((i) * 3 + 2)
+#define CL_X_INDEX(i)  ((i) * ATOM_DIM + 0)
+#define CL_Y_INDEX(i)  ((i) * ATOM_DIM + 1)
+#define CL_Z_INDEX(i)  ((i) * ATOM_DIM + 2)
+#endif
 #endif
 
 #endif // __FORCE_H_

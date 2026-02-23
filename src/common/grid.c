@@ -68,9 +68,9 @@ void staggeredBalance(Grid* grid, Atom* atom, Parameter* param, double newTime) 
     MPI_Comm subComm[3];
     int color[3]    = { 0, 0, 0 };
     int id[3]       = { 0, 0, 0 }; 
-    double** load = (double**)malloc(3 * sizeof(double*));
+    double** load = (double**) malloc(3 * sizeof(double*));
 
-    for (int dim = 0; dim < 3; dim++) {
+    for(int dim = 0; dim < 3; dim++) {
         load[dim] = (double*)malloc(nprocs[dim] * sizeof(double));
     }
 
@@ -131,19 +131,20 @@ void staggeredBalance(Grid* grid, Atom* atom, Parameter* param, double newTime) 
             MPI_Bcast(boundaries, 6, type_float, 0, subComm[dim]);
 
             if (id[dim] == 0) {
-                fixedPointIteration(load[dim], nprocs[dim], minLoad[dim]);
                 MD_FLOAT inv_sum = 0.0;
                 MD_FLOAT sum = 0.0;
 
-                for (int n = 0; n < nprocs[dim]; n++){
+                fixedPointIteration(load[dim], nprocs[dim], minLoad[dim]);                
+
+                for(int n = 0; n < nprocs[dim]; n++) {
                     inv_sum += (1 / load[dim][n]);
                 }
 
-                for (int n = 0; n < nprocs[dim]; n++) {
+                for(int n = 0; n < nprocs[dim]; n++) {
                     cellSize[n] = (prd[dim] / load[dim][n]) * (1. / inv_sum);
                 }
 
-                for (int n = 0; n < nprocs[dim]; n++) {
+                for(int n = 0; n < nprocs[dim]; n++) {
                     limits[2 * n]     = sum;
                     limits[2 * n + 1] = sum + cellSize[n];
                     sum += cellSize[n];
@@ -228,7 +229,8 @@ MD_FLOAT meanBisect(Atom* atom, MPI_Comm subComm, int dim, double time) {
 
     for (int i = 0; i < atom->Nlocal; i++) {
         sum += atom_pos(i);
-    } 
+    }
+
     MPI_Allreduce(&sum, &total_sum, 1, type_float, MPI_SUM, subComm);
     MPI_Allreduce(&atom->Nlocal, &Natoms, 1, MPI_INT, MPI_SUM, subComm);
     mean = total_sum / Natoms;
@@ -297,8 +299,9 @@ void nextBisectionLevel(Grid* grid,
             nsend += packExchange(atom, i, &grid->buf_send[nsend]);
             copy(atom, i, atom->Nlocal - 1);
             atom->Nlocal--;
-        } else
+        } else {
             i++;
+        }
     }
 
     // Communicate the number of elements to be sent
@@ -412,7 +415,8 @@ void rcbBalance(Grid* grid, Atom* atom, Parameter* param, RCB_Method method, int
         atom->mybox.lo[2],
         atom->mybox.hi[0],
         atom->mybox.hi[1],
-        atom->mybox.hi[2] };
+        atom->mybox.hi[2]
+    };
 
     MPI_Allgather(domain, 6, type_float, grid->map, 6, type_float, world);
 
@@ -509,7 +513,6 @@ int readAtomsTempFile(Atom* atom, char* file) {
 /*
     char *file_system = getenv("TMPDIR");
     if (file_system == NULL) {
-        fprintf(stderr, "Error: TMPDIR environment variable is not set!\n");
         return -1;
     }
 
@@ -664,6 +667,7 @@ void printGrid(Grid* grid) {
                 map[6 * i + 4],
                 map[6 * i + 2],
                 map[6 * i + 5]);
+
         printf("\n\n");
         // printf("Box processor:%i\n xlo:%.4f\txhi:%.4f\n ylo:%.4f\tyhi:%.4f\n
         // zlo:%.4f\tzhi:%.4f\n",

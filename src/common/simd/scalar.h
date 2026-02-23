@@ -10,8 +10,10 @@
 #define SIMD_INTRINSICS "scalar"
 
 // At least for x86, this works
-typedef MD_FLOAT SimdRealRegT __attribute__ ((__vector_size__(VECTOR_WIDTH * sizeof(MD_FLOAT)), __may_alias__));
-typedef int SimdIntRegT __attribute__ ((__vector_size__(VECTOR_WIDTH * sizeof(MD_FLOAT)), __may_alias__));
+typedef MD_FLOAT SimdRealRegT
+    __attribute__((__vector_size__(VECTOR_WIDTH * sizeof(MD_FLOAT)), __may_alias__));
+typedef int SimdIntRegT
+    __attribute__((__vector_size__(VECTOR_WIDTH * sizeof(MD_FLOAT)), __may_alias__));
 
 typedef union {
     MD_FLOAT val[VECTOR_WIDTH];

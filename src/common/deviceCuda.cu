@@ -4,12 +4,12 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
- #include <stdio.h>
- #include <stdlib.h>
- //---
- #include <cuda_runtime.h>
- 
- #include <device.h>
+#include <stdio.h>
+#include <stdlib.h>
+//---
+#include <cuda_runtime.h>
+
+#include <device.h>
 
 void cuda_assert(const char* label, cudaError_t err)
 {
@@ -19,9 +19,7 @@ void cuda_assert(const char* label, cudaError_t err)
     }
 }
 
-void GPUfree(void * any) {
-    cuda_assert("GPUfree", cudaFree(any));
-}
+void GPUfree(void* any) { cuda_assert("GPUfree", cudaFree(any)); }
 
 void* allocateGPU(size_t bytesize)
 {

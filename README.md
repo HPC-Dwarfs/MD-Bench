@@ -93,7 +93,7 @@ source directories and main routines are used
 - `ENABLE_LIKWID`: Turn on LIKWID instrumentation, the LIKWID library has to be available
 - `DATA_TYPE`: Switch between single precision and double precision floating
 point. This is controlled by defines.
-- `DATA_LAYOUT`: Switch between array-of-structure (AOS) and structure-of-array
+- `ATOM_DATA_LAYOUT`: Switch between array-of-structure (AOS) and structure-of-array
 (SOA) layout for atom positions and forces. Tradeoff between better cache
 utilisation and easier SIMD vectorization.
 - `DEBUG`: Enable additional debug output

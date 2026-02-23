@@ -168,7 +168,15 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
 static inline MD_SIMD_FLOAT simd_real_gather(
     MD_SIMD_INT vidx, MD_FLOAT* base, const int scale)
 {
-    return _mm256_i32gather_ps(base, vidx, scale);
+    if (scale == 1) {
+        return _mm256_i32gather_ps(base, vidx, 1);
+    } else if (scale == 2) {
+        return _mm256_i32gather_ps(base, vidx, 2);
+    } else if (scale == 4) {
+        return _mm256_i32gather_ps(base, vidx, 4);
+    } else {
+        return _mm256_i32gather_ps(base, vidx, 8);
+    }
 }
 
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)

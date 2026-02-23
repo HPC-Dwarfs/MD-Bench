@@ -21,8 +21,7 @@
 #define IR   2836
 #define MASK 123459876
 
-double myrandom(int* seed)
-{
+double myrandom(int* seed) {
     int k = (*seed) / IQ;
     double ans;
 
@@ -32,8 +31,7 @@ double myrandom(int* seed)
     return ans;
 }
 
-void random_reset(int* seed, int ibase, double* coord)
-{
+void random_reset(int* seed, int ibase, double* coord) {
     int i;
     char* str         = (char*)&ibase;
     int n             = sizeof(int);
@@ -70,32 +68,30 @@ void random_reset(int* seed, int ibase, double* coord)
     // save = 0;
 }
 
-int str2ff(const char* string)
-{
+int str2ff(const char* string) {
     if (strncmp(string, "lj", 2) == 0) return FF_LJ;
     if (strncmp(string, "eam", 3) == 0) return FF_EAM;
     return -1;
 }
 
-const char* ff2str(int ff)
-{
+const char* ff2str(int ff) {
     if (ff == FF_LJ) {
         return "lj";
     }
+
     if (ff == FF_EAM) {
         return "eam";
     }
+
     return "invalid";
 }
 
-int get_cuda_num_threads(void)
-{
+int get_cuda_num_threads(void) {
     const char* num_threads_env = getenv("NUM_THREADS");
     return (num_threads_env == NULL) ? 128 : atoi(num_threads_env);
 }
 
-void readline(char* line, FILE* fp)
-{
+void readline(char* line, FILE* fp) {
     if (fgets(line, MAXLINE, fp) == NULL) {
         if (errno != 0) {
             perror("readline()");
@@ -104,8 +100,7 @@ void readline(char* line, FILE* fp)
     }
 }
 
-void debug_printf(const char* format, ...)
-{
+void debug_printf(const char* format, ...) {
 #ifdef DEBUG
     va_list arg;
     int ret;

@@ -34,7 +34,6 @@ CFLAGS   = -O3 -arch=sm_80 -march=native -ffast-math -funroll-loops --forward-un
 # For GROMACS kernels, we need at least sm_61 due to atomicAdd with doubles
 # TODO: Check if this is required for full neighbor-lists and just compile kernel for that case if not
 #CFLAGS   = -O3 -g -arch=sm_61 # -fopenmp
-CFLAGS   += $(OPTS)
 ASFLAGS  =  -masm=intel
 LFLAGS   =
 DEFINES  += -D_GNU_SOURCE -DCUDA_TARGET=0 -DNO_ZMM_INTRIN  #-DLIKWID_PERFMON
