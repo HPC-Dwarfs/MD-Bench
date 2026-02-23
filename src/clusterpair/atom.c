@@ -28,7 +28,9 @@ inline int get_ncj_from_nci(int nci) {
 #endif
 }
 
-int write_atoms_to_file(Atom* atom, char* name) {
+int write_atoms_to_file(Atom* atom, char* name)
+{
+/*
     // file system variable
     char* file_system = getenv("TMPDIR");
 
@@ -39,9 +41,9 @@ int write_atoms_to_file(Atom* atom, char* name) {
 
     char file_path[256];
     snprintf(file_path, sizeof(file_path), "%s/%s", file_system, name);
-    fprintf(stdout, "Using temporary file: %s\n", file_path);
-
     FILE* fp = fopen(file_path, "wb");
+*/
+    FILE *fp = fopen(name, "wb");
     if (fp == NULL) {
         perror("Error opening file");
         return -1;
@@ -101,12 +103,12 @@ void initAtom(Atom* atom) {
     mybox->xprd     = 0;
     mybox->yprd     = 0;
     mybox->zprd     = 0;
-    mybox->lo[0]   = 0;
-    mybox->lo[1]   = 0;
-    mybox->lo[2]   = 0;
-    mybox->hi[0]   = 0;
-    mybox->hi[1]   = 0;
-    mybox->hi[2]   = 0;
+    mybox->lo[0]    = 0;
+    mybox->lo[1]    = 0;
+    mybox->lo[2]    = 0;
+    mybox->hi[0]    = 0;
+    mybox->hi[1]    = 0;
+    mybox->hi[2]    = 0;
 }
 
 void createAtom(Atom* atom, Parameter* param) {
@@ -398,19 +400,25 @@ int readAtomGro(Atom* atom, Parameter* param) {
         return -1;
     }
 
-    fgets(desc, MAXLINE, fp);
+    if (fgets(desc, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+        fprintf(stderr, "Error in fgets function\n");
+    }
+
     for (i = 0; desc[i] != '\n'; i++)
         ;
     desc[i] = '\0';
 
-    fgets(line, MAXLINE, fp);
+    if (fgets(line, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+        fprintf(stderr, "Error in fgets function\n");
+    }
+
     atomsToRead = atoi(strtok(line, " "));
     if (me == 0) {
         fprintf(stdout, "System: %s with %d atoms\n", desc, atomsToRead);
     }
 
     while (readAtoms < atomsToRead) {
-        if(fgets(line, MAXLINE, fp) == NULL) {
+        if (fgets(line, MAXLINE, fp) == NULL) {
             break;
         }
 
@@ -505,10 +513,15 @@ int readAtomDmp(Atom* atom, Parameter* param) {
             char* item = &line[6];
 
             if (strncmp(item, "TIMESTEP", 8) == 0) {
-                fgets(line, MAXLINE, fp);
+                if (fgets(line, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+                    fprintf(stderr, "Error in fgets function\n");
+                }
+
                 ts = atoi(line);
             } else if (strncmp(item, "NUMBER OF ATOMS", 15) == 0) {
-                fgets(line, MAXLINE, fp);
+                if (fgets(line, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+                    fprintf(stderr, "Error in fgets function\n");
+                }
                 natoms       = atoi(line);
                 atom->Natoms = natoms;
                 atom->Nlocal = natoms;
@@ -516,23 +529,31 @@ int readAtomDmp(Atom* atom, Parameter* param) {
                     growAtom(atom);
                 }
             } else if (strncmp(item, "BOX BOUNDS pp pp pp", 19) == 0) {
-                fgets(line, MAXLINE, fp);
+                if (fgets(line, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+                    fprintf(stderr, "Error in fgets function\n");
+                }
                 param->xlo  = atof(strtok(line, " "));
                 param->xhi  = atof(strtok(NULL, " "));
                 param->xprd = param->xhi - param->xlo;
 
-                fgets(line, MAXLINE, fp);
+                if (fgets(line, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+                    fprintf(stderr, "Error in fgets function\n");
+                }
                 param->ylo  = atof(strtok(line, " "));
                 param->yhi  = atof(strtok(NULL, " "));
                 param->yprd = param->yhi - param->ylo;
 
-                fgets(line, MAXLINE, fp);
+                if (fgets(line, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+                    fprintf(stderr, "Error in fgets function\n");
+                }
                 param->zlo  = atof(strtok(line, " "));
                 param->zhi  = atof(strtok(NULL, " "));
                 param->zprd = param->zhi - param->zlo;
             } else if (strncmp(item, "ATOMS id type x y z vx vy vz", 28) == 0) {
                 for (int i = 0; i < natoms; i++) {
-                    fgets(line, MAXLINE, fp);
+                    if (fgets(line, MAXLINE, fp) == NULL && ferror(fp) != 0) {
+                        fprintf(stderr, "Error in fgets function\n");
+                    }
                     atomId             = atoi(strtok(line, " ")) - 1;
                     atom->type[atomId] = atoi(strtok(NULL, " "));
                     atom_x(atomId)     = atof(strtok(NULL, " "));
@@ -928,7 +949,7 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc) {
             buf[m++] = xtmp;
             buf[m++] = ytmp;
             buf[m++] = ztmp;
-            buf[m++] = (MD_FLOAT) atom->cl_t[cj_sca_base + cjj];
+            buf[m++] = (MD_FLOAT)atom->cl_t[cj_sca_base + cjj];
 
             if (bbminx > xtmp) {
                 bbminx = xtmp;
@@ -966,9 +987,12 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc) {
         // TODO: check atom->ncj
         int ghostId = cj - atom->ncj;
         // check for ghost particles
-        buf[m++] = (MD_FLOAT) (cj - atom->ncj >= 0) ? pbc[0] + atom->PBCx[ghostId] : pbc[0];
-        buf[m++] = (MD_FLOAT) (cj - atom->ncj >= 0) ? pbc[1] + atom->PBCy[ghostId] : pbc[1];
-        buf[m++] = (MD_FLOAT) (cj - atom->ncj >= 0) ? pbc[2] + atom->PBCz[ghostId] : pbc[2];
+        buf[m++] = (MD_FLOAT)(cj - atom->ncj >= 0) ? pbc[0] + atom->PBCx[ghostId]
+                                                   : pbc[0];
+        buf[m++] = (MD_FLOAT)(cj - atom->ncj >= 0) ? pbc[1] + atom->PBCy[ghostId]
+                                                   : pbc[1];
+        buf[m++] = (MD_FLOAT)(cj - atom->ncj >= 0) ? pbc[2] + atom->PBCz[ghostId]
+                                                   : pbc[2];
     }
     return m;
 }

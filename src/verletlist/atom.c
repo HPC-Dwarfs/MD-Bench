@@ -13,6 +13,8 @@
 #include <atom.h>
 #include <device.h>
 #include <util.h>
+#include <limits.h> 
+#include <unistd.h>
 
 #define DELTA 20000
 
@@ -20,20 +22,26 @@
 #define MAXLINE 4096
 #endif
 
-int write_atoms_to_file(Atom* atom, char* name) {
-    // file system variable
-    char* file_system = getenv("TMPDIR");
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
-    // Check if $FASTTMP is set
+int write_atoms_to_file(Atom* atom, char* name)
+{ 
+/* 
+    // file system variable
+    char *file_system = getenv("TMPDIR");
+    
+     Check if $FASTTMP is set
     if (file_system == NULL) {
         return -1;
     }
 
     char file_path[256];
     snprintf(file_path, sizeof(file_path), "%s/%s", file_system, name);
-    fprintf(stdout, "Using temporary file: %s\n", file_path);
-
-    FILE* fp = fopen(file_path, "wb");
+    FILE *fp = fopen(file_path, "wb");
+*/
+    FILE *fp = fopen(name, "wb");
     if (fp == NULL) {
         perror("Error opening file");
         return -1;

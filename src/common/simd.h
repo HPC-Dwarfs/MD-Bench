@@ -7,10 +7,6 @@
 #ifndef __SIMD_H__
 #define __SIMD_H__
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 #ifndef CLUSTER_M
 #define CLUSTER_M 1
 #endif

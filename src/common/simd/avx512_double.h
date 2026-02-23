@@ -5,6 +5,7 @@
  * license that can be found in the LICENSE file.
  */
 #include <immintrin.h>
+#include <assert.h>
 #ifndef NO_ZMM_INTRIN
 #include <zmmintrin.h>
 #endif

@@ -11,8 +11,10 @@
 #include <atom.h>
 #include <force.h>
 #include <parameter.h>
-#include <simd.h>
 #include <util.h>
+#ifdef CLUSTERPAIR
+#include <simd.h>
+#endif
 
 void initParameter(Parameter* param) {
     param->input_file      = NULL;

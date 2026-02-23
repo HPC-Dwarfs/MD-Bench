@@ -624,6 +624,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
             }
 
             // Fill neighbor list with dummy values to fit vector width
+            /*
             if (CLUSTER_N < VECTOR_WIDTH) {
                 while (n % (VECTOR_WIDTH / CLUSTER_N)) {
                     // Last cluster is always a dummy cluster
@@ -632,7 +633,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
                     n++;
                 }
             }
-
+            */
             neighbor->numneigh[ci]        = n;
             neighbor->numneigh_masked[ci] = nmasked;
             if (n >= neighbor->maxneighs) {

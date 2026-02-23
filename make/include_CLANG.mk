@@ -39,9 +39,10 @@ endif
 
 # X86 SIMD options
 ifeq ($(strip $(ISA)),X86)
-OPTS = -Ofast
+OPTS = -O3 -ffast-math
 ifeq ($(strip $(SIMD)),AVX512)
-OPTS += -march=x86-64-v4 -mevex512
+OPTS += -march=x86-64-v4 -mavx512f -mprefer-vector-width=512
+#OPTS += -march=x86-64-v4 -mevex512
 else
 DEFINES += -DNO_ZMM_INTRIN
 endif
@@ -62,7 +63,7 @@ endif
 
 CFLAGS = $(PROFILE) $(OPENMP) $(OPTS) -std=c99 $(ANSI_CFLAGS)
 LFLAGS = $(PROFILE) $(OPENMP) $(OPTS)
-DEFINES += -D_GNU_SOURCE
+DEFINES += -D_GNU_SOURCE -DNO_ZMM_INTRIN
 INCLUDES =
 LIBS = -lm
 

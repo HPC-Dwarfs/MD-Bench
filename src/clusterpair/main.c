@@ -486,8 +486,10 @@ int main(int argc, char** argv) {
     if (comm.myproc == 0) {
         fprintf(stdout,"Performance: %.2f million atom updates per second\n",
             1e-6 * (double)atom.Natoms * param.ntimes / timer[TOTAL]);
+    }
+
 #ifdef COMPUTE_STATS
-        displayStatistics(&atom, &param, &stats, timer);
+    displayStatistics(&atom, &param, &stats, timer);
 #endif
     }
     endComm(&comm);

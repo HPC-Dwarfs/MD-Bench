@@ -2,7 +2,7 @@ CC = icx
 LINKER = $(CC)
 
 ifeq ($(strip $(ENABLE_MPI)),true)
-    CC = mpiicc
+    CC = mpiicx
     DEFINES += -D_MPI
 endif
 
@@ -13,7 +13,7 @@ endif
 PROFILE     = #-profile-functions -g  -pg
 
 # SIMD options
-OPTS        = -Ofast
+OPTS        = -O3 -ffast-math
 ifeq ($(strip $(SIMD)),AVX512)
 OPTS        += -xCORE-AVX512 -qopt-zmm-usage=high
 endif
@@ -35,5 +35,5 @@ CFLAGS      = $(PROFILE) $(OPENMP) $(OPTS) -std=c11 #-pedantic-errors
 ASFLAGS     = -masm=intel
 LFLAGS      = $(PROFILE) $(OPENMP) $(OPTS)
 DEFINES    += -D_GNU_SOURCE
-INCLUDES    =
-LIBS        = -lm
+INCLUDES    = 
+LIBS       += -lm

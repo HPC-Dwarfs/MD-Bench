@@ -66,3 +66,5 @@ todo.txt
 build/*
 MDBench-*
 .clangd
+.cache/clangd/index
+compile_commands.json
