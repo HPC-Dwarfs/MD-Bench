@@ -915,12 +915,12 @@ void unpackForward(Atom* atom, int nc, int c0, MD_FLOAT* buf) {
         int displ       = i * CLUSTER_N;
 
         for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
-            if (cj_x[CL_X_OFFSET + cjj] < INF)
-                cj_x[CL_X_OFFSET + cjj] = buf[3 * (displ + cjj) + 0];
-            if (cj_x[CL_Y_OFFSET + cjj] < INF)
-                cj_x[CL_Y_OFFSET + cjj] = buf[3 * (displ + cjj) + 1];
-            if (cj_x[CL_Z_OFFSET + cjj] < INF)
-                cj_x[CL_Z_OFFSET + cjj] = buf[3 * (displ + cjj) + 2];
+            if (cj_x[CL_X_INDEX(cjj)] < INF)
+                cj_x[CL_X_INDEX(cjj)] = buf[3 * (displ + cjj) + 0];
+            if (cj_x[CL_Y_INDEX(cjj)] < INF)
+                cj_x[CL_Y_INDEX(cjj)] = buf[3 * (displ + cjj) + 1];
+            if (cj_x[CL_Z_INDEX(cjj)] < INF)
+                cj_x[CL_Z_INDEX(cjj)] = buf[3 * (displ + cjj) + 2];
         }
     }
 }
@@ -994,6 +994,7 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc) {
         buf[m++] = (MD_FLOAT)(cj - atom->ncj >= 0) ? pbc[2] + atom->PBCz[ghostId]
                                                    : pbc[2];
     }
+
     return m;
 }
 
@@ -1022,9 +1023,9 @@ int unpackGhost(Parameter *param, Atom* atom, int cj, MD_FLOAT* buf) {
     }
 
     for (int cjj = atom->jclusters[cj].natoms; cjj < CLUSTER_N; cjj++) {
-        cj_x[CL_X_OFFSET + cjj]       = INF;
-        cj_x[CL_Y_OFFSET + cjj]       = INF;
-        cj_x[CL_Z_OFFSET + cjj]       = INF;
+        cj_x[CL_X_INDEX(cjj)]       = INF;
+        cj_x[CL_Y_INDEX(cjj)]       = INF;
+        cj_x[CL_Z_INDEX(cjj)]       = INF;
         atom->cl_t[cj_sca_base + cjj] = -1;
         m += 4;
     }
@@ -1039,8 +1040,6 @@ int unpackGhost(Parameter *param, Atom* atom, int cj, MD_FLOAT* buf) {
     atom->PBCy[atom->Nclusters_ghost] = (int)buf[m++];
     atom->PBCz[atom->Nclusters_ghost] = (int)buf[m++];
     atom->Nclusters_ghost++;
-
-    // TODO rafaelravedutti: check what to return here; return statement was missing
     return m;
 }
 
