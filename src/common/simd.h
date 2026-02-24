@@ -82,7 +82,7 @@
 /*
 static inline void simd_print_real(const char* ref, MD_SIMD_FLOAT a)
 {
-    double x[VECTOR_WIDTH];
+    MD_FLOAT x[VECTOR_WIDTH];
     memcpy(x, &a, sizeof(x));
 
     fprintf(stdout, "%s: ", ref);
