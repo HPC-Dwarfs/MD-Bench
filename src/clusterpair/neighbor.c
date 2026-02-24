@@ -109,7 +109,7 @@ void setupNeighbor(Parameter* param, Atom* atom) {
     int mbinxhi, mbinyhi;
     int nextx, nexty, nextz;
 
-    if (param->input_file != NULL) {
+    if (param->input_file != NULL || param->gmxbenchmark) {
         xprd = param->xprd;
         yprd = param->yprd;
         zprd = param->zprd;

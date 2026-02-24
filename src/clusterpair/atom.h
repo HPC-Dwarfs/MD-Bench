@@ -69,6 +69,7 @@ extern void createAtom(Atom*, Parameter*);
 extern int readAtom(Atom*, Parameter*);
 extern int readAtomPdb(Atom*, Parameter*);
 extern int readAtomGro(Atom*, Parameter*);
+extern int readAtomGmx(Atom*, Parameter*);
 extern int readAtomDmp(Atom*, Parameter*);
 extern void growAtom(Atom*);
 extern void freeAtom(Atom*);

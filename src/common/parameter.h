@@ -8,6 +8,7 @@
 #define __PARAMETER_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 #if PRECISION == 1
 #define MD_FLOAT  float
 #define MD_FLOAT3 float3
@@ -31,6 +32,7 @@
 #endif
 */
 #endif
+
 
 typedef struct {
     int force_field;
@@ -73,6 +75,8 @@ typedef struct {
     int method;
     int balance_every;
     int setup;
+    bool gmxbenchmark;
+    int size;
 } Parameter;
 
 void initParameter(Parameter*);

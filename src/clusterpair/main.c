@@ -6,6 +6,7 @@
  */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <likwid-marker.h>
@@ -59,7 +60,11 @@ double setup(Parameter* param, Eam* eam, Atom* atom, Neighbor* neighbor, Stats* 
     initStats(stats);
     initNeighbor(neighbor, param);
     if (param->input_file == NULL) {
-        createAtom(atom, param);
+        if (param->gmxbenchmark) {
+            readAtomGmx(atom, param);
+        } else {
+            createAtom(atom, param);
+        }
     } else {
         readAtom(atom, param);
     }
@@ -242,6 +247,21 @@ int main(int argc, char** argv) {
             param.atom_file_name = strdup(argv[++i]);
             continue;
         }
+
+        if ((strcmp(argv[i], "-gmxbench") == 0)) {
+            param.gmxbenchmark = true;
+            if (param.input_file != NULL) {
+                free(param.input_file);
+                param.input_file = NULL;
+            }
+            continue;
+        }
+
+        if ((strcmp(argv[i], "-size") == 0)) {
+            param.size = atoi(argv[++i]);
+            continue;
+        }
+
 
         if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
             printf("MD Bench: A minimalistic re-implementation of miniMD\n");

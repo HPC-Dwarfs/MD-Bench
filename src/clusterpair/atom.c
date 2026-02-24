@@ -13,6 +13,7 @@
 #include <atom.h>
 #include <force.h>
 #include <util.h>
+#include <gmxcoords.h>
 
 inline int get_ncj_from_nci(int nci) {
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
@@ -500,6 +501,125 @@ int readAtomGro(Atom* atom, Parameter* param) {
 
     fclose(fp);
     return readAtoms;
+}
+
+int readAtomGmx(Atom *atom, Parameter *param)
+{
+    int factor = param->size;
+
+    if ((factor & (factor - 1)) != 0) {
+        fprintf(stderr, "factor must be power of two\n");
+        return -1;
+    }
+
+    int fac[3] = {1, 1, 1};
+    for (int dim = 0; factor > 1; ) {
+        fac[dim] *= 2;
+        factor >>= 1;
+        dim = (dim + 1) % 3;
+    }
+
+    const int baseN = (int)(sizeof(coordinates1000) / sizeof(coordinates1000[0]));
+    const int total = baseN * fac[0] * fac[1] * fac[2];
+    while (atom->Nmax < total) {
+        growAtom(atom);
+    }
+
+    atom->Natoms = atom->Nlocal = total;
+
+    /* SPC/E benchmark: 3-site water (OHH) but only 2 atom types: O and H */
+    const int ntypes = 2;
+    const int numAtomsInMolecule = 3;
+    const int typeOxygen   = 0;
+    const int typeHydrogen = 1;
+    atom->ntypes = ntypes;
+    
+
+    /* Optional: if your code uses charges later, define them here.
+       (Your current LJ-only kernel ignores charges.) */
+    /* const MD_FLOAT qO = (MD_FLOAT)-0.8476;
+       const MD_FLOAT qH = (MD_FLOAT) 0.4238; */
+
+    int idx = 0;
+    MD_FLOAT vxtmp, vytmp, vztmp;
+    int m, n;
+
+    for (int x = 0; x < fac[0]; ++x) {
+        for (int y = 0; y < fac[1]; ++y) {
+            for (int z = 0; z < fac[2]; ++z) {
+                const MD_FLOAT sx = (MD_FLOAT)x * (MD_FLOAT)box1000[0][0];
+                const MD_FLOAT sy = (MD_FLOAT)y * (MD_FLOAT)box1000[1][1];
+                const MD_FLOAT sz = (MD_FLOAT)z * (MD_FLOAT)box1000[2][2];
+
+                for (int p = 0; p < baseN; ++p, ++idx) {
+                    atom_x(idx) = (MD_FLOAT)coordinates1000[p][0] + sx;
+                    atom_y(idx) = (MD_FLOAT)coordinates1000[p][1] + sy;
+                    atom_z(idx) = (MD_FLOAT)coordinates1000[p][2] + sz;
+
+                    /* keep your RNG pattern */
+                    n = idx + 1;
+                    for (m = 0; m < 5; m++) { myrandom(&n); }
+                    vxtmp = myrandom(&n);
+                    for (m = 0; m < 5; m++) { myrandom(&n); }
+                    vytmp = myrandom(&n);
+                    for (m = 0; m < 5; m++) { myrandom(&n); }
+                    vztmp = myrandom(&n);
+
+                    atom_vx(idx) = vxtmp;
+                    atom_vy(idx) = vytmp;
+                    atom_vz(idx) = vztmp;
+
+                    /* coordinates1000 is ordered O,H,H,O,H,H,... */
+                    if ((p % numAtomsInMolecule) == 0) {
+                        atom->type[idx] = typeOxygen;    /* O */
+                        /* atom->q[idx] = qO; */         /* if you have charges */
+                    } else {
+                        atom->type[idx] = typeHydrogen;  /* H */
+                        /* atom->q[idx] = qH; */
+                    }
+                }
+            }
+        }
+    }
+
+    param->xlo = param->ylo = param->zlo = 0.0;
+    param->xhi = fac[0] * box1000[0][0];
+    param->yhi = fac[1] * box1000[1][1];
+    param->zhi = fac[2] * box1000[2][2];
+    param->xprd = param->xhi;
+    param->yprd = param->yhi;
+    param->zprd = param->zhi;
+
+    /* Allocate per-type-pair tables */
+    atom->epsilon    = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
+    atom->sigma6     = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
+    atom->cutforcesq = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
+    atom->cutneighsq = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
+
+    param->cutforce = 1.0;
+    param->cutneigh = param->cutforce + 0.3;
+
+    const MD_FLOAT cutneighsq = (MD_FLOAT)(param->cutneigh * param->cutneigh);
+    const MD_FLOAT cutforcesq = (MD_FLOAT)(param->cutforce * param->cutforce);
+
+    /* ----  default LJ = 0 for all pairs (H has zero LJ) ---- */
+    for (int ti = 0; ti < ntypes; ++ti) {
+        for (int tj = 0; tj < ntypes; ++tj) {
+            const int k = ti * ntypes + tj;
+            atom->epsilon[k]    = (MD_FLOAT)0.0;
+            atom->sigma6[k]     = (MD_FLOAT)0.0;
+            atom->cutneighsq[k] = cutneighsq;
+            atom->cutforcesq[k] = cutforcesq;
+        }
+    }
+
+    /* ---- only O-O has LJ params ----
+       Here we assume param->epsilon is ε_OO and param->sigma6 is (σ_OO)^6 */
+    const int idxOO = typeOxygen * ntypes + typeOxygen;
+    atom->epsilon[idxOO] = (MD_FLOAT)0.6502;
+    atom->sigma6[idxOO]  = (MD_FLOAT)0.00100705;
+
+    return total;
 }
 
 int readAtomDmp(Atom* atom, Parameter* param) {
