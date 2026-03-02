@@ -75,7 +75,7 @@ $(BUILD_DIR)/%.o:  %.s
 	$(info ===>  ASSEMBLE  $@)
 	$(Q)$(AS) $< -o $@
 
-.PHONY: clean distclean cleanall tags format info asm
+.PHONY: clean distclean cleanall tags format info asm test
 
 clean:
 	$(info ===>  CLEAN)
@@ -108,6 +108,30 @@ format:
 		clang-format -i $$src ; \
 	done
 	@echo "Done"
+
+TEST_BIN := mdbench-tests
+
+test: $(TEST_BIN) $(TARGET)
+	@echo "===>  RUNNING  $(TEST_BIN)"
+	@./$(TEST_BIN)
+	@echo "===>  RUNNING  sim_argon_regression on $(TARGET)"
+	@bash tests/sim_argon_regression.sh ./$(TARGET)
+	@echo "===>  RUNNING  regression_energy_lj on $(TARGET)"
+	@bash tests/regression_energy_lj.sh ./$(TARGET)
+	@echo "===>  RUNNING  regression_scheme_equiv"
+	@bash tests/regression_scheme_equiv.sh
+
+$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c
+	@echo "===>  BUILDING $(TEST_BIN)"
+	$(Q)$(CC) -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) \
+		tests/main.c tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c \
+		$(COMMON_DIR)/parameter.c \
+		$(SRC_ROOT)/clusterpair/atom.c \
+		$(SRC_ROOT)/clusterpair/neighbor.c \
+		$(SRC_ROOT)/clusterpair/pbc.c \
+		$(COMMON_DIR)/allocate.c \
+		$(COMMON_DIR)/util.c \
+		-lm -o $(TEST_BIN)
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)

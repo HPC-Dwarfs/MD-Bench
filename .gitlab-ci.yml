@@ -1,0 +1,107 @@
+image: gcc:12
+
+stages:
+  - test
+
+variables:
+  ISA: "X86"
+  TOOLCHAIN: "GCC"
+  ENABLE_MPI: "false"
+  ENABLE_LIKWID: "false"
+  ENABLE_OPENMP: "false"
+
+mdbench:unit:
+  stage: test
+  script:
+    # Simple reference configuration for unit tests
+    - |
+      # Detect AVX512 support and GCC availability
+      HAS_AVX512=$(grep -m1 -o 'avx512f' /proc/cpuinfo || true)
+      if [ -z "${HAS_AVX512}" ]; then
+        echo "No AVX512 support on this runner; skipping mdbench:unit."
+        exit 0
+      fi
+      if ! command -v gcc >/dev/null 2>&1; then
+        echo "GCC not available on this runner; skipping mdbench:unit."
+        exit 0
+      fi
+    - make clean
+    - make TOOLCHAIN=${TOOLCHAIN} OPT_SCHEME=clusterpair SIMD=AVX512 DATA_TYPE=DP test
+  artifacts:
+    when: always
+    paths:
+      - mdbench-tests
+
+mdbench:regression:
+  stage: test
+  parallel:
+    matrix:
+      - OPT_SCHEME: ["verletlist", "clusterpair"]
+        SIMD: ["AVX", "AVX2", "AVX512"]
+        DATA_TYPE: ["SP", "DP"]
+  script:
+    - export ENABLE_MPI=${ENABLE_MPI} ENABLE_LIKWID=${ENABLE_LIKWID} ENABLE_OPENMP=${ENABLE_OPENMP}
+    - |
+      # Detect SIMD support
+      HAS_AVX=$(grep -m1 -o 'avx ' /proc/cpuinfo || true)
+      HAS_AVX2=$(grep -m1 -o 'avx2' /proc/cpuinfo || true)
+      HAS_AVX512=$(grep -m1 -o 'avx512f' /proc/cpuinfo || true)
+
+      case "${SIMD}" in
+        AVX)
+          if [ -z "${HAS_AVX}" ]; then
+            echo "No AVX support on this runner; skipping SIMD=${SIMD}."
+            exit 0
+          fi
+          ;;
+        AVX2)
+          if [ -z "${HAS_AVX2}" ]; then
+            echo "No AVX2 support on this runner; skipping SIMD=${SIMD}."
+            exit 0
+          fi
+          ;;
+        AVX512)
+          if [ -z "${HAS_AVX512}" ]; then
+            echo "No AVX512 support on this runner; skipping SIMD=${SIMD}."
+            exit 0
+          fi
+          ;;
+      esac
+
+      # Detect compiler availability
+      if [ "${TOOLCHAIN}" = "ICX" ] && ! command -v icx >/dev/null 2>&1; then
+        echo "ICX not available on this runner; skipping TOOLCHAIN=${TOOLCHAIN} job."
+        exit 0
+      fi
+      if [ "${TOOLCHAIN}" = "GCC" ] && ! command -v gcc >/dev/null 2>&1; then
+        echo "GCC not available on this runner; skipping TOOLCHAIN=${TOOLCHAIN} job."
+        exit 0
+      fi
+    - make clean
+    - make TOOLCHAIN=${TOOLCHAIN} ISA=${ISA} OPT_SCHEME=${OPT_SCHEME} SIMD=${SIMD} DATA_TYPE=${DATA_TYPE}
+    # Reconstruct binary name as in Makefile
+    - |
+      if [ "${OPT_SCHEME}" = "verletlist" ]; then
+        OPT_TAG="VL"
+      else
+        OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
+      fi
+
+      if [ "${SIMD}" = "NONE" ]; then
+        TOOL_TAG="${TOOLCHAIN}-${ISA}"
+      else
+        TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
+      fi
+
+      TAG="${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}"
+      BIN="./MDBench-${TAG}"
+      echo "Using binary ${BIN}"
+    - chmod +x tests/sim_argon_regression.sh
+    - ./tests/sim_argon_regression.sh "${BIN}"
+  artifacts:
+    when: on_failure
+    paths:
+      - build/
+      - MDBench-*
+      - tests/*.log
+
