@@ -510,16 +510,6 @@ void initGrid(Grid* grid, int nprocs) {
 }
 
 int readAtomsTempFile(Atom* atom, char* file) {
-/*
-    char *file_system = getenv("TMPDIR");
-    if (file_system == NULL) {
-        return -1;
-    }
-
-    char file_path[256]; 
-    snprintf(file_path, sizeof(file_path), "%s/%s", file_system, file);
-    FILE *fp = fopen(file_path, "r");
-*/  
     FILE *fp = fopen(file, "r");
     if (fp == NULL) {
         perror("Error opening file");
@@ -628,12 +618,7 @@ void setupGrid(Grid* grid, Atom* atom, Parameter* param) {
     }
 
     MPI_Barrier(world);
-
-    if(param->input_file == NULL) {
-        readAtomsTempFile(atom, param->atom_file_name);
-    } else {
-        discardAtomsOutsideSubdomainBox(atom);
-    }
+    discardAtomsOutsideSubdomainBox(atom);
 
     //printGrid(grid);
     if (!param->balance) {

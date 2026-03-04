@@ -28,21 +28,7 @@ inline int get_ncj_from_nci(int nci) {
 #endif
 }
 
-int write_atoms_to_file(Atom* atom, char* name)
-{
-/*
-    // file system variable
-    char* file_system = getenv("TMPDIR");
-
-    // Check if $FASTTMP is set
-    if(file_system == NULL) {
-        return -1;
-    }
-
-    char file_path[256];
-    snprintf(file_path, sizeof(file_path), "%s/%s", file_system, name);
-    FILE* fp = fopen(file_path, "wb");
-*/
+int write_atoms_to_file(Atom* atom, char* name) {
     FILE *fp = fopen(name, "wb");
     if (fp == NULL) {
         perror("Error opening file");
@@ -231,11 +217,7 @@ void createAtom(Atom* atom, Parameter* param) {
                 oz++;
             }
         }
-
-        write_atoms_to_file(atom, param->atom_file_name);
     }
-
-                         
 }
 
 int typeStr2int(const char* type) {

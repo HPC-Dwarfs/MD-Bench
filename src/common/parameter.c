@@ -22,7 +22,6 @@ void initParameter(Parameter* param) {
     param->xtc_file        = NULL;
     param->eam_file        = NULL;
     param->write_atom_file = NULL;
-    param->atom_file_name  = strdup("atoms_tmp.txt");
     param->force_field     = FF_LJ;
     param->epsilon         = 1.0;
     param->sigma           = 1.0;
@@ -96,7 +95,6 @@ void readParameter(Parameter* param, const char* filename) {
         if (tok != NULL && val != NULL) {
             PARSE_PARAM(force_field, str2ff);
             PARSE_STRING(input_file);
-            PARSE_STRING(atom_file_name);
             PARSE_STRING(eam_file);
             PARSE_STRING(vtk_file);
             PARSE_STRING(xtc_file);
