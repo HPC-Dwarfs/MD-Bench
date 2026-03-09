@@ -94,7 +94,7 @@ void computeThermo(int iflag, Parameter* param, Atom* atom)
         tmparr[mstat]  = t;
         prsarr[mstat]  = p;
         mstat++;
-        fprintf(stdout, "%i\t%e\t%e\n", istep, t, p);
+        fprintf(stdout, "%-10d %15.6e %15.6e\n", istep, t, p);
         fflush(stdout);
     }
 }
