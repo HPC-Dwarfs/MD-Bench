@@ -809,8 +809,8 @@ void growClusters(Atom* atom, int super_clustering) {
     #ifdef _OPENMP
     #pragma omp parallel
     {
-        #pragma omp for schedule(runtime) nowait
-        for (int ci = 0; ci < atom->Nclusters_max; ci++) {
+        #pragma omp for schedule(runtime)
+        for (int ci = nold; ci < atom->Nclusters_max; ci++) {
             int ci_vec_base = ci * CLUSTER_M * SCLUSTER_SIZE * 3;
             for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE * 3; idx++) {
                 atom->cl_x[ci_vec_base + idx] = 0.0;
@@ -819,8 +819,8 @@ void growClusters(Atom* atom, int super_clustering) {
             }
         }
 
-        #pragma omp for schedule(runtime) nowait
-        for (int ci = 0; ci < atom->Nclusters_max; ci++) {
+        #pragma omp for schedule(runtime)
+        for (int ci = nold; ci < atom->Nclusters_max; ci++) {
             int ci_sca_base = ci * CLUSTER_M * SCLUSTER_SIZE;
             for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE; idx++) {
                 atom->cl_t[ci_sca_base + idx] = 0;
@@ -828,7 +828,7 @@ void growClusters(Atom* atom, int super_clustering) {
         }
 
         #pragma omp for schedule(runtime)
-        for (int ci = 0; ci < atom->Nclusters_max; ci++) {
+        for (int ci = nold; ci < atom->Nclusters_max; ci++) {
             atom->cluster_bin[ci] = 0;
             atom->iclusters[ci * SCLUSTER_SIZE].natoms = 0;
             atom->iclusters[ci * SCLUSTER_SIZE].bbminx = 0.0;
@@ -902,7 +902,6 @@ void growPbc(Atom* atom) {
 }
 
 void packForward(Atom* atom, int nc, int* list, MD_FLOAT* buf, int* pbc) {
-    #pragma omp parallel for schedule(runtime)
     for (int i = 0; i < nc; i++) {
         int cj          = list[i];
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
@@ -927,7 +926,6 @@ void packForward(Atom* atom, int nc, int* list, MD_FLOAT* buf, int* pbc) {
 }
 
 void unpackForward(Atom* atom, int nc, int c0, MD_FLOAT* buf) {
-    #pragma omp parallel for schedule(runtime)
     for (int i = 0; i < nc; i++) {
         int cj          = c0 + i;
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);

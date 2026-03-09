@@ -718,29 +718,29 @@ void growAtom(Atom* atom) {
     #ifdef _OPENMP
     #pragma omp parallel
     {
-        #pragma omp for schedule(runtime) nowait
-        for (int i = 0; i < atom->Nmax; i++) {
+        #pragma omp for schedule(runtime)
+        for (int i = nold; i < atom->Nmax; i++) {
             atom_x(i) = 0.0;
             atom_y(i) = 0.0;
             atom_z(i) = 0.0;
         }
 
-        #pragma omp for schedule(runtime) nowait
-        for (int i = 0; i < atom->Nmax; i++) {
+        #pragma omp for schedule(runtime)
+        for (int i = nold; i < atom->Nmax; i++) {
             atom_vx(i) = 0.0;
             atom_vy(i) = 0.0;
             atom_vz(i) = 0.0;
         }
 
-        #pragma omp for schedule(runtime) nowait
-        for (int i = 0; i < atom->Nmax; i++) {
+        #pragma omp for schedule(runtime)
+        for (int i = nold; i < atom->Nmax; i++) {
             atom_fx(i) = 0.0;
             atom_fy(i) = 0.0;
             atom_fz(i) = 0.0;
         }
 
         #pragma omp for schedule(runtime)
-        for (int i = 0; i < atom->Nmax; i++) {
+        for (int i = nold; i < atom->Nmax; i++) {
             atom->type[i] = 0;
         }
     }
