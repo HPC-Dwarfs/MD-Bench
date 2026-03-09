@@ -587,7 +587,6 @@ void discardAtomsOutsideSubdomainBox(Atom* atom) {
     }
 
     atom->Nlocal = n;
-    fprintf(stdout, "Number of local atoms: %d\n", n);
 }
 
 void setupGrid(Grid* grid, Atom* atom, Parameter* param) {

@@ -15,6 +15,12 @@
 #if defined(CLUSTERPAIR) || !defined(USE_REFERENCE_KERNEL)
 #include <simd.h>
 #endif
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+#ifdef _MPI
+#include <mpi.h>
+#endif
 
 void initParameter(Parameter* param) {
     param->input_file      = NULL;
@@ -223,6 +229,52 @@ void printParameter(Parameter* param) {
     fprintf(stdout, "\tSkin: %e\n", param->skin);
     fprintf(stdout, "\tHalf neighbor lists: %d\n", param->half_neigh);
     fprintf(stdout, "\tProcessor frequency (GHz): %.4f\n", param->proc_freq);
+
+    // ================ Parallelization information =============
+#ifdef _MPI
+    int nranks = 1;
+    MPI_Comm_size(MPI_COMM_WORLD, &nranks);
+    fprintf(stdout, "\tNumber of MPI ranks: %d\n", nranks);
+#else
+    fprintf(stdout, "\tNumber of MPI ranks: 1 (MPI not compiled)\n");
+#endif
+
+#ifdef _OPENMP
+    int nthreads  = 0;
+    int chunkSize = 0;
+    omp_sched_t schedKind;
+    char schedType[10];
+#pragma omp parallel
+#pragma omp master
+    {
+        omp_get_schedule(&schedKind, &chunkSize);
+
+        switch (schedKind) {
+        case omp_sched_static:
+            strcpy(schedType, "static");
+            break;
+        case omp_sched_dynamic:
+            strcpy(schedType, "dynamic");
+            break;
+        case omp_sched_guided:
+            strcpy(schedType, "guided");
+            break;
+        case omp_sched_auto:
+            strcpy(schedType, "auto");
+            break;
+        case omp_sched_monotonic:
+            strcpy(schedType, "auto");
+            break;
+        }
+
+        nthreads = omp_get_max_threads();
+    }
+
+    fprintf(stdout, "\tNumber of OpenMP threads: %d\n", nthreads);
+    fprintf(stdout, "\tOpenMP schedule: (%s,%d)\n", schedType, chunkSize);
+#else
+    fprintf(stdout, "\tNumber of OpenMP threads: 1 (OpenMP not compiled)\n");
+#endif
 
     // ================ New MPI features =============
 #ifdef _MPI

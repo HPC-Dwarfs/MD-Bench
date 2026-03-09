@@ -465,43 +465,6 @@ int main(int argc, char** argv)
         printf(HLINE);
     }
 
-#ifdef _OPENMP
-    int nthreads  = 0;
-    int chunkSize = 0;
-    omp_sched_t schedKind;
-    char schedType[10];
-#pragma omp parallel
-#pragma omp master
-    {
-        omp_get_schedule(&schedKind, &chunkSize);
-
-        switch (schedKind) {
-        case omp_sched_static:
-            strcpy(schedType, "static");
-            break;
-        case omp_sched_dynamic:
-            strcpy(schedType, "dynamic");
-            break;
-        case omp_sched_guided:
-            strcpy(schedType, "guided");
-            break;
-        case omp_sched_auto:
-            strcpy(schedType, "auto");
-            break;
-        case omp_sched_monotonic:
-            strcpy(schedType, "auto");
-            break;
-        }
-
-        nthreads = omp_get_max_threads();
-    }
-
-    if (comm.myproc == 0) {
-        printf("Num threads: %d\n", nthreads);
-        printf("Schedule: (%s,%d)\n", schedType, chunkSize);
-    }
-#endif
-
     if (comm.myproc == 0) {
         printf("Performance: %.2f million atom updates per second\n",
             1e-6 * (double)atom.Natoms * param.ntimes / timer[TOTAL]);
