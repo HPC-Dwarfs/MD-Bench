@@ -335,7 +335,7 @@ int main(int argc, char** argv)
     fprintf_once(comm.myproc, stdout, "\n");
     fprintf_once(comm.myproc, stdout, "SIMULATION PROGRESS\n");
     fprintf_once(comm.myproc, stdout, "-------------------------------------------------------------------------------\n");
-    fprintf_once(comm.myproc, stdout, "%-10s %15s %15s\n", "Step", "Temperature", "Pressure");
+    fprintf_once(comm.myproc, stdout, "  %-10s %15s %15s\n", "Step", "Temperature", "Pressure");
     fflush(stdout);
     computeThermo(0, &param, &atom);
 #if defined(MEM_TRACER) || defined(INDEX_TRACER)
@@ -422,63 +422,63 @@ int main(int argc, char** argv)
         fprintf(stdout, "\n");
         fprintf(stdout, "PERFORMANCE REPORT\n");
         fprintf(stdout, "-------------------------------------------------------------------------------\n");
-        fprintf(stdout, "Timing Breakdown\n");
-        fprintf(stdout, "                        Avg (s)    Min (s)    Max (s)    %% Time    Imbalance\n");
-        fprintf(stdout, "  %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout, "  Timing Breakdown\n");
+        fprintf(stdout, "                          Avg (s)    Min (s)    Max (s)    %% Time    Imbalance\n");
+        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Force",
             sumt[FORCE] / n,
             mint[FORCE],
             maxt[FORCE],
             100.0 * sumt[FORCE] / (n * timer[TOTAL]),
             100.0 * (maxt[FORCE] - mint[FORCE]) / (sumt[FORCE] / n));
-        fprintf(stdout, "  %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Neighbor",
             sumt[NEIGH] / n,
             mint[NEIGH],
             maxt[NEIGH],
             100.0 * sumt[NEIGH] / (n * timer[TOTAL]),
             100.0 * (maxt[NEIGH] - mint[NEIGH]) / (sumt[NEIGH] / n));
-        fprintf(stdout, "  %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Rest",
             sumt[REST] / n,
             mint[REST],
             maxt[REST],
             100.0 * sumt[REST] / (n * timer[TOTAL]),
             100.0 * (maxt[REST] - mint[REST]) / (sumt[REST] / n));
-        fprintf(stdout, "  %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Integration",
             sumt[UPDATE] / n,
             mint[UPDATE],
             maxt[UPDATE],
             100.0 * sumt[UPDATE] / (n * timer[TOTAL]),
             100.0 * (maxt[UPDATE] - mint[UPDATE]) / (sumt[UPDATE] / n));
-        fprintf(stdout, "  %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Setup",
             sumt[SETUP] / n,
             mint[SETUP],
             maxt[SETUP],
             100.0 * sumt[SETUP] / (n * timer[TOTAL]),
             100.0 * (maxt[SETUP] - mint[SETUP]) / (sumt[SETUP] / n));
-        fprintf(stdout, "  %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Reverse comm",
             sumt[REVERSE] / n,
             mint[REVERSE],
             maxt[REVERSE],
             100.0 * sumt[REVERSE] / (n * timer[TOTAL]),
             100.0 * (maxt[REVERSE] - mint[REVERSE]) / (sumt[REVERSE] / n));
-        fprintf(stdout, "  %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Forward comm",
             sumt[FORWARD] / n,
             mint[FORWARD],
             maxt[FORWARD],
             100.0 * sumt[FORWARD] / (n * timer[TOTAL]),
             100.0 * (maxt[FORWARD] - mint[FORWARD]) / (sumt[FORWARD] / n));
-        fprintf(stdout, "\nSystem: %d atoms (%d ghost) | %d timesteps | %d MPI ranks\n",
+        fprintf(stdout, "\n  System: %d atoms (%d ghost) | %d timesteps | %d MPI ranks\n",
             atom.Natoms,
             Nghost,
             param.ntimes,
             n);
-        fprintf(stdout, "Performance: %.2fs total | %.2f atom updates/us | %.2f steps/s | %.2f ns/day\n",
+        fprintf(stdout, "  Performance: %.2fs total | %.2f atom updates/us | %.2f steps/s | %.2f ns/day\n",
             timer[TOTAL],
             (double)atom.Natoms * param.ntimes / timer[TOTAL],
             param.ntimes / timer[TOTAL],

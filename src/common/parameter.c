@@ -152,111 +152,111 @@ void printParameter(Parameter* param) {
     fprintf(stdout, "-------------------------------------------------------------------------------\n");
 
     // Computational kernel
-    fprintf(stdout, "Computational Kernel:\n");
-    fprintf(stdout, "  Force field:                       %s\n", ff2str(param->force_field));
+    fprintf(stdout, "  Computational Kernel:\n");
+    fprintf(stdout, "    Force field:                       %s\n", ff2str(param->force_field));
 #ifdef CLUSTER_M
     fprintf(stdout,
-        "  Kernel:                            %s (MxN: %dx%d, Vector width: %d)\n",
+        "    Kernel:                            %s (MxN: %dx%d, Vector width: %d)\n",
         KERNEL_NAME,
         CLUSTER_M,
         CLUSTER_N,
         VECTOR_WIDTH);
 #else
-    fprintf(stdout, "  Kernel:                            %s\n", KERNEL_NAME);
+    fprintf(stdout, "    Kernel:                            %s\n", KERNEL_NAME);
 #endif
 
 #ifdef CUDA_TARGET
-    fprintf(stdout, "  SIMD/Architecture:                 CUDA\n");
-    fprintf(stdout, "  Super-clustering:                  %s\n", (param->super_clustering) ? "yes" : "no");
+    fprintf(stdout, "    SIMD/Architecture:                 CUDA\n");
+    fprintf(stdout, "    Super-clustering:                  %s\n", (param->super_clustering) ? "yes" : "no");
 #else
-    fprintf(stdout, "  SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
+    fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
 #endif
-    fprintf(stdout, "  Atom data layout:                  %s\n", POS_DATA_LAYOUT);
-    fprintf(stdout, "  Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
-    fprintf(stdout, "  FP precision:                      %s\n", PRECISION_STRING);
+    fprintf(stdout, "    Atom data layout:                  %s\n", POS_DATA_LAYOUT);
+    fprintf(stdout, "    Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
+    fprintf(stdout, "    FP precision:                      %s\n", PRECISION_STRING);
 
     // System configuration
-    fprintf(stdout, "\nSystem Configuration:\n");
+    fprintf(stdout, "\n  System Configuration:\n");
     if (param->input_file != NULL) {
-        fprintf(stdout, "  Input file:                        %s\n", param->input_file);
+        fprintf(stdout, "    Input file:                        %s\n", param->input_file);
     }
     if (param->vtk_file != NULL) {
-        fprintf(stdout, "  VTK file:                          %s\n", param->vtk_file);
+        fprintf(stdout, "    VTK file:                          %s\n", param->vtk_file);
     }
     if (param->xtc_file != NULL) {
-        fprintf(stdout, "  XTC file:                          %s\n", param->xtc_file);
+        fprintf(stdout, "    XTC file:                          %s\n", param->xtc_file);
     }
     if (param->eam_file != NULL) {
-        fprintf(stdout, "  EAM file:                          %s\n", param->eam_file);
+        fprintf(stdout, "    EAM file:                          %s\n", param->eam_file);
     }
-    fprintf(stdout, "  Unit cells (nx,ny,nz):             %d x %d x %d\n",
+    fprintf(stdout, "    Unit cells (nx,ny,nz):             %d x %d x %d\n",
         param->nx,
         param->ny,
         param->nz);
-    fprintf(stdout, "  Domain box sizes:                  %.2e x %.2e x %.2e\n",
+    fprintf(stdout, "    Domain box sizes:                  %.2e x %.2e x %.2e\n",
         param->xprd,
         param->yprd,
         param->zprd);
-    fprintf(stdout, "  Periodic boundary:                 %s %s %s\n",
+    fprintf(stdout, "    Periodic boundary:                 %s %s %s\n",
         param->pbc_x ? "x" : "-",
         param->pbc_y ? "y" : "-",
         param->pbc_z ? "z" : "-");
 
     // Physical parameters
-    fprintf(stdout, "\nPhysical Parameters:\n");
-    fprintf(stdout, "  Lattice constant:                  %.6e\n", param->lattice);
-    fprintf(stdout, "  Temperature:                       %.6e\n", param->temp);
-    fprintf(stdout, "  Density:                           %.6e\n", param->rho);
-    fprintf(stdout, "  Mass:                              %.6e\n", param->mass);
-    fprintf(stdout, "  Epsilon:                           %.6e\n", param->epsilon);
-    fprintf(stdout, "  Sigma:                             %.6e\n", param->sigma);
-    fprintf(stdout, "  Number of types:                   %d\n", param->ntypes);
+    fprintf(stdout, "\n  Physical Parameters:\n");
+    fprintf(stdout, "    Lattice constant:                  %.6e\n", param->lattice);
+    fprintf(stdout, "    Temperature:                       %.6e\n", param->temp);
+    fprintf(stdout, "    Density:                           %.6e\n", param->rho);
+    fprintf(stdout, "    Mass:                              %.6e\n", param->mass);
+    fprintf(stdout, "    Epsilon:                           %.6e\n", param->epsilon);
+    fprintf(stdout, "    Sigma:                             %.6e\n", param->sigma);
+    fprintf(stdout, "    Number of types:                   %d\n", param->ntypes);
 
     // Simulation parameters
-    fprintf(stdout, "\nSimulation Control:\n");
-    fprintf(stdout, "  Timesteps:                         %d\n", param->ntimes);
-    fprintf(stdout, "  Timestep (dt):                     %.6e\n", param->dt);
-    fprintf(stdout, "  Cutoff radius:                     %.6e\n", param->cutforce);
-    fprintf(stdout, "  Skin distance:                     %.6e\n", param->skin);
-    fprintf(stdout, "  Half neighbor-lists:               %s\n", param->half_neigh ? "yes" : "no");
-    fprintf(stdout, "  Reneighbor every:                  %d steps\n", param->reneigh_every);
-    fprintf(stdout, "  Report stats every:                %d steps\n", param->nstat);
+    fprintf(stdout, "\n  Simulation Control:\n");
+    fprintf(stdout, "    Timesteps:                         %d\n", param->ntimes);
+    fprintf(stdout, "    Timestep (dt):                     %.6e\n", param->dt);
+    fprintf(stdout, "    Cutoff radius:                     %.6e\n", param->cutforce);
+    fprintf(stdout, "    Skin distance:                     %.6e\n", param->skin);
+    fprintf(stdout, "    Half neighbor-lists:               %s\n", param->half_neigh ? "yes" : "no");
+    fprintf(stdout, "    Reneighbor every:                  %d steps\n", param->reneigh_every);
+    fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
 #ifdef SORT_ATOMS
-    fprintf(stdout, "  Resort atoms every:                %d steps\n", param->resort_every);
+    fprintf(stdout, "    Resort atoms every:                %d steps\n", param->resort_every);
 #endif
 #ifdef ONE_ATOM_TYPE
-    fprintf(stdout, "  Single atom type:                  yes\n");
+    fprintf(stdout, "    Single atom type:                  yes\n");
 #else
-    fprintf(stdout, "  Single atom type:                  no\n");
+    fprintf(stdout, "    Single atom type:                  no\n");
 #endif
-    fprintf(stdout, "  Prune every:                       %d steps\n", param->prune_every);
-    fprintf(stdout, "  Output positions:                  every %d steps\n", param->x_out_every);
-    fprintf(stdout, "  Output velocities:                 every %d steps\n", param->v_out_every);
-    fprintf(stdout, "  Processor freq:                    %.2f GHz\n", param->proc_freq);
+    fprintf(stdout, "    Prune every:                       %d steps\n", param->prune_every);
+    fprintf(stdout, "    Output positions:                  every %d steps\n", param->x_out_every);
+    fprintf(stdout, "    Output velocities:                 every %d steps\n", param->v_out_every);
+    fprintf(stdout, "    Processor freq:                    %.2f GHz\n", param->proc_freq);
 
     // Parallel configuration
-    fprintf(stdout, "\nParallel Configuration:\n");
+    fprintf(stdout, "\n  Parallel Configuration:\n");
 #ifdef _MPI
     int nranks = 1;
     MPI_Comm_size(MPI_COMM_WORLD, &nranks);
-    fprintf(stdout, "  MPI ranks:                         %d\n", nranks);
+    fprintf(stdout, "    MPI ranks:                         %d\n", nranks);
     char str[20];
     strcpy(str,
         (param->method == 1)   ? "Half Shell"
         : (param->method == 2) ? "Eight Shell"
         : (param->method == 3) ? "Half Stencil"
                                : "Full Shell");
-    fprintf(stdout, "  MPI method:                        %s\n", str);
+    fprintf(stdout, "    MPI method:                        %s\n", str);
     strcpy(str,
         (param->balance == 1)   ? "mean RCB"
         : (param->balance == 2) ? "mean Time RCB"
         : (param->balance == 3) ? "Staggered"
                                 : "cartesian");
-    fprintf(stdout, "  Domain partition:                  %s\n", str);
+    fprintf(stdout, "    Domain partition:                  %s\n", str);
     if (param->balance)
-        fprintf(stdout, "  Rebalancing every:                 %d steps\n", param->balance_every);
+        fprintf(stdout, "    Rebalancing every:                 %d steps\n", param->balance_every);
 #else
-    fprintf(stdout, "  MPI ranks:                         1 (not compiled)\n");
+    fprintf(stdout, "    MPI ranks:                         1 (not compiled)\n");
 #endif
 
 #ifdef _OPENMP
@@ -290,10 +290,10 @@ void printParameter(Parameter* param) {
         nthreads = omp_get_max_threads();
     }
 
-    fprintf(stdout, "  OpenMP threads:                    %d\n", nthreads);
-    fprintf(stdout, "  OpenMP schedule:                   (%s,%d)\n", schedType, chunkSize);
+    fprintf(stdout, "    OpenMP threads:                    %d\n", nthreads);
+    fprintf(stdout, "    OpenMP schedule:                   (%s,%d)\n", schedType, chunkSize);
 #else
-    fprintf(stdout, "  OpenMP threads:                    1 (not compiled)\n");
+    fprintf(stdout, "    OpenMP threads:                    1 (not compiled)\n");
 #endif
 
     fprintf(stdout, "-------------------------------------------------------------------------------\n");
