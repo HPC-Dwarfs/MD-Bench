@@ -446,14 +446,13 @@ int main(int argc, char** argv) {
             maxt[FORWARD],
             100.0 * sumt[FORWARD] / (n * timer[TOTAL]),
             100.0 * (maxt[FORWARD] - mint[FORWARD]) / (sumt[FORWARD] / n));
-        fprintf(stdout, "\n  System: %d atoms (%d ghost) | %d timesteps | %d MPI ranks\n",
+        fprintf(stdout, "\n  System: %d atoms (%d ghost) | %d timesteps\n",
             atom.Natoms,
             Nghost,
-            param.ntimes,
-            n);
+            param.ntimes);
         fprintf(stdout, "  Performance: %.2fs total | %.2f atom updates/us | %.2f steps/s | %.2f ns/day\n",
             timer[TOTAL],
-            (double)atom.Natoms * param.ntimes / timer[TOTAL],
+            (double)atom.Natoms * param.ntimes / (timer[TOTAL] * 1e6),
             param.ntimes / timer[TOTAL],
             ns_day);
         fprintf(stdout, "-------------------------------------------------------------------------------\n");

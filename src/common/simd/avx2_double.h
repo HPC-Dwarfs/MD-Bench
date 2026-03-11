@@ -135,7 +135,7 @@ static inline MD_SIMD_MASK simd_mask_from_u32(unsigned int a)
         (a & 0x1) ? all : none));
 }
 // TODO: Implement this, althrough it is just required for debugging
-static inline int simd_mask_to_u32(MD_SIMD_MASK a) { return 0; }
+static inline unsigned int simd_mask_to_u32(MD_SIMD_MASK a) { return (unsigned int)_mm256_movemask_pd(a); }
 static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
 {
     __m128d a0, a1;

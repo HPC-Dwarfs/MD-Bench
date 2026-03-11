@@ -52,6 +52,9 @@ double computeForceLJFullNeigh_simd(
 #endif
     MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
     MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
+#ifndef ONE_ATOM_TYPE
+    MD_SIMD_INT ntypes_vec       = simd_i32_broadcast(atom->ntypes);
+#endif
 
 #pragma omp parallel
     {
@@ -72,7 +75,6 @@ double computeForceLJFullNeigh_simd(
 #ifndef ONE_ATOM_TYPE
             const int type_i             = atom->type[i];
             MD_SIMD_INT type_i_vec       = simd_i32_broadcast(type_i);
-            MD_SIMD_INT ntypes_vec       = simd_i32_broadcast(atom->ntypes);
 #endif
 
             for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
@@ -179,19 +181,18 @@ double computeForceLJHalfNeigh_simd(
 #endif
     MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
     MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
-    MD_SIMD_INT nlocal_vec       = simd_i32_broadcast(Nlocal);
+#ifndef ONE_ATOM_TYPE
+    MD_SIMD_INT ntypes_vec       = simd_i32_broadcast(atom->ntypes);
+#endif
 
 #pragma omp parallel
     {
         LIKWID_MARKER_START("force");
 
-        // Thread-local temporary arrays for storing SIMD results
+        // Thread-local temporary arrays for Newton's third law scatter
         MD_FLOAT tmp_fx[VECTOR_WIDTH] __attribute__((aligned(VECTOR_WIDTH * sizeof(MD_FLOAT))));
         MD_FLOAT tmp_fy[VECTOR_WIDTH] __attribute__((aligned(VECTOR_WIDTH * sizeof(MD_FLOAT))));
         MD_FLOAT tmp_fz[VECTOR_WIDTH] __attribute__((aligned(VECTOR_WIDTH * sizeof(MD_FLOAT))));
-        MD_FLOAT tmp_delx[VECTOR_WIDTH] __attribute__((aligned(VECTOR_WIDTH * sizeof(MD_FLOAT))));
-        MD_FLOAT tmp_dely[VECTOR_WIDTH] __attribute__((aligned(VECTOR_WIDTH * sizeof(MD_FLOAT))));
-        MD_FLOAT tmp_delz[VECTOR_WIDTH] __attribute__((aligned(VECTOR_WIDTH * sizeof(MD_FLOAT))));
         int tmp_j[VECTOR_WIDTH] __attribute__((aligned(VECTOR_WIDTH * sizeof(int))));
 
 #pragma omp for schedule(runtime)
@@ -207,9 +208,8 @@ double computeForceLJHalfNeigh_simd(
             MD_SIMD_FLOAT fiz         = simd_real_zero();
 
 #ifndef ONE_ATOM_TYPE
-            const int type_i             = atom->type[i];
-            MD_SIMD_INT type_i_vec       = simd_i32_broadcast(type_i);
-            MD_SIMD_INT ntypes_vec       = simd_i32_broadcast(atom->ntypes);
+            const int type_i       = atom->type[i];
+            MD_SIMD_INT type_i_vec = simd_i32_broadcast(type_i);
 #endif
 
             for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
@@ -262,35 +262,33 @@ double computeForceLJHalfNeigh_simd(
                         simd_real_mul(simd_real_sub(sr6, c05_vec),
                             simd_real_mul(sr2, eps_vec))));
 
-                // Compute force components
-                MD_SIMD_FLOAT fx_tmp = simd_real_masked_add(simd_real_zero(), 
-                    simd_real_mul(delx, force), cutoff_mask);
-                MD_SIMD_FLOAT fy_tmp = simd_real_masked_add(simd_real_zero(), 
-                    simd_real_mul(dely, force), cutoff_mask);
-                MD_SIMD_FLOAT fz_tmp = simd_real_masked_add(simd_real_zero(), 
-                    simd_real_mul(delz, force), cutoff_mask);
+                // Compute force components and accumulate for atom i
+                MD_SIMD_FLOAT fx_tmp = simd_real_mul(delx, force);
+                MD_SIMD_FLOAT fy_tmp = simd_real_mul(dely, force);
+                MD_SIMD_FLOAT fz_tmp = simd_real_mul(delz, force);
 
-                // Accumulate forces for atom i
-                fix = simd_real_add(fix, fx_tmp);
-                fiy = simd_real_add(fiy, fy_tmp);
-                fiz = simd_real_add(fiz, fz_tmp);
+                fix = simd_real_masked_add(fix, fx_tmp, cutoff_mask);
+                fiy = simd_real_masked_add(fiy, fy_tmp, cutoff_mask);
+                fiz = simd_real_masked_add(fiz, fz_tmp, cutoff_mask);
 
-                // Store SIMD results to temporary arrays for Newton's third law updates
+                // Store force components and neighbor indices for Newton's third law scatter
                 simd_real_store(tmp_fx, fx_tmp);
                 simd_real_store(tmp_fy, fy_tmp);
                 simd_real_store(tmp_fz, fz_tmp);
-                simd_real_store(tmp_delx, delx);
-                simd_real_store(tmp_dely, dely);
-                simd_real_store(tmp_delz, delz);
                 simd_i32_store(tmp_j, j);
 
-                // Apply Newton's third law for each neighbor (if local or using shell method)
+                // Apply Newton's third law only for neighbors within cutoff
+                unsigned int cutoff_lanes = simd_mask_to_u32(cutoff_mask);
                 int num_valid = (numneighs - k) < VECTOR_WIDTH ? (numneighs - k) : VECTOR_WIDTH;
                 for (int lane = 0; lane < num_valid; lane++) {
+                    if (!((cutoff_lanes >> lane) & 1)) continue;
                     int jj = tmp_j[lane];
                     if ((param->half_neigh && jj < Nlocal) || param->method) {
+                        #pragma omp atomic
                         atom_fx(jj) -= tmp_fx[lane];
+                        #pragma omp atomic
                         atom_fy(jj) -= tmp_fy[lane];
+                        #pragma omp atomic
                         atom_fz(jj) -= tmp_fz[lane];
                     }
                 }
