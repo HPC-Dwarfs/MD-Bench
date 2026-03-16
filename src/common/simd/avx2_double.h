@@ -223,15 +223,15 @@ static inline MD_SIMD_FLOAT simd_real_gather(
 static inline MD_SIMD_INT simd_i32_gather(
     MD_SIMD_INT vidx, int* base, const int scale)
 {
-    if (scale == 1) {
-        return _mm256_i32gather_epi32(base, vidx, 1);
-    } else if (scale == 2) {
-        return _mm256_i32gather_epi32(base, vidx, 2);
-    } else if (scale == 4) {
-        return _mm256_i32gather_epi32(base, vidx, 4);
-    } else {
-        return _mm256_i32gather_epi32(base, vidx, 8);
+    // For double precision, MD_SIMD_INT is __m128i (4 ints)
+    // AVX2 doesn't have _mm_i32gather_epi32, use scalar fallback
+    int idx[4] __attribute__((aligned(16)));
+    int result[4] __attribute__((aligned(16)));
+    _mm_store_si128((__m128i*)idx, vidx);
+    for (int i = 0; i < 4; i++) {
+        result[i] = base[idx[i]];
     }
+    return _mm_load_si128((const __m128i*)result);
 }
 // AVX2 has no hardware scatter; implement as scalar fallback
 static inline void simd_real_masked_scatter_sub(
