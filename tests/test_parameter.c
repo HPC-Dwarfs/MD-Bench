@@ -37,7 +37,7 @@ static int test_initParameter_defaults(void)
     ASSERT_TRUE(p.input_file == NULL, "input_file should default to NULL");
     ASSERT_TRUE(p.vtk_file == NULL, "vtk_file should default to NULL");
     ASSERT_TRUE(p.eam_file == NULL, "eam_file should default to NULL");
-    ASSERT_TRUE(p.atom_file_name != NULL, "atom_file_name should be allocated");
+    ASSERT_TRUE(p.write_atom_file == NULL, "write_atom_file should default to NULL");
 
     ASSERT_INT_EQ(p.force_field, FF_LJ, "default force_field is LJ");
     ASSERT_NEAR(p.epsilon, 1.0, 1e-12, "default epsilon");
