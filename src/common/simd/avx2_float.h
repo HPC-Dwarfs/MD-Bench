@@ -206,7 +206,10 @@ static inline void simd_real_masked_scatter_sub(
     simd_real_store(vals, v);
     simd_i32_store(idx, vidx);
     for (int i = 0; i < 8; i++) {
-        if ((m >> i) & 1) base[idx[i]] -= vals[i];
+        if ((m >> i) & 1) {
+            _Pragma("omp atomic")
+            base[idx[i]] -= vals[i];
+        }
     }
 }
 

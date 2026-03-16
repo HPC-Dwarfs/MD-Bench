@@ -242,8 +242,8 @@ static inline void simd_real_masked_scatter_sub(
     int idx[4] __attribute__((aligned(16)));
     simd_real_store(vals, v);
     simd_i32_store(idx, vidx);
-    if ((m >> 0) & 1) base[idx[0]] -= vals[0];
-    if ((m >> 1) & 1) base[idx[1]] -= vals[1];
-    if ((m >> 2) & 1) base[idx[2]] -= vals[2];
-    if ((m >> 3) & 1) base[idx[3]] -= vals[3];
+    if ((m >> 0) & 1) { _Pragma("omp atomic") base[idx[0]] -= vals[0]; }
+    if ((m >> 1) & 1) { _Pragma("omp atomic") base[idx[1]] -= vals[1]; }
+    if ((m >> 2) & 1) { _Pragma("omp atomic") base[idx[2]] -= vals[2]; }
+    if ((m >> 3) & 1) { _Pragma("omp atomic") base[idx[3]] -= vals[3]; }
 }
