@@ -120,6 +120,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/regression_energy_lj.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_scheme_equiv"
 	@bash tests/regression_scheme_equiv.sh
+	@echo "===>  RUNNING  test_simd_vs_scalar"
+	@bash tests/test_simd_vs_scalar.sh
 
 $(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c
 	@echo "===>  BUILDING $(TEST_BIN)"

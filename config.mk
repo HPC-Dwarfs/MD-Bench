@@ -48,6 +48,8 @@ SUPERCLUSTER_INVERSE_THREAD_MAPPING ?= true
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)
 USE_REFERENCE_KERNEL ?= false
+# Use SIMD intrinsic kernels for force computation (true or false)
+USE_SIMD_KERNEL ?= true
 # Enable XTC output (a GROMACS file format for trajectories)
 XTC_OUTPUT ?= false
 
@@ -85,15 +87,24 @@ ifeq ($(strip $(ISA)),ARM)
     ifeq ($(strip $(SIMD)),NEON)
         __ISA_NEON__=true
         __SIMD_WIDTH_DBL__=2
+        ifeq ($(strip $(DATA_TYPE)),DP)
+            __SIMD_KERNEL__=true
+        endif
     else ifeq ($(strip $(SIMD)),SVE)
         __ISA_SVE__=true
 		# needs further specification
         __SIMD_WIDTH_DBL__=2
+        ifeq ($(strip $(DATA_TYPE)),DP)
+            __SIMD_KERNEL__=true
+        endif
     else ifeq ($(strip $(SIMD)),SVE2)
         __ISA_SVE__=true
         __ISA_SVE2__=true
         # needs further specification
         __SIMD_WIDTH_DBL__=2
+        ifeq ($(strip $(DATA_TYPE)),DP)
+            __SIMD_KERNEL__=true
+        endif
     endif
 else
 # X86
@@ -192,8 +203,10 @@ ifneq ($(VECTOR_WIDTH),)
     DEFINES += -DVECTOR_WIDTH=$(VECTOR_WIDTH)
 endif
 
-ifeq ($(strip $(__SIMD_KERNEL__)),true)
-    DEFINES += -D__SIMD_KERNEL__
+ifeq ($(strip $(USE_SIMD_KERNEL)),true)
+    ifeq ($(strip $(__SIMD_KERNEL__)),true)
+        DEFINES += -D__SIMD_KERNEL__
+    endif
 endif
 
 ifeq ($(strip $(__SSE__)),true)

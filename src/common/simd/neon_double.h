@@ -128,6 +128,86 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
     return vaddq_s64(a, b);
 }
 
+// Create sequence [0, 1] for NEON double (VECTOR_WIDTH=2)
+static inline MD_SIMD_INT simd_i32_seq(void)
+{
+    return vsetq_lane_s64(1, vsetq_lane_s64(0, vdupq_n_s64(0), 0), 1);
+}
+
+// Integer multiply (for type indices)
+static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    // NEON doesn't have 64-bit integer multiply, use scalar fallback
+    int64_t a0 = vgetq_lane_s64(a, 0);
+    int64_t a1 = vgetq_lane_s64(a, 1);
+    int64_t b0 = vgetq_lane_s64(b, 0);
+    int64_t b1 = vgetq_lane_s64(b, 1);
+    MD_SIMD_INT result = vdupq_n_s64(0);
+    result = vsetq_lane_s64(a0 * b0, result, 0);
+    result = vsetq_lane_s64(a1 * b1, result, 1);
+    return result;
+}
+
+// Integer comparison to mask
+static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    // Compare 64-bit integers and convert to mask
+    uint64x2_t cmp = vcltq_s64(a, b);
+    return cmp;
+}
+
+// Masked integer load
+static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
+{
+    // Load with mask - scalar fallback for NEON
+    int64_t val0 = (vgetq_lane_u64(mask, 0) != 0) ? (int64_t)ptr[0] : 0;
+    int64_t val1 = (vgetq_lane_u64(mask, 1) != 0) ? (int64_t)ptr[1] : 0;
+    MD_SIMD_INT result = vdupq_n_s64(0);
+    result = vsetq_lane_s64(val0, result, 0);
+    result = vsetq_lane_s64(val1, result, 1);
+    return result;
+}
+
+// Gather integers (for multi-atom-type)
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    // Scalar fallback for NEON
+    int64_t idx0 = vgetq_lane_s64(vidx, 0);
+    int64_t idx1 = vgetq_lane_s64(vidx, 1);
+    MD_SIMD_INT result = vdupq_n_s64(0);
+    result = vsetq_lane_s64((int64_t)base[idx0], result, 0);
+    result = vsetq_lane_s64((int64_t)base[idx1], result, 1);
+    return result;
+}
+
+// Horizontal sum reduction
+static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
+{
+    // Pairwise add and extract
+    float64x2_t sum = vpaddq_f64(a, a);
+    return vgetq_lane_f64(sum, 0);
+}
+
+// Masked scatter-subtract (for half-neighbor lists)
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    // Scalar fallback with atomics for thread safety
+    MD_FLOAT vals[2] __attribute__((aligned(16)));
+    int64_t idx[2] __attribute__((aligned(16)));
+    vst1q_f64(vals, v);
+    vst1q_s64(idx, vidx);
+
+    if (vgetq_lane_u64(mask, 0)) {
+        #pragma omp atomic
+        base[idx[0]] -= vals[0];
+    }
+    if (vgetq_lane_u64(mask, 1)) {
+        #pragma omp atomic
+        base[idx[1]] -= vals[1];
+    }
+}
+
 static inline MD_SIMD_FLOAT simd_real_gather(
     MD_SIMD_INT vidx, MD_FLOAT* base, const int scale)
 {

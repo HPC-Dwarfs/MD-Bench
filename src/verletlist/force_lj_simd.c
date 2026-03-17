@@ -3,6 +3,10 @@
  * All rights reserved. This file is part of MD-Bench.
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
+ *
+ * SIMD-optimized Lennard-Jones force kernels for Verlet Lists
+ * Supports: AVX2, AVX512, NEON, SVE (double precision)
+ * Requires: __SIMD_KERNEL__ flag and NBLIST_AOS layout
  */
 #include <stdio.h>
 #include <stdlib.h>

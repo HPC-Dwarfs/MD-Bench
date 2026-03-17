@@ -23,14 +23,19 @@ extern double computeForceLJHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
+#ifdef __SIMD_KERNEL__
+extern double computeForceLJHalfNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJFullNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
+
 #ifdef CUDA_TARGET
 extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define KERNEL_NAME "CUDA"
 #else
-#ifdef USE_SIMD_KERNEL
+#ifdef __SIMD_KERNEL__
 #define KERNEL_NAME "SIMD"
 #else
-#define KERNEL_NAME "PLAIN"
+#define KERNEL_NAME "SCALAR"
 #endif
 #endif
 
