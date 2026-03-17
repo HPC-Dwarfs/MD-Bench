@@ -310,7 +310,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
             int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
             int* ci_t       = &atom->cl_t[ci_sca_base];
 #endif
@@ -330,7 +330,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
             MD_SIMD_FLOAT zi0_tmp = simd_real_load_h_dual(&ci_x[CL_Z_INDEX_3D(0)]);
             MD_SIMD_FLOAT zi2_tmp = simd_real_load_h_dual(&ci_x[CL_Z_INDEX_3D(2)]);
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             MD_SIMD_INT tbase0 = simd_i32_load_h_dual_scaled(&ci_t[0], atom->ntypes);
             MD_SIMD_INT tbase2 = simd_i32_load_h_dual_scaled(&ci_t[2], atom->ntypes);
 #else
@@ -351,7 +351,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
             MD_SIMD_FLOAT zi2_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(2)]);
             MD_SIMD_FLOAT zi3_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             MD_SIMD_INT tbase0    = simd_i32_broadcast(ci_t[0] * atom->ntypes);
             MD_SIMD_INT tbase1    = simd_i32_broadcast(ci_t[1] * atom->ntypes);
             MD_SIMD_INT tbase2    = simd_i32_broadcast(ci_t[2] * atom->ntypes);
@@ -421,7 +421,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
                                     int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                                     MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                                     int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                                     int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -435,7 +435,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
                                     MD_SIMD_FLOAT zj_tmp = simd_real_load_h_duplicate(
                                         &cj_x[CL_Z_INDEX_3D(0)]);
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                                     MD_SIMD_INT tj_tmp = simd_i32_load_h_duplicate(cj_t);
                                     MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                                     MD_SIMD_INT tvec2  = simd_i32_add(tbase2, tj_tmp);
@@ -483,7 +483,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
                                     MD_SIMD_FLOAT xj_tmp = simd_real_load(&cj_x[CL_X_INDEX_3D(0)]);
                                     MD_SIMD_FLOAT yj_tmp = simd_real_load(&cj_x[CL_Y_INDEX_3D(0)]);
                                     MD_SIMD_FLOAT zj_tmp = simd_real_load(&cj_x[CL_Z_INDEX_3D(0)]);
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                                     MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                                     MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                                     MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);

@@ -286,7 +286,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
             MD_FLOAT ytmp = atom_y(i);
             MD_FLOAT ztmp = atom_z(i);
             int ibin      = coord2bin(xtmp, ytmp, ztmp);
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             int type_i = atom->type[i];
 #endif
             for (int k = 0; k < nstencil; k++) {
@@ -304,7 +304,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
                     MD_FLOAT delz = ztmp - atom_z(j);
                     MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                     int type_j = atom->type[j];
                     const MD_FLOAT cutoff =
                         atom->cutneighsq[type_i * atom->ntypes + type_j];
@@ -618,7 +618,7 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor) {
             MD_FLOAT ztmp   = atom_z(iatom);
             int ibin        = coord2bin(xtmp, ytmp, ztmp);
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             int type_i = atom->type[iatom];
 #endif
 
@@ -640,7 +640,7 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor) {
                     MD_FLOAT delz = ztmp - atom_z(jatom);
                     MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                     int type_j = atom->type[jatom];
                     const MD_FLOAT cutoff =
                         atom->cutneighsq[type_i * atom->ntypes + type_j];

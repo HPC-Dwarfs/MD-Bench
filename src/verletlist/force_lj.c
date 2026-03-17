@@ -21,7 +21,7 @@ double computeForceLJFullNeigh(
 
     int nlocal = atom->Nlocal;
     int* neighs;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -51,7 +51,7 @@ double computeForceLJFullNeigh(
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_i = atom->type[i];
 #endif
 
@@ -62,7 +62,7 @@ double computeForceLJFullNeigh(
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -115,7 +115,7 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
     int nlocal = atom->Nlocal;
     int nghost = atom->Nghost;
     int* neighs;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -146,7 +146,7 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_i = atom->type[i];
 #endif
 
@@ -159,7 +159,7 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -206,7 +206,7 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
 void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor) {
     DEBUG_MESSAGE("computeForceGhostShell begin\n");
     int Nshell = neighbor->Nshell;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -225,7 +225,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor) {
         MD_FLOAT fiy  = 0;
         MD_FLOAT fiz  = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
         const int type_i = atom->type[iatom];
 #endif
 
@@ -236,7 +236,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor) {
             MD_FLOAT delz = ztmp - atom_z(jatom);
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_j          = atom->type[jatom];
             const int type_ij         = type_i * atom->ntypes + type_j;
             const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

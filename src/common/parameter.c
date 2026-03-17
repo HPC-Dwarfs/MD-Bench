@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <atom.h>
 #include <force.h>
@@ -15,12 +16,48 @@
 #if defined(CLUSTERPAIR) || !defined(USE_REFERENCE_KERNEL)
 #include <simd.h>
 #endif
+// Fallback for SIMD_INTRINSICS when simd.h not included
+#ifndef SIMD_INTRINSICS
+#define SIMD_INTRINSICS "scalar"
+#endif
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 #ifdef _MPI
 #include <mpi.h>
 #endif
+
+// Compute per-type sqrt(epsilon) and sigma^3 for geometric combination rule
+void computePerTypeLJParameters(int ntypes, Parameter* param, MD_FLOAT* sqrt_epsilon, MD_FLOAT* sigma3) {
+    int param_ntypes = param->ntypes;
+    for (int t = 0; t < ntypes; t++) {
+        MD_FLOAT eps = (t < param_ntypes && param->epsilon_per_type) ? param->epsilon_per_type[t] : param->epsilon;
+        MD_FLOAT sig = (t < param_ntypes && param->sigma_per_type) ? param->sigma_per_type[t] : param->sigma;
+        sqrt_epsilon[t] = sqrt(eps);
+        sigma3[t] = sig * sig * sig;
+    }
+}
+
+// Compute type-pair matrix from per-type arrays (for scalar kernels)
+// epsilon[i*ntypes+j] = sqrt_epsilon[i] * sqrt_epsilon[j]
+// sigma6[i*ntypes+j] = sigma3[i] * sigma3[j]
+void computeTypePairLJParameters(int ntypes, MD_FLOAT* sqrt_epsilon_per_type, MD_FLOAT* sigma3_per_type,
+                                  MD_FLOAT* epsilon, MD_FLOAT* sigma6) {
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    // For single type, we only need one value (will be broadcast anyway)
+    epsilon[0] = sqrt_epsilon_per_type[0] * sqrt_epsilon_per_type[0];
+    sigma6[0] = sigma3_per_type[0] * sigma3_per_type[0];
+#else
+    // Geometric combination: compute all pairs
+    for (int i = 0; i < ntypes; i++) {
+        for (int j = 0; j < ntypes; j++) {
+            int idx = i * ntypes + j;
+            epsilon[idx] = sqrt_epsilon_per_type[i] * sqrt_epsilon_per_type[j];
+            sigma6[idx] = sigma3_per_type[i] * sigma3_per_type[j];
+        }
+    }
+#endif
+}
 
 void initParameter(Parameter* param) {
     param->input_file      = NULL;
@@ -33,11 +70,13 @@ void initParameter(Parameter* param) {
     param->sigma           = 1.0;
     param->sigma6          = 1.0;
     param->rho             = 0.8442;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     param->ntypes        = 1;
 #else
     param->ntypes        = 4;
 #endif
+    param->epsilon_per_type  = NULL;
+    param->sigma_per_type    = NULL;
     param->ntimes        = 200;
     param->dt            = 0.005;
     param->nx            = 32;
@@ -132,6 +171,34 @@ void readParameter(Parameter* param, const char* filename) {
             PARSE_INT(balance);
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
+
+            // Parse per-type epsilon
+            if (strncmp(tok, "epsilon_type_", 13) == 0) {
+                int type_id = atoi(tok + 13);
+                if (type_id >= 0 && type_id < param->ntypes) {
+                    if (param->epsilon_per_type == NULL) {
+                        param->epsilon_per_type = (MD_FLOAT*)malloc(param->ntypes * sizeof(MD_FLOAT));
+                        for (int i = 0; i < param->ntypes; i++) {
+                            param->epsilon_per_type[i] = param->epsilon;
+                        }
+                    }
+                    param->epsilon_per_type[type_id] = atof(val);
+                }
+            }
+
+            // Parse per-type sigma
+            if (strncmp(tok, "sigma_type_", 11) == 0) {
+                int type_id = atoi(tok + 11);
+                if (type_id >= 0 && type_id < param->ntypes) {
+                    if (param->sigma_per_type == NULL) {
+                        param->sigma_per_type = (MD_FLOAT*)malloc(param->ntypes * sizeof(MD_FLOAT));
+                        for (int i = 0; i < param->ntypes; i++) {
+                            param->sigma_per_type[i] = param->sigma;
+                        }
+                    }
+                    param->sigma_per_type[type_id] = atof(val);
+                }
+            }
         }
     }
 
@@ -211,6 +278,23 @@ void printParameter(Parameter* param) {
     fprintf(stdout, "    Epsilon:                           %.6e\n", param->epsilon);
     fprintf(stdout, "    Sigma:                             %.6e\n", param->sigma);
     fprintf(stdout, "    Number of types:                   %d\n", param->ntypes);
+    fprintf(stdout, "    LJ combination rule:               %s\n", LJ_COMB_RULE_NAME);
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    if (param->epsilon_per_type != NULL) {
+        fprintf(stdout, "    Per-type epsilon:                  ");
+        for (int i = 0; i < param->ntypes; i++) {
+            fprintf(stdout, "[%d]=%.4e ", i, param->epsilon_per_type[i]);
+        }
+        fprintf(stdout, "\n");
+    }
+    if (param->sigma_per_type != NULL) {
+        fprintf(stdout, "    Per-type sigma:                    ");
+        for (int i = 0; i < param->ntypes; i++) {
+            fprintf(stdout, "[%d]=%.4e ", i, param->sigma_per_type[i]);
+        }
+        fprintf(stdout, "\n");
+    }
+#endif
 
     // Simulation parameters
     fprintf(stdout, "\n  Simulation Control:\n");
@@ -224,7 +308,7 @@ void printParameter(Parameter* param) {
 #ifdef SORT_ATOMS
     fprintf(stdout, "    Resort atoms every:                %d steps\n", param->resort_every);
 #endif
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     fprintf(stdout, "    Single atom type:                  yes\n");
 #else
     fprintf(stdout, "    Single atom type:                  no\n");

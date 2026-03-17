@@ -53,7 +53,7 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
     const int type_i = atom->type[i];
 #endif
 
@@ -64,7 +64,7 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
         MD_FLOAT delz = ztmp - atom_z(j);
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
         const int type_j          = atom->type[j];
         const int type_ij         = type_i * ntypes + type_j;
         const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -113,7 +113,7 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
     const int type_i = atom->type[i];
 #endif
 
@@ -124,7 +124,7 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
         MD_FLOAT delz = ztmp - atom_z(j);
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
         const int type_j          = atom->type[j];
         const int type_ij         = type_i * ntypes + type_j;
         const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

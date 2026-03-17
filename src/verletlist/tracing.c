@@ -23,7 +23,7 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
         MEM_TRACE(atom_z(i), 'R');
         INDEX_TRACE_ATOM(i);
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
         MEM_TRACE(atom->type[i], 'R');
 #endif
 
@@ -37,7 +37,7 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
             MEM_TRACE(atom_y(j), 'R');
             MEM_TRACE(atom_z(j), 'R');
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             MEM_TRACE(atom->type[j], 'R');
 #endif
         }

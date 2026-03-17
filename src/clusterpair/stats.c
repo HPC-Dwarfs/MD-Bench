@@ -62,7 +62,7 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                              (double)(stats->calculated_forces);
     double avgSimd = stats->force_iters / (double)(atom->Natoms * (param->ntimes + 1));
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
     forceUsefulVolume += 1e-9 *
                          (double)((atom->Natoms * (param->ntimes + 1)) +
                                   stats->num_neighs) *

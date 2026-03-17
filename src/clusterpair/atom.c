@@ -12,6 +12,7 @@
 #include <allocate.h>
 #include <atom.h>
 #include <force.h>
+#include <parameter.h>
 #include <util.h>
 
 inline int get_ncj_from_nci(int nci) {
@@ -119,9 +120,14 @@ void createAtom(Atom* atom, Parameter* param) {
     atom->cutneighsq = allocate(ALIGNMENT,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
 
+    // Compute type-pair LJ parameters
+    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
+    free(sqrt_epsilon_per_type);
+    free(sigma3_per_type);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
-        atom->epsilon[i]    = param->epsilon;
-        atom->sigma6[i]     = param->sigma6;
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }
@@ -346,9 +352,14 @@ int readAtomPdb(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     atom->cutneighsq = allocate(ALIGNMENT,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
+    // Compute type-pair LJ parameters
+    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
+    free(sqrt_epsilon_per_type);
+    free(sigma3_per_type);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
-        atom->epsilon[i]    = param->epsilon;
-        atom->sigma6[i]     = param->sigma6;
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }
@@ -454,9 +465,14 @@ int readAtomGro(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     atom->cutneighsq = allocate(ALIGNMENT,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
+    // Compute type-pair LJ parameters
+    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
+    free(sqrt_epsilon_per_type);
+    free(sigma3_per_type);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
-        atom->epsilon[i]    = param->epsilon;
-        atom->sigma6[i]     = param->sigma6;
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }
@@ -579,9 +595,14 @@ int readAtomDmp(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     atom->cutneighsq = allocate(ALIGNMENT,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
+    // Compute type-pair LJ parameters
+    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
+    free(sqrt_epsilon_per_type);
+    free(sigma3_per_type);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
-        atom->epsilon[i]    = param->epsilon;
-        atom->sigma6[i]     = param->sigma6;
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }

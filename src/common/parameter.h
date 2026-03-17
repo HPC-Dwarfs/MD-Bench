@@ -41,6 +41,26 @@ typedef struct { double x, y, z, w; } double4;
 */
 #endif
 
+// LJ combination rule compile-time macros (Gromacs terminology)
+// Use -DLJ_COMB_RULE=<value> at compile time
+#define LJ_COMB_SINGLE  0  // Single atom type: broadcast global epsilon/sigma
+#define LJ_COMB_GEOM    1  // Geometric: sqrt(eps_i*eps_j), sigma3_i*sigma3_j
+#define LJ_COMB_NONE    2  // No rule: full type-pair matrix lookup
+
+// Default to geometric combination rule if not specified
+#ifndef LJ_COMB_RULE
+#define LJ_COMB_RULE LJ_COMB_GEOM
+#endif
+
+// String names for printing
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+#define LJ_COMB_RULE_NAME "single"
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+#define LJ_COMB_RULE_NAME "geometric"
+#else
+#define LJ_COMB_RULE_NAME "none"
+#endif
+
 typedef struct {
     int force_field;
     char* param_file;
@@ -55,6 +75,8 @@ typedef struct {
     MD_FLOAT rho;
     MD_FLOAT mass;
     int ntypes;
+    MD_FLOAT* epsilon_per_type;
+    MD_FLOAT* sigma_per_type;
     int ntimes;
     int nstat;
     int reneigh_every;
@@ -86,5 +108,7 @@ typedef struct {
 void initParameter(Parameter*);
 void readParameter(Parameter*, const char*);
 void printParameter(Parameter*);
+void computePerTypeLJParameters(int, Parameter*, MD_FLOAT*, MD_FLOAT*);
+void computeTypePairLJParameters(int, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*);
 
 #endif

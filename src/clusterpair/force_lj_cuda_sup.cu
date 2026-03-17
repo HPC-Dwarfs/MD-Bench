@@ -33,7 +33,7 @@ extern MD_FLOAT *cuda_bbminy, *cuda_bbmaxy;
 extern MD_FLOAT *cuda_bbminz, *cuda_bbmaxz;
 extern int *cuda_PBCx, *cuda_PBCy, *cuda_PBCz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
 extern int* cuda_cl_t;
 extern MD_FLOAT* cuda_cutforcesq;
 extern MD_FLOAT* cuda_sigma6;
@@ -128,7 +128,7 @@ __global__ void computeForceLJCudaSup_halfwarp(
     int* cuda_numneigh,
     int* cuda_neighs,
     int maxneighs,
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon
@@ -154,7 +154,7 @@ __global__ void computeForceLJCudaSup_halfwarp(
     MD_FLOAT* sci_f  = &cuda_cl_f[SCI_VECTOR3_BASE_INDEX(sci)];
     int tid = cjj * CLUSTER_M + cii;
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
-    #ifndef ONE_ATOM_TYPE
+    #if LJ_COMB_RULE != LJ_COMB_SINGLE
     int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
     #endif
     #pragma unroll
@@ -186,7 +186,7 @@ __global__ void computeForceLJCudaSup_halfwarp(
         fcj_buf = float3{0.0f, 0.0f, 0.0f};
         #endif
 
-        #ifndef ONE_ATOM_TYPE
+        #if LJ_COMB_RULE != LJ_COMB_SINGLE
         int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
         int type_j          = cuda_cl_t[cj_sca_base + cjj];
         #endif
@@ -203,7 +203,7 @@ __global__ void computeForceLJCudaSup_halfwarp(
                 MD_FLOAT delz = sh_sci_x[ai].z - zjtmp;
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-                #ifndef ONE_ATOM_TYPE
+                #if LJ_COMB_RULE != LJ_COMB_SINGLE
                 int type_i          = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
@@ -317,7 +317,7 @@ __global__ void computeForceLJCudaSup_fullwarp(
     int* cuda_numneigh,
     int* cuda_neighs,
     int maxneighs,
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon
@@ -345,7 +345,7 @@ __global__ void computeForceLJCudaSup_fullwarp(
     int tid = cjj * CLUSTER_M + cii;
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
     
-    #ifndef ONE_ATOM_TYPE
+    #if LJ_COMB_RULE != LJ_COMB_SINGLE
     int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
     #endif
     
@@ -371,7 +371,7 @@ __global__ void computeForceLJCudaSup_fullwarp(
         MD_FLOAT yjtmp = cj_x[CL_Y_INDEX(cjj)];
         MD_FLOAT zjtmp = cj_x[CL_Z_INDEX(cjj)];
 
-        #ifndef ONE_ATOM_TYPE
+        #if LJ_COMB_RULE != LJ_COMB_SINGLE
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         int type_j = cuda_cl_t[cj_sca_base + cjj];
         #endif
@@ -388,7 +388,7 @@ __global__ void computeForceLJCudaSup_fullwarp(
                 MD_FLOAT delz = sh_sci_x[ai].z - zjtmp;
                 MD_FLOAT rsq = delx * delx + dely * dely + delz * delz;
 
-                #ifndef ONE_ATOM_TYPE
+                #if LJ_COMB_RULE != LJ_COMB_SINGLE
                 int type_i = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
                 int type_index = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
@@ -499,7 +499,7 @@ __global__ void cudaUpdatePbcSup_warp(MD_FLOAT* cuda_cl_x,
 extern "C" double computeForceLJCudaSup(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats) {
     DEBUG_MESSAGE("computeForceLJCudaSup start\r\n");
 
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -518,7 +518,7 @@ extern "C" double computeForceLJCudaSup(Parameter* param, Atom* atom, Neighbor* 
             cuda_numneigh,
             cuda_neighbors,
             neighbor->maxneighs,
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,
             epsilon
@@ -538,7 +538,7 @@ extern "C" double computeForceLJCudaSup(Parameter* param, Atom* atom, Neighbor* 
             cuda_numneigh,
             cuda_neighbors,
             neighbor->maxneighs,
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,
             epsilon

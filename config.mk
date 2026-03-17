@@ -27,8 +27,11 @@ DEBUG ?= false
 
 # Sort atoms at a separate frequency (true or false)
 SORT_ATOMS ?= false
-# Simulate only for one atom type, without table lookup for parameters (true or false)
-ONE_ATOM_TYPE ?= false
+# LJ combination rule (single/geometric/none)
+# single: single atom type, broadcast global params (fastest, no type lookup)
+# geometric: per-type params with geometric combination (default)
+# none: full type-pair matrix lookup (not supported in SIMD kernels)
+LJ_COMB_RULE ?= geometric
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
 # Trace indexes and distances for gather-md (true or false)
@@ -167,8 +170,15 @@ ifeq ($(strip $(SORT_ATOMS)),true)
     DEFINES += -DSORT_ATOMS
 endif
 
-ifeq ($(strip $(ONE_ATOM_TYPE)),true)
-    DEFINES += -DONE_ATOM_TYPE
+# Translate LJ_COMB_RULE to compiler define
+ifeq ($(strip $(LJ_COMB_RULE)),single)
+    DEFINES += -DLJ_COMB_RULE=0
+else ifeq ($(strip $(LJ_COMB_RULE)),geometric)
+    DEFINES += -DLJ_COMB_RULE=1
+else ifeq ($(strip $(LJ_COMB_RULE)),none)
+    DEFINES += -DLJ_COMB_RULE=2
+else
+    $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, none)
 endif
 
 ifeq ($(strip $(MEM_TRACER)),true)

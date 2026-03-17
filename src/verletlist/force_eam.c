@@ -51,7 +51,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
             MD_FLOAT ytmp = atom_y(i);
             MD_FLOAT ztmp = atom_z(i);
             MD_FLOAT rhoi = 0;
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_i = atom->type[i];
 #endif
 #pragma ivdep
@@ -61,7 +61,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -74,7 +74,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                     m          = m < nr - 1 ? m : nr - 1;
                     p -= m;
                     p = p < 1.0 ? p : 1.0;
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                     rhoi += ((rhor_spline[type_ij * nr_tot + m * 7 + 3] * p +
                                  rhor_spline[type_ij * nr_tot + m * 7 + 4]) *
                                     p +
@@ -90,7 +90,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                 }
             }
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_ii = type_i * type_i;
 #endif
             MD_FLOAT p = 1.0 * rhoi * rdrho + 1.0;
@@ -98,7 +98,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
             m          = MAX(1, MIN(m, nrho - 1));
             p -= m;
             p = MIN(p, 1.0);
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             fp[i] = (frho_spline[type_ii * nrho_tot + m * 7 + 0] * p +
                         frho_spline[type_ii * nrho_tot + m * 7 + 1]) *
                         p +
@@ -130,7 +130,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
             MD_FLOAT fix  = 0;
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_i = atom->type[i];
 #endif
 
@@ -141,7 +141,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -167,7 +167,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                     //   terms of embed eng: Fi(sum rho_ij) and Fj(sum rho_ji)
                     //   hence embed' = Fi(sum rho_ij) rhojp + Fj(sum rho_ji) rhoip
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                     MD_FLOAT rhoip = (rhor_spline[type_ij * nr_tot + m * 7 + 0] * p +
                                          rhor_spline[type_ij * nr_tot + m * 7 + 1]) *
                                          p +

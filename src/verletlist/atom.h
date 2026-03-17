@@ -23,6 +23,9 @@ typedef struct {
     MD_FLOAT* sigma6;
     MD_FLOAT* cutforcesq;
     MD_FLOAT* cutneighsq;
+    // Per-atom LJ params for geometric mixing (avoids indirect gathers)
+    MD_FLOAT* sqrt_epsilon;  // sqrt(epsilon) per atom
+    MD_FLOAT* sigma3;        // sigma^3 per atom (sigma6 = sigma3_i * sigma3_j)
 } DeviceAtom;
 
 typedef struct {
@@ -37,6 +40,12 @@ typedef struct {
     MD_FLOAT* sigma6;
     MD_FLOAT* cutforcesq;
     MD_FLOAT* cutneighsq;
+    // Per-atom LJ params for geometric mixing (avoids indirect gathers)
+    MD_FLOAT* sqrt_epsilon;  // sqrt(epsilon) per atom
+    MD_FLOAT* sigma3;        // sigma^3 per atom (sigma6 = sigma3_i * sigma3_j)
+    // Per-type LJ params for filling per-atom arrays
+    MD_FLOAT* sqrt_epsilon_per_type;
+    MD_FLOAT* sigma3_per_type;
 
     // Device data
     DeviceAtom d_atom;
