@@ -25,7 +25,7 @@ NBLIST_DATA_LAYOUT ?= auto
 # Debug
 DEBUG ?= false
 
-# Sort atoms when reneighboring (true or false)
+# Sort atoms at a separate frequency (true or false)
 SORT_ATOMS ?= false
 # Simulate only for one atom type, without table lookup for parameters (true or false)
 ONE_ATOM_TYPE ?= false

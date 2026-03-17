@@ -111,13 +111,6 @@ double reneighbour(int n, Parameter* param, Atom* atom, Neighbor* neighbor, Comm
     timeStart = getTimeStamp();
     LIKWID_MARKER_START("reneighbour");
     // updateAtomsPbc(atom, param, true); function called at updateAtoms
-#ifdef SORT_ATOMS
-    if ((n + 1) % param->resort_every == 0) {
-        DEBUG_MESSAGE("Resorting atoms");
-        atom->Nghost = 0;
-        sortAtom(atom);
-    }
-#endif
 #ifdef _MPI
     ghostNeighbor(comm, atom, param);
 #ifdef CUDA_TARGET
@@ -359,6 +352,17 @@ int main(int argc, char** argv)
         printvtk(param.vtk_file, &comm, &atom, &param, 0);
     }
     for (int n = 0; n < param.ntimes; n++) {
+#ifdef SORT_ATOMS
+        bool resort = (n + 1) % param.resort_every == 0;
+        if (resort) {
+            double sortStart = getTimeStamp();
+            DEBUG_MESSAGE("Resorting atoms\n");
+            atom.Nghost = 0;
+            sortAtom(&atom);
+            timer[NEIGH] += getTimeStamp() - sortStart;
+        }
+#endif
+
         bool reneigh = (n + 1) % param.reneigh_every == 0;
         initialIntegrate(reneigh, &param, &atom);
 
