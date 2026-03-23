@@ -159,6 +159,8 @@ void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy) {
     int cg_sca_base = CJ_SCALAR_BASE_INDEX(cg);                                          \
     for (int cjj = 0; cjj < cj_natoms; cjj++) {                                          \
         atom->cl_t[cg_sca_base + cjj] = atom->cl_t[cj_sca_base + cjj];                   \
+        atom->cl_sqrt_epsilon[cg_sca_base + cjj] = atom->cl_sqrt_epsilon[cj_sca_base + cjj]; \
+        atom->cl_sigma3[cg_sca_base + cjj] = atom->cl_sigma3[cj_sca_base + cjj];         \
     }
 
 /* internal subroutines */

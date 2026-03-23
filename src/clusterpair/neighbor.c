@@ -1460,6 +1460,8 @@ void buildClustersCPU(Atom* atom) {
             MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_v  = &atom->cl_v[ci_vec_base];
             int* ci_t       = &atom->cl_t[ci_sca_base];
+            MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[ci_sca_base];
+            MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[ci_sca_base];
             MD_FLOAT bbminx = INF, bbmaxx = -INF;
             MD_FLOAT bbminy = INF, bbmaxy = -INF;
             MD_FLOAT bbminz = INF, bbmaxz = -INF;
@@ -1501,12 +1503,17 @@ void buildClustersCPU(Atom* atom) {
                     }
 
                     ci_t[cii] = atom->type[i];
+                    int t = atom->type[i];
+                    ci_sqrt_eps[cii] = atom->sqrt_epsilon_per_type[t];
+                    ci_sigma3[cii]   = atom->sigma3_per_type[t];
                     atom->iclusters[ci].natoms++;
                 } else {
                     ci_x[CL_X_INDEX_3D(cii)] = INF;
                     ci_x[CL_Y_INDEX_3D(cii)] = INF;
                     ci_x[CL_Z_INDEX_3D(cii)] = INF;
                     ci_t[cii]                = 0;
+                    ci_sqrt_eps[cii]         = 0.0;
+                    ci_sigma3[cii]           = 0.0;
                 }
 
                 ac++;
@@ -1580,6 +1587,8 @@ void buildSuperclusters(Atom* atom) {
                         MD_FLOAT* sci_x  = &atom->cl_x[SCI_VECTOR_BASE_INDEX(sci)];
                         MD_FLOAT* sci_v  = &atom->cl_v[sci_vec_base];
                         int* sci_t       = &atom->cl_t[sci_sca_base];
+                        MD_FLOAT* sci_sqrt_eps = &atom->cl_sqrt_epsilon[sci_sca_base];
+                        MD_FLOAT* sci_sigma3   = &atom->cl_sigma3[sci_sca_base];
 
                         MD_FLOAT bbminx = INFINITY, bbmaxx = -INFINITY;
                         MD_FLOAT bbminy = INFINITY, bbmaxy = -INFINITY;
@@ -1599,7 +1608,10 @@ void buildSuperclusters(Atom* atom) {
                                 sci_v[CL_X_INDEX_3D(sci_ci * CLUSTER_M + cii)] = atom->vx[i];
                                 sci_v[CL_Y_INDEX_3D(sci_ci * CLUSTER_M + cii)] = atom->vy[i];
                                 sci_v[CL_Z_INDEX_3D(sci_ci * CLUSTER_M + cii)] = atom->vz[i];
-                                sci_t[sci_ci * CLUSTER_M + cii] = atom->type[i];
+                                int t = atom->type[i];
+                                sci_t[sci_ci * CLUSTER_M + cii] = t;
+                                sci_sqrt_eps[sci_ci * CLUSTER_M + cii] = atom->sqrt_epsilon_per_type[t];
+                                sci_sigma3[sci_ci * CLUSTER_M + cii]   = atom->sigma3_per_type[t];
 
                                 // TODO: To create the bounding boxes faster, we can use
                                 // SIMD operations
@@ -1627,7 +1639,9 @@ void buildSuperclusters(Atom* atom) {
                                 sci_x[CL_X_INDEX(sci_ci * CLUSTER_M + cii)] = INFINITY;
                                 sci_x[CL_Y_INDEX(sci_ci * CLUSTER_M + cii)] = INFINITY;
                                 sci_x[CL_Z_INDEX(sci_ci * CLUSTER_M + cii)] = INFINITY;
-                                sci_t[sci_ci * CLUSTER_M + cii]                = 0;
+                                sci_t[sci_ci * CLUSTER_M + cii]             = 0;
+                                sci_sqrt_eps[sci_ci * CLUSTER_M + cii]      = 0.0;
+                                sci_sigma3[sci_ci * CLUSTER_M + cii]        = 0.0;
                             }
 
                             ac++;

@@ -88,6 +88,15 @@ double setup(Parameter* param, Eam* eam, Atom* atom, Neighbor* neighbor, Stats* 
 #endif
 
     setupPbc(atom, param);
+    // Diagnostic: check per-atom LJ params are initialized
+    for (int i = 0; i < atom->Nlocal + atom->Nghost && i < 5; i++) {
+        if (atom->sqrt_epsilon[i] == 0.0 || atom->sigma3[i] == 0.0) {
+            fprintf(stderr, "WARNING: atom %d has zero LJ params: sqrt_eps=%f, sigma3=%f\n",
+                i, atom->sqrt_epsilon[i], atom->sigma3[i]);
+        }
+    }
+    fprintf(stderr, "Setup complete: Nlocal=%d, Nghost=%d, Nmax=%d\n",
+        atom->Nlocal, atom->Nghost, atom->Nmax);
     initDevice(param, atom, neighbor);
 
 #ifdef _MPI    
@@ -374,7 +383,7 @@ int main(int argc, char** argv)
             timer[NEIGH] += reneighbour(n, &param, &atom, &neighbor, &comm);
         } else {
             timer[FORWARD] += forward(&comm, &atom, &param);
-            //updatePbc(&atom, &param, false);
+            updatePbc(&atom, &param, false);
         }
 
 #if defined(MEM_TRACER) || defined(INDEX_TRACER)

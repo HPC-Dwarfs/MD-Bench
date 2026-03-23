@@ -62,12 +62,18 @@ typedef struct {
     MD_FLOAT* sigma6;
     MD_FLOAT* cutforcesq;
     MD_FLOAT* cutneighsq;
+    // Per-type LJ parameters for filling cluster arrays
+    MD_FLOAT* sqrt_epsilon_per_type;
+    MD_FLOAT* sigma3_per_type;
     int *PBCx, *PBCy, *PBCz;
     // Data in cluster format
     MD_FLOAT* cl_x;
     MD_FLOAT* cl_v;
     MD_FLOAT* cl_f;
     int* cl_t;
+    // Per-cluster LJ parameters for geometric combination (Gromacs-style optimization)
+    MD_FLOAT* cl_sqrt_epsilon;  // sqrt(epsilon) per atom in cluster layout
+    MD_FLOAT* cl_sigma3;        // sigma^3 per atom in cluster layout
     Cluster *iclusters, *jclusters;
     SuperCluster* siclusters;
     int* cluster_bin;

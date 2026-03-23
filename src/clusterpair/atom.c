@@ -62,6 +62,8 @@ void initAtom(Atom* atom) {
     atom->cl_v            = NULL;
     atom->cl_f            = NULL;
     atom->cl_t            = NULL;
+    atom->cl_sqrt_epsilon = NULL;
+    atom->cl_sigma3       = NULL;
     atom->Natoms          = 0;
     atom->Nlocal          = 0;
     atom->Nghost          = 0;
@@ -75,6 +77,8 @@ void initAtom(Atom* atom) {
     atom->sigma6          = NULL;
     atom->cutforcesq      = NULL;
     atom->cutneighsq      = NULL;
+    atom->sqrt_epsilon_per_type = NULL;
+    atom->sigma3_per_type = NULL;
     atom->iclusters       = NULL;
     atom->jclusters       = NULL;
     atom->cluster_bin     = NULL;
@@ -121,12 +125,11 @@ void createAtom(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
 
     // Compute type-pair LJ parameters
-    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
-    free(sqrt_epsilon_per_type);
-    free(sigma3_per_type);
+    atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    // Keep per-type arrays for populating cluster LJ parameters
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
@@ -353,12 +356,11 @@ int readAtomPdb(Atom* atom, Parameter* param) {
     atom->cutneighsq = allocate(ALIGNMENT,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Compute type-pair LJ parameters
-    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
-    free(sqrt_epsilon_per_type);
-    free(sigma3_per_type);
+    atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    // Keep per-type arrays for populating cluster LJ parameters
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
@@ -466,12 +468,11 @@ int readAtomGro(Atom* atom, Parameter* param) {
     atom->cutneighsq = allocate(ALIGNMENT,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Compute type-pair LJ parameters
-    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
-    free(sqrt_epsilon_per_type);
-    free(sigma3_per_type);
+    atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    // Keep per-type arrays for populating cluster LJ parameters
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
@@ -596,12 +597,11 @@ int readAtomDmp(Atom* atom, Parameter* param) {
     atom->cutneighsq = allocate(ALIGNMENT,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Compute type-pair LJ parameters
-    MD_FLOAT* sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    MD_FLOAT* sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    computePerTypeLJParameters(atom->ntypes, param, sqrt_epsilon_per_type, sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, sqrt_epsilon_per_type, sigma3_per_type, atom->epsilon, atom->sigma6);
-    free(sqrt_epsilon_per_type);
-    free(sigma3_per_type);
+    atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    // Keep per-type arrays for populating cluster LJ parameters
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
@@ -825,6 +825,14 @@ void growClusters(Atom* atom, int super_clustering) {
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE  * sizeof(int),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
+    atom->cl_sqrt_epsilon = (MD_FLOAT*)reallocate(atom->cl_sqrt_epsilon,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+    atom->cl_sigma3       = (MD_FLOAT*)reallocate(atom->cl_sigma3,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 
     // NUMA-aware first-touch initialization for newly allocated memory
     #ifdef _OPENMP

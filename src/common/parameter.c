@@ -309,9 +309,11 @@ void printParameter(Parameter* param) {
     fprintf(stdout, "    Resort atoms every:                %d steps\n", param->resort_every);
 #endif
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
-    fprintf(stdout, "    Single atom type:                  yes\n");
+    fprintf(stdout, "    LJ combination rule:               single\n");
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    fprintf(stdout, "    LJ combination rule:               geometric\n");
 #else
-    fprintf(stdout, "    Single atom type:                  no\n");
+    fprintf(stdout, "    LJ combination rule:               none\n");
 #endif
     fprintf(stdout, "    Prune every:                       %d steps\n", param->prune_every);
     fprintf(stdout, "    Output positions:                  every %d steps\n", param->x_out_every);

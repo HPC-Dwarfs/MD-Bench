@@ -11,7 +11,7 @@
  * LJ combination rules (compile-time via -DLJ_COMB_RULE=<value>):
  *   LJ_COMB_SINGLE (0): Single atom type - broadcast global epsilon/sigma
  *   LJ_COMB_GEOM   (1): Geometric - sqrt(eps_i*eps_j), sigma3_i*sigma3_j
- *   LJ_COMB_NONE   (2): Full type-pair matrix lookup (not implemented in SIMD)
+ *   LJ_COMB_NONE   (2): Full type-pair matrix lookup via gather
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,12 +30,6 @@
 // Compile-time guards for unsupported configurations
 #ifdef NBLIST_SOA
 #error "SIMD kernel not implemented when NBLIST_DATA_LAYOUT is SOA"
-#endif
-
-#if LJ_COMB_RULE == LJ_COMB_NONE
-#ifdef __SIMD_KERNEL__
-#error "SIMD kernel requires LJ_COMB_RULE=single or geometric (not none)"
-#endif
 #endif
 
 double computeForceLJFullNeigh_simd(
@@ -92,6 +86,8 @@ double computeForceLJFullNeigh_simd(
             // Broadcast per-atom LJ params for atom i (geometric combination)
             MD_SIMD_FLOAT sqrt_eps_i = simd_real_broadcast(atom->sqrt_epsilon[i]);
             MD_SIMD_FLOAT sigma3_i   = simd_real_broadcast(atom->sigma3[i]);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            MD_SIMD_INT tbase_i = simd_i32_broadcast(atom->type[i] * atom->ntypes);
 #endif
 
             for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
@@ -109,6 +105,11 @@ double computeForceLJFullNeigh_simd(
                 // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij = sigma3_i * sigma3_j
                 MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
                 MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+                MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
+                MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij, atom->sigma6, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij, atom->epsilon, sizeof(MD_FLOAT));
 #endif
 
 #ifdef ATOM_POSITION_AOS
@@ -217,6 +218,8 @@ double computeForceLJHalfNeigh_simd(
             // Broadcast per-atom LJ params for atom i (geometric combination)
             MD_SIMD_FLOAT sqrt_eps_i = simd_real_broadcast(atom->sqrt_epsilon[i]);
             MD_SIMD_FLOAT sigma3_i   = simd_real_broadcast(atom->sigma3[i]);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            MD_SIMD_INT tbase_i = simd_i32_broadcast(atom->type[i] * atom->ntypes);
 #endif
 
             for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
@@ -233,6 +236,11 @@ double computeForceLJHalfNeigh_simd(
                 // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij = sigma3_i * sigma3_j
                 MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
                 MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+                MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
+                MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij, atom->sigma6, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij, atom->epsilon, sizeof(MD_FLOAT));
 #endif
 
 #ifdef ATOM_POSITION_AOS
