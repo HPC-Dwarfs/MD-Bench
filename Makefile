@@ -118,8 +118,10 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/sim_argon_regression.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_energy_lj on $(TARGET)"
 	@bash tests/regression_energy_lj.sh ./$(TARGET)
-	@echo "===>  RUNNING  regression_scheme_equiv"
+	@echo "===>  RUNNING  regression_scheme_equiv (geometric)"
 	@bash tests/regression_scheme_equiv.sh
+	@echo "===>  RUNNING  regression_scheme_equiv (single)"
+	@LJ_COMB_RULE=single bash tests/regression_scheme_equiv.sh
 	@echo "===>  RUNNING  test_simd_vs_scalar"
 	@bash tests/test_simd_vs_scalar.sh
 

@@ -89,6 +89,52 @@ static int test_lj_cutoff_gating(void)
     return 0;
 }
 
+static int test_lj_geom_combination_formula(void)
+{
+    const double cutforcesq = 100.0;
+    const double r          = 1.3;
+
+    /* Type A: eps=1.0, sig=1.0.  Type B: eps=4.0, sig=2.0. */
+    const double eps_A  = 1.0, sig_A = 1.0;
+    const double eps_B  = 4.0, sig_B = 2.0;
+
+    /* Geometric combination */
+    const double eps_AB    = sqrt(eps_A) * sqrt(eps_B); /* = 2.0 */
+    const double sigma3_A  = sig_A * sig_A * sig_A;
+    const double sigma3_B  = sig_B * sig_B * sig_B;
+    const double sigma6_AB = sigma3_A * sigma3_B; /* = 1.0 * 8.0 = 8.0 */
+
+    double fx_geom, fy_geom, fz_geom;
+    lj_force(eps_AB, sigma6_AB, cutforcesq, r, 0.0, 0.0, &fx_geom, &fy_geom, &fz_geom);
+
+    /* Independently compute using the explicit sigma_AB = cbrt(sigma6_AB) */
+    const double sig_AB  = cbrt(sigma6_AB);
+    const double sig2_AB = sig_AB * sig_AB;
+    const double sigma6_explicit = sig2_AB * sig2_AB * sig2_AB;
+    double fx_exp, fy_exp, fz_exp;
+    lj_force(eps_AB, sigma6_explicit, cutforcesq, r, 0.0, 0.0, &fx_exp, &fy_exp, &fz_exp);
+
+    ASSERT_NEAR(fx_geom, fx_exp, 1e-10, "geometric force x matches explicit");
+    ASSERT_NEAR(fy_geom, fy_exp, 1e-10, "geometric force y matches explicit");
+    ASSERT_NEAR(fz_geom, fz_exp, 1e-10, "geometric force z matches explicit");
+
+    /* Single-type equivalence: with uniform types, geometric == single */
+    const double eps1 = 1.0, sig1 = 1.0;
+    const double sigma6_single = sig1 * sig1 * sig1 * sig1 * sig1 * sig1;
+    const double sigma6_geom1  = (sig1 * sig1 * sig1) * (sig1 * sig1 * sig1);
+    const double eps_geom1     = sqrt(eps1) * sqrt(eps1);
+
+    double fx_s, fy_s, fz_s, fx_g, fy_g, fz_g;
+    lj_force(eps1, sigma6_single, cutforcesq, r, 0.0, 0.0, &fx_s, &fy_s, &fz_s);
+    lj_force(eps_geom1, sigma6_geom1, cutforcesq, r, 0.0, 0.0, &fx_g, &fy_g, &fz_g);
+
+    ASSERT_NEAR(fx_g, fx_s, 1e-12, "single-type: geometric == single (x)");
+    ASSERT_NEAR(fy_g, fy_s, 1e-12, "single-type: geometric == single (y)");
+    ASSERT_NEAR(fz_g, fz_s, 1e-12, "single-type: geometric == single (z)");
+
+    return 0;
+}
+
 int run_force_tests(void)
 {
     int rc = 0;
@@ -105,6 +151,11 @@ int run_force_tests(void)
 
     tr_log("  force: cutoff gating");
     rc = test_lj_cutoff_gating();
+    if (rc)
+        return rc;
+
+    tr_log("  force: geometric combination formula");
+    rc = test_lj_geom_combination_formula();
     if (rc)
         return rc;
 

@@ -130,6 +130,36 @@ test_output_consistency() {
     fi
 }
 
+# Like test_output_consistency but with a caller-specified tolerance.
+# Use for cross-scheme comparisons (VL vs CP) where numerical differences
+# are expected to be larger due to different neighbour-list structures.
+test_output_consistency_tol() {
+    local name1="$1"
+    local name2="$2"
+    local desc="$3"
+    local tol="${4:-1e-4}"
+
+    printf "%-40s " "$desc"
+
+    local t1="${TEMP_REF[$name1]}"
+    local t2="${TEMP_REF[$name2]}"
+    local p1="${PRES_REF[$name1]}"
+    local p2="${PRES_REF[$name2]}"
+
+    if [ -z "$t1" ] || [ -z "$t2" ]; then
+        echo "SKIP (missing reference)"
+        return 0
+    fi
+
+    if compare_floats "$t1" "$t2" "$tol" && compare_floats "$p1" "$p2" "$tol"; then
+        echo "PASS"
+        ((PASS++))
+    else
+        echo "FAIL (T: $t1 vs $t2, P: $p1 vs $p2)"
+        ((FAIL++))
+    fi
+}
+
 echo "============================================"
 echo "LJ Combination Rule Tests with Output Verification"
 echo "============================================"
@@ -195,6 +225,13 @@ test_output_consistency "clusterpair-AVX512-geometric" "clusterpair-AVX2-geometr
     "CP geometric: AVX512 vs AVX2"
 test_output_consistency "clusterpair-AVX2-single" "clusterpair-AVX2-geometric" \
     "CP AVX2: single vs geometric"
+
+# Cross-scheme: VL scalar vs CP AVX512 for each rule.
+# Uses a looser tolerance (1e-4) because VL and CP build different neighbour lists.
+test_output_consistency_tol "verletlist-NONE-geometric" "clusterpair-AVX512-geometric" \
+    "VL scalar vs CP AVX512: geometric" 1e-4
+test_output_consistency_tol "verletlist-NONE-single" "clusterpair-AVX512-single" \
+    "VL scalar vs CP AVX512: single" 1e-4
 
 rm -rf ./build ./MDBench-*
 

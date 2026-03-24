@@ -15,12 +15,13 @@ ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX512}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL:-auto}"
+LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
 
 cd "${ROOT_DIR}"
 
-echo "Building Verlet-list binary..."
+echo "Building Verlet-list binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."
 make clean >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" >/dev/null
+make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
 if [ "${SIMD}" = "NONE" ]; then
   TOOL_TAG="${TOOLCHAIN}-${ISA}"
 else
@@ -29,9 +30,9 @@ fi
 VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}"
 VL_BIN="./MDBench-${VL_TAG}"
 
-echo "Building Cluster-pair binary..."
+echo "Building Cluster-pair binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."
 make clean >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" >/dev/null
+make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
 CP_TAG="CP-${CLUSTER_PAIR_KERNEL}-${TOOL_TAG}-${DATA_TYPE}"
 CP_BIN="./MDBench-${CP_TAG}"
 
@@ -89,5 +90,5 @@ if drift_T > tol_T or drift_P > tol_P:
     sys.exit(1)
 PY
 
-echo "Verlet-list vs Cluster-pair scheme equivalence regression PASSED."
+echo "Verlet-list vs Cluster-pair scheme equivalence regression PASSED (LJ_COMB_RULE=${LJ_COMB_RULE})."
 
