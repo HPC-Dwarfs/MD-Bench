@@ -35,7 +35,7 @@ static inline MD_SIMD_FLOAT simd_real_gather(
 {
     svint64_t offsets = svmul_n_s64_x(svptrue_b64(), vidx, scale);
     return svld1_gather_s64offset_f64(svptrue_b64(), base, offsets);
-    //return svld1_gather_s64index_f64(svptrue_b64(), base, vidx);
+    // return svld1_gather_s64index_f64(svptrue_b64(), base, vidx);
 }
 
 static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
@@ -189,10 +189,7 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 }
 
 // Create sequence [0, 1, 2, ...] for SVE
-static inline MD_SIMD_INT simd_i32_seq(void)
-{
-    return svindex_s64(0, 1);
-}
+static inline MD_SIMD_INT simd_i32_seq(void) { return svindex_s64(0, 1); }
 
 // Integer multiply (for type indices)
 static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
@@ -210,9 +207,9 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 {
     // Load 32-bit integers and extend to 64-bit
-    svbool_t pg32 = svwhilelt_b32(0, VECTOR_WIDTH);
+    svbool_t pg32        = svwhilelt_b32(0, VECTOR_WIDTH);
     svbool_t pg32_masked = svand_b_z(svptrue_b32(), pg32, svunpklo_b(mask));
-    svint32_t loaded = svld1_s32(pg32_masked, ptr);
+    svint32_t loaded     = svld1_s32(pg32_masked, ptr);
     return svunpklo_s64(loaded);
 }
 
@@ -220,7 +217,7 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
     // SVE gather for 32-bit integers with 64-bit indices
-    svint64_t offsets = svmul_n_s64_x(svptrue_b64(), vidx, sizeof(int));
+    svint64_t offsets  = svmul_n_s64_x(svptrue_b64(), vidx, sizeof(int));
     svint32_t gathered = svld1_gather_s64offset_s32(svptrue_b64(), base, offsets);
     // Sign-extend 32-bit to 64-bit
     return svunpklo_s64(gathered);
@@ -248,7 +245,7 @@ static inline void simd_real_masked_scatter_sub(
     // Scalar atomic updates
     for (int i = 0; i < VECTOR_WIDTH; i++) {
         if (svptest_any(pg, mask)) {
-            #pragma omp atomic
+#pragma omp atomic
             base[idx[i]] -= vals[i];
         }
         mask = svpnext_b64(pg, mask);

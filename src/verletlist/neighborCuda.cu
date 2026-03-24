@@ -99,7 +99,7 @@ __global__ void sort_bin_contents_kernel(
     if (i >= mbins) {
         return;
     }
-        
+
     int atoms_in_bin = bincount[i];
     int* bin_ptr     = &bins[i * atoms_per_bin];
     int sorted;
@@ -136,7 +136,7 @@ __global__ void binatoms_kernel(DeviceAtom a,
     MD_FLOAT z = atom_z(i);
     int ibin   = coord2bin_device(x, y, z, np);
     int ac     = atomicAdd(&bincount[ibin], 1);
-    
+
     if (ac < atoms_per_bin) {
         bins[ibin * atoms_per_bin + ac] = i;
     } else {
@@ -222,7 +222,7 @@ void binatoms_cuda(Atom* atom,
     int nall             = atom->Nlocal + atom->Nghost;
     int resize           = 1;
     const int num_blocks = ceil((float)nall / (float)threads_per_block);
-   
+
     while (resize > 0) {
         resize = 0;
         memsetGPU(c_binning->bincount, 0, c_binning->mbins * sizeof(int));
@@ -256,20 +256,22 @@ void binatoms_cuda(Atom* atom,
     DEBUG_MESSAGE("binatoms_cuda end\n");
 }
 
-void buildNeighborCUDA(Atom* atom, Neighbor* neighbor) {
+void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("buildNeighborCUDA begin\n");
     DeviceNeighbor* d_neighbor      = &(neighbor->d_neighbor);
     const int num_threads_per_block = get_cuda_num_threads();
     cudaProfilerStart();
-    
-    int nall                  = atom->Nlocal + atom->Nghost;
+
+    int nall = atom->Nlocal + atom->Nghost;
     if (nall > nmax) {
         nmax                  = nall;
-        d_neighbor->neighbors = (int*) reallocateGPU(d_neighbor->neighbors, 
-                                                    nmax * neighbor->maxneighs * sizeof(int*));
-        d_neighbor->numneigh  = (int*) reallocateGPU(d_neighbor->numneigh, nmax * sizeof(int));
+        d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
+            nmax * neighbor->maxneighs * sizeof(int*));
+        d_neighbor->numneigh  = (int*)reallocateGPU(d_neighbor->numneigh,
+            nmax * sizeof(int));
     }
-    
+
     // TODO move all of this initialization into its own method
     if (c_stencil == NULL) {
         c_stencil = (int*)allocateGPU(nstencil * sizeof(int));
@@ -318,7 +320,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor) {
     }
 
     int resize = 1;
- 
+
     /* loop over each atom, storing neighbors */
     while (resize) {
         resize = 0;

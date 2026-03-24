@@ -56,7 +56,7 @@ double computeForceLJFullNeigh(
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
+                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -109,7 +109,9 @@ double computeForceLJFullNeigh(
     return timeStop - timeStart;
 }
 
-double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats) {
+double computeForceLJHalfNeigh(
+    Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
     DEBUG_MESSAGE("computeForceLJHalfNeigh begin\n");
 
     int nlocal = atom->Nlocal;
@@ -153,7 +155,7 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
 // Pragma required to vectorize the inner loop
 #pragma omp simd reduction(+ : fix, fiy, fiz)
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
+                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -203,7 +205,8 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
     return timeStop - timeStart;
 }
 
-void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor) {
+void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("computeForceGhostShell begin\n");
     int Nshell = neighbor->Nshell;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
@@ -230,7 +233,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor) {
 #endif
 
         for (int k = 0; k < numneigh; k++) {
-            int jatom     = neighs(neighbor->neighshell, i, k, Nshell, neighbor->maxneighs);
+            int jatom = neighs(neighbor->neighshell, i, k, Nshell, neighbor->maxneighs);
             MD_FLOAT delx = xtmp - atom_x(jatom);
             MD_FLOAT dely = ytmp - atom_y(jatom);
             MD_FLOAT delz = ztmp - atom_z(jatom);

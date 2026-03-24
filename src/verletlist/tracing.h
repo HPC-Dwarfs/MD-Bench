@@ -71,7 +71,7 @@
 #define INDEX_TRACE(l, i, e, M, N)                                                       \
     if (TRACER_CONDITION) {                                                              \
         for (int __i = 0; __i < (e); __i += VECTOR_WIDTH) {                              \
-            int __e = (((e)-__i) < VECTOR_WIDTH) ? ((e)-__i) : VECTOR_WIDTH;             \
+            int __e = (((e) - __i) < VECTOR_WIDTH) ? ((e) - __i) : VECTOR_WIDTH;         \
             fprintf(index_tracer_fp, "I: ");                                             \
             for (int __j = 0; __j < __e; ++__j) {                                        \
                 fprintf(index_tracer_fp, "%d ", neighs(l, i, __i + __j, M, N));          \
@@ -83,12 +83,12 @@
 #define DIST_TRACE_SORT(l, i, e, M, N)                                                   \
     if (TRACER_CONDITION) {                                                              \
         for (int __i = 0; __i < (e); __i += VECTOR_WIDTH) {                              \
-            int __e = (((e)-__i) < VECTOR_WIDTH) ? ((e)-__i) : VECTOR_WIDTH;             \
+            int __e = (((e) - __i) < VECTOR_WIDTH) ? ((e) - __i) : VECTOR_WIDTH;         \
             if (__e > 1) {                                                               \
                 for (int __j = __i; __j < __i + __e - 1; ++__j) {                        \
                     for (int __k = __i; __k < __i + __e - (__j - __i) - 1; ++__k) {      \
                         if (neighs(l, i, __k, M, N) > neighs(l, i, __k + 1, M, N)) {     \
-                            int __t    = neighs(l, i, __k, M, N);                        \
+                            int __t                     = neighs(l, i, __k, M, N);       \
                             neighs(l, i, __k, M, N)     = neighs(l, i, __k + 1, M, N);   \
                             neighs(l, i, __k + 1, M, N) = __t;                           \
                         }                                                                \
@@ -101,7 +101,7 @@
 #define DIST_TRACE(l, i, e, M, N)                                                        \
     if (TRACER_CONDITION) {                                                              \
         for (int __i = 0; __i < (e); __i += VECTOR_WIDTH) {                              \
-            int __e = (((e)-__i) < VECTOR_WIDTH) ? ((e)-__i) : VECTOR_WIDTH;             \
+            int __e = (((e) - __i) < VECTOR_WIDTH) ? ((e) - __i) : VECTOR_WIDTH;         \
             if (__e > 1) {                                                               \
                 fprintf(index_tracer_fp, "D: ");                                         \
                 for (int __j = 0; __j < __e - 1; ++__j) {                                \

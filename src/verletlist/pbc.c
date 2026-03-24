@@ -53,7 +53,7 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool doReneighbor)
         atom_z(nlocal + i) = atom_z(borderMap[i]) + PBCz[i] * zprd;
         // Copy per-atom LJ parameters for geometric combination rule
         atom->sqrt_epsilon[nlocal + i] = atom->sqrt_epsilon[borderMap[i]];
-        atom->sigma3[nlocal + i] = atom->sigma3[borderMap[i]];
+        atom->sigma3[nlocal + i]       = atom->sigma3[borderMap[i]];
     }
 }
 
@@ -92,13 +92,13 @@ void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool doReneighbor)
  * that are then enforced in updatePbc */
 #define ADDGHOST(dx, dy, dz)                                                             \
     Nghost++;                                                                            \
-    border_map[Nghost]                = i;                                               \
-    PBCx[Nghost]                      = dx;                                              \
-    PBCy[Nghost]                      = dy;                                              \
-    PBCz[Nghost]                      = dz;                                              \
-    atom->type[atom->Nlocal + Nghost] = atom->type[i];                                   \
-    atom->sqrt_epsilon[atom->Nlocal + Nghost] = atom->sqrt_epsilon[i];                  \
-    atom->sigma3[atom->Nlocal + Nghost] = atom->sigma3[i]
+    border_map[Nghost]                        = i;                                       \
+    PBCx[Nghost]                              = dx;                                      \
+    PBCy[Nghost]                              = dy;                                      \
+    PBCz[Nghost]                              = dz;                                      \
+    atom->type[atom->Nlocal + Nghost]         = atom->type[i];                           \
+    atom->sqrt_epsilon[atom->Nlocal + Nghost] = atom->sqrt_epsilon[i];                   \
+    atom->sigma3[atom->Nlocal + Nghost]       = atom->sigma3[i]
 
 void setupPbc(Atom* atom, Parameter* param)
 {

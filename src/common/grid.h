@@ -15,9 +15,9 @@
 #define atom_pos(i) ((dim == 0) ? atom_x((i)) : (dim == 1) ? atom_y((i)) : atom_z((i)))
 
 #ifdef _MPI
-    #include <mpi.h>
-    #define world       MPI_COMM_WORLD
-    static MPI_Datatype type_float = (sizeof(MD_FLOAT) == 4) ? MPI_FLOAT : MPI_DOUBLE;
+#include <mpi.h>
+#define world MPI_COMM_WORLD
+static MPI_Datatype type_float = (sizeof(MD_FLOAT) == 4) ? MPI_FLOAT : MPI_DOUBLE;
 #endif
 
 typedef struct {

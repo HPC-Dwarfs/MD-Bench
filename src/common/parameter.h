@@ -11,10 +11,18 @@
 
 // Portable vector types compatible with CUDA/HIP
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
-typedef struct { float x, y, z; } float3;
-typedef struct { float x, y, z, w; } float4;
-typedef struct { double x, y, z; } double3;
-typedef struct { double x, y, z, w; } double4;
+typedef struct {
+    float x, y, z;
+} float3;
+typedef struct {
+    float x, y, z, w;
+} float4;
+typedef struct {
+    double x, y, z;
+} double3;
+typedef struct {
+    double x, y, z, w;
+} double4;
 #endif
 
 #if PRECISION == 1
@@ -43,9 +51,9 @@ typedef struct { double x, y, z, w; } double4;
 
 // LJ combination rule compile-time macros (Gromacs terminology)
 // Use -DLJ_COMB_RULE=<value> at compile time
-#define LJ_COMB_SINGLE  0  // Single atom type: broadcast global epsilon/sigma
-#define LJ_COMB_GEOM    1  // Geometric: sqrt(eps_i*eps_j), sigma3_i*sigma3_j
-#define LJ_COMB_NONE    2  // No rule: full type-pair matrix lookup
+#define LJ_COMB_SINGLE 0 // Single atom type: broadcast global epsilon/sigma
+#define LJ_COMB_GEOM   1 // Geometric: sqrt(eps_i*eps_j), sigma3_i*sigma3_j
+#define LJ_COMB_NONE   2 // No rule: full type-pair matrix lookup
 
 // Default to geometric combination rule if not specified
 #ifndef LJ_COMB_RULE

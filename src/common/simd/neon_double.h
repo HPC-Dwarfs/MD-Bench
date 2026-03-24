@@ -138,13 +138,13 @@ static inline MD_SIMD_INT simd_i32_seq(void)
 static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     // NEON doesn't have 64-bit integer multiply, use scalar fallback
-    int64_t a0 = vgetq_lane_s64(a, 0);
-    int64_t a1 = vgetq_lane_s64(a, 1);
-    int64_t b0 = vgetq_lane_s64(b, 0);
-    int64_t b1 = vgetq_lane_s64(b, 1);
+    int64_t a0         = vgetq_lane_s64(a, 0);
+    int64_t a1         = vgetq_lane_s64(a, 1);
+    int64_t b0         = vgetq_lane_s64(b, 0);
+    int64_t b1         = vgetq_lane_s64(b, 1);
     MD_SIMD_INT result = vdupq_n_s64(0);
-    result = vsetq_lane_s64(a0 * b0, result, 0);
-    result = vsetq_lane_s64(a1 * b1, result, 1);
+    result             = vsetq_lane_s64(a0 * b0, result, 0);
+    result             = vsetq_lane_s64(a1 * b1, result, 1);
     return result;
 }
 
@@ -160,11 +160,11 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 {
     // Load with mask - scalar fallback for NEON
-    int64_t val0 = (vgetq_lane_u64(mask, 0) != 0) ? (int64_t)ptr[0] : 0;
-    int64_t val1 = (vgetq_lane_u64(mask, 1) != 0) ? (int64_t)ptr[1] : 0;
+    int64_t val0       = (vgetq_lane_u64(mask, 0) != 0) ? (int64_t)ptr[0] : 0;
+    int64_t val1       = (vgetq_lane_u64(mask, 1) != 0) ? (int64_t)ptr[1] : 0;
     MD_SIMD_INT result = vdupq_n_s64(0);
-    result = vsetq_lane_s64(val0, result, 0);
-    result = vsetq_lane_s64(val1, result, 1);
+    result             = vsetq_lane_s64(val0, result, 0);
+    result             = vsetq_lane_s64(val1, result, 1);
     return result;
 }
 
@@ -172,11 +172,11 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
     // Scalar fallback for NEON
-    int64_t idx0 = vgetq_lane_s64(vidx, 0);
-    int64_t idx1 = vgetq_lane_s64(vidx, 1);
+    int64_t idx0       = vgetq_lane_s64(vidx, 0);
+    int64_t idx1       = vgetq_lane_s64(vidx, 1);
     MD_SIMD_INT result = vdupq_n_s64(0);
-    result = vsetq_lane_s64((int64_t)base[idx0], result, 0);
-    result = vsetq_lane_s64((int64_t)base[idx1], result, 1);
+    result             = vsetq_lane_s64((int64_t)base[idx0], result, 0);
+    result             = vsetq_lane_s64((int64_t)base[idx1], result, 1);
     return result;
 }
 
@@ -199,11 +199,11 @@ static inline void simd_real_masked_scatter_sub(
     vst1q_s64(idx, vidx);
 
     if (vgetq_lane_u64(mask, 0)) {
-        #pragma omp atomic
+#pragma omp atomic
         base[idx[0]] -= vals[0];
     }
     if (vgetq_lane_u64(mask, 1)) {
-        #pragma omp atomic
+#pragma omp atomic
         base[idx[1]] -= vals[1];
     }
 }

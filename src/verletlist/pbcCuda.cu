@@ -70,7 +70,7 @@ __global__ void computePbcUpdate(DeviceAtom a,
     atom_z(nlocal + i) = atom_z(border_map[i]) + PBCz[i] * zprd;
     // Copy per-atom LJ parameters for geometric combination rule
     atom->sqrt_epsilon[nlocal + i] = atom->sqrt_epsilon[border_map[i]];
-    atom->sigma3[nlocal + i] = atom->sigma3[border_map[i]];
+    atom->sigma3[nlocal + i]       = atom->sigma3[border_map[i]];
 }
 
 /* update coordinates of ghost atoms */
@@ -82,7 +82,9 @@ void updatePbcCUDA(Atom* atom, Parameter* param, bool reneigh)
     if (reneigh) {
         memcpyToGPU(atom->d_atom.x, atom->x, sizeof(MD_FLOAT) * atom->Nmax * 3);
         memcpyToGPU(atom->d_atom.type, atom->type, sizeof(int) * atom->Nmax);
-        memcpyToGPU(atom->d_atom.sqrt_epsilon, atom->sqrt_epsilon, sizeof(MD_FLOAT) * atom->Nmax);
+        memcpyToGPU(atom->d_atom.sqrt_epsilon,
+            atom->sqrt_epsilon,
+            sizeof(MD_FLOAT) * atom->Nmax);
         memcpyToGPU(atom->d_atom.sigma3, atom->sigma3, sizeof(MD_FLOAT) * atom->Nmax);
 
         if (c_NmaxGhost < NmaxGhost) {

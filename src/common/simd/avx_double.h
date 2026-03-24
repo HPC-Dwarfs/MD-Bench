@@ -44,41 +44,39 @@ static inline void simd_real_store(MD_FLOAT* p, MD_SIMD_FLOAT a)
 }
 static inline MD_SIMD_FLOAT simd_real_load_h_duplicate(const MD_FLOAT* m)
 {
-    // Some variants to test performance differences
-    #ifdef RUNNER_ONE
+// Some variants to test performance differences
+#ifdef RUNNER_ONE
     // should be faster than the portable variant
-    __m128d t0 = _mm_loadu_pd(m);
+    __m128d t0  = _mm_loadu_pd(m);
     __m256d ret = _mm256_broadcast_pd(&t0);
-    #elif defined(RUNNER_TWO)
+#elif defined(RUNNER_TWO)
     // should also be faster, but only if data alignment is >=16
-    __m128d t0 = _mm_load_pd(m);
+    __m128d t0  = _mm_load_pd(m);
     __m256d ret = _mm256_broadcast_pd(&t0);
-    #else
+#else
     // most portable variant, should work fine always
     __m256d ret = _mm256_loadu2_m128d(m, m);
-    #endif
+#endif
 
     return ret;
 }
 
 static inline MD_SIMD_FLOAT simd_real_load_h_dual(const MD_FLOAT* m)
 {
-    // Some variants to test performance differences
-    #ifdef RUNNER_ONE
-    __m128d t0 = _mm_load1_pd(m);
-    __m128d t1 = _mm_load1_pd(m + 1);
+// Some variants to test performance differences
+#ifdef RUNNER_ONE
+    __m128d t0  = _mm_load1_pd(m);
+    __m128d t1  = _mm_load1_pd(m + 1);
     __m256d ret = _mm256_castpd128_pd256(t0);
-    ret = _mm256_insertf128_pd(result, t1, 1);
-    #elif defined(RUNNER_TWO)
-    __m128d t0 = _mm_load_pd(m);
-    __m128d t1 = _mm_load_pd(m + 1);
+    ret         = _mm256_insertf128_pd(result, t1, 1);
+#elif defined(RUNNER_TWO)
+    __m128d t0  = _mm_load_pd(m);
+    __m128d t1  = _mm_load_pd(m + 1);
     __m256d ret = _mm256_castpd128_pd256(t0);
-    ret = _mm256_insertf128_pd(result, t1, 1);
-    #else
-    __m256d ret = _mm256_insertf128_pd(_mm256_broadcast_sd(m),
-        _mm_load1_pd(m + 1),
-        1);
-    #endif
+    ret         = _mm256_insertf128_pd(result, t1, 1);
+#else
+    __m256d ret = _mm256_insertf128_pd(_mm256_broadcast_sd(m), _mm_load1_pd(m + 1), 1);
+#endif
     return ret;
 }
 
@@ -193,9 +191,9 @@ static inline void simd_h_decr(MD_FLOAT* m, MD_SIMD_FLOAT a)
 {
     __m256d sum, t;
     __m128d t0, t1;
-    t0  = _mm256_castpd256_pd128(a);
-    t1  = _mm256_extractf128_pd(a, 1);
-    t0  = _mm_add_pd(t0, t1);
+    t0 = _mm256_castpd256_pd128(a);
+    t1 = _mm256_extractf128_pd(a, 1);
+    t0 = _mm_add_pd(t0, t1);
 
     sum = _mm256_castpd128_pd256(t0);
     sum = _mm256_insertf128_pd(sum, t0, 1);
@@ -238,26 +236,26 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)
 {
-    #if defined(RUNNER_ONE) || defined(RUNNER_TWO)
-    __m128i t0 = _mm_loadl_epi64((__m128i*)m);
+#if defined(RUNNER_ONE) || defined(RUNNER_TWO)
+    __m128i t0  = _mm_loadl_epi64((__m128i*)m);
     __m128i ret = _mm256_broadcastsi128_si256(t0);
-    #else
+#else
     __m128i ret = _mm_set_epi32(m[1], m[0], m[1], m[0]);
-    #endif
+#endif
     return ret;
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
 {
-    #if defined(RUNNER_ONE) || defined(RUNNER_TWO)
-    __m128i t0 = _mm_set1_epi32(m[0] * scale);
-    __m128i t1 = _mm_set1_epi32(m[1] * scale);
+#if defined(RUNNER_ONE) || defined(RUNNER_TWO)
+    __m128i t0  = _mm_set1_epi32(m[0] * scale);
+    __m128i t1  = _mm_set1_epi32(m[1] * scale);
     __m128i ret = _mm256_inserti128_si256(_mm256_castsi128_si256(t0), t1, 1);
-    #else
-    int i1 = m[0] * scale;
-    int i2 = m[1] * scale;
+#else
+    int i1      = m[0] * scale;
+    int i2      = m[1] * scale;
     __m128i ret = _mm_set_epi32(i2, i2, i1, i1);
-    #endif
+#endif
     return ret;
 }
 

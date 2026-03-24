@@ -17,10 +17,12 @@
 #include <timing.h>
 #include <util.h>
 
-double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats) {
+double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
     double S = getTimeStamp();
     LIKWID_MARKER_START("force");
-    fprintf(stderr, "computeForceEam(): function not implemented for Cluster Pair algorithm!");
+    fprintf(stderr,
+        "computeForceEam(): function not implemented for Cluster Pair algorithm!");
     exit(-1);
     LIKWID_MARKER_STOP("force");
     double E = getTimeStamp();

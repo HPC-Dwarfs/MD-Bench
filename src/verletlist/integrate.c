@@ -18,8 +18,9 @@ IntegrationFunction initialIntegrate = initialIntegrateCPU;
 IntegrationFunction finalIntegrate   = finalIntegrateCPU;
 #endif
 
-void initialIntegrateCPU(bool reneigh, Parameter* param, Atom* atom) {
-    #pragma omp parallel for schedule(runtime)
+void initialIntegrateCPU(bool reneigh, Parameter* param, Atom* atom)
+{
+#pragma omp parallel for schedule(runtime)
     for (int i = 0; i < atom->Nlocal; i++) {
         atom_vx(i) += param->dtforce * atom_fx(i);
         atom_vy(i) += param->dtforce * atom_fy(i);
@@ -30,8 +31,9 @@ void initialIntegrateCPU(bool reneigh, Parameter* param, Atom* atom) {
     }
 }
 
-void finalIntegrateCPU(bool reneigh, Parameter* param, Atom* atom) {
-    #pragma omp parallel for schedule(runtime)
+void finalIntegrateCPU(bool reneigh, Parameter* param, Atom* atom)
+{
+#pragma omp parallel for schedule(runtime)
     for (int i = 0; i < atom->Nlocal; i++) {
         atom_vx(i) += param->dtforce * atom_fx(i);
         atom_vy(i) += param->dtforce * atom_fy(i);

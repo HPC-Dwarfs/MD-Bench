@@ -12,10 +12,10 @@
 #include <allocate.h>
 #include <atom.h>
 #include <device.h>
+#include <limits.h>
 #include <parameter.h>
-#include <util.h>
-#include <limits.h> 
 #include <unistd.h>
+#include <util.h>
 
 #define DELTA 20000
 
@@ -27,8 +27,9 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
-int write_atoms_to_file(Atom* atom, char* name) {
-    FILE *fp = fopen(name, "wb");
+int write_atoms_to_file(Atom* atom, char* name)
+{
+    FILE* fp = fopen(name, "wb");
     if (fp == NULL) {
         perror("Error opening file");
         return -1;
@@ -49,47 +50,48 @@ int write_atoms_to_file(Atom* atom, char* name) {
     return 0;
 }
 
-void initAtom(Atom* atom) {
-    atom->x          = NULL;
-    atom->y          = NULL;
-    atom->z          = NULL;
-    atom->vx         = NULL;
-    atom->vy         = NULL;
-    atom->vz         = NULL;
-    atom->fx         = NULL;
-    atom->fy         = NULL;
-    atom->fz         = NULL;
-    atom->Natoms     = 0;
-    atom->Nlocal     = 0;
-    atom->Nghost     = 0;
-    atom->Nmax       = 0;
-    atom->type       = NULL;
-    atom->ntypes     = 0;
-    atom->epsilon    = NULL;
-    atom->sigma6     = NULL;
-    atom->cutforcesq = NULL;
-    atom->cutneighsq = NULL;
-    atom->sqrt_epsilon = NULL;
-    atom->sigma3       = NULL;
+void initAtom(Atom* atom)
+{
+    atom->x                     = NULL;
+    atom->y                     = NULL;
+    atom->z                     = NULL;
+    atom->vx                    = NULL;
+    atom->vy                    = NULL;
+    atom->vz                    = NULL;
+    atom->fx                    = NULL;
+    atom->fy                    = NULL;
+    atom->fz                    = NULL;
+    atom->Natoms                = 0;
+    atom->Nlocal                = 0;
+    atom->Nghost                = 0;
+    atom->Nmax                  = 0;
+    atom->type                  = NULL;
+    atom->ntypes                = 0;
+    atom->epsilon               = NULL;
+    atom->sigma6                = NULL;
+    atom->cutforcesq            = NULL;
+    atom->cutneighsq            = NULL;
+    atom->sqrt_epsilon          = NULL;
+    atom->sigma3                = NULL;
     atom->sqrt_epsilon_per_type = NULL;
     atom->sigma3_per_type       = NULL;
 
-    DeviceAtom* d_atom = &(atom->d_atom);
-    d_atom->x          = NULL;
-    d_atom->y          = NULL;
-    d_atom->z          = NULL;
-    d_atom->vx         = NULL;
-    d_atom->vy         = NULL;
-    d_atom->vz         = NULL;
-    d_atom->fx         = NULL;
-    d_atom->fy         = NULL;
-    d_atom->fz         = NULL;
-    d_atom->border_map = NULL;
-    d_atom->type       = NULL;
-    d_atom->epsilon    = NULL;
-    d_atom->sigma6     = NULL;
-    d_atom->cutforcesq = NULL;
-    d_atom->cutneighsq = NULL;
+    DeviceAtom* d_atom   = &(atom->d_atom);
+    d_atom->x            = NULL;
+    d_atom->y            = NULL;
+    d_atom->z            = NULL;
+    d_atom->vx           = NULL;
+    d_atom->vy           = NULL;
+    d_atom->vz           = NULL;
+    d_atom->fx           = NULL;
+    d_atom->fy           = NULL;
+    d_atom->fz           = NULL;
+    d_atom->border_map   = NULL;
+    d_atom->type         = NULL;
+    d_atom->epsilon      = NULL;
+    d_atom->sigma6       = NULL;
+    d_atom->cutforcesq   = NULL;
+    d_atom->cutneighsq   = NULL;
     d_atom->sqrt_epsilon = NULL;
     d_atom->sigma3       = NULL;
 
@@ -99,7 +101,8 @@ void initAtom(Atom* atom) {
     mybox->hi[0] = mybox->hi[1] = mybox->hi[2] = 0;
 }
 
-void createAtom(Atom* atom, Parameter* param) {
+void createAtom(Atom* atom, Parameter* param)
+{
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -122,10 +125,17 @@ void createAtom(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Per-type arrays for geometric mixing SIMD optimization
     atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type       = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
 
-    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    computePerTypeLJParameters(atom->ntypes,
+        param,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type,
+        atom->epsilon,
+        atom->sigma6);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
@@ -194,17 +204,17 @@ void createAtom(Atom* atom, Parameter* param) {
                         growAtom(atom);
                     }
 
-                    int idx = atom->Nlocal;
-                    atom_x(idx)     = xtmp;
-                    atom_y(idx)     = ytmp;
-                    atom_z(idx)     = ztmp;
-                    atom_vx(idx)    = vxtmp;
-                    atom_vy(idx)    = vytmp;
-                    atom_vz(idx)    = vztmp;
-                    int t = rand() % atom->ntypes;
-                    atom->type[idx] = t;
+                    int idx                 = atom->Nlocal;
+                    atom_x(idx)             = xtmp;
+                    atom_y(idx)             = ytmp;
+                    atom_z(idx)             = ztmp;
+                    atom_vx(idx)            = vxtmp;
+                    atom_vy(idx)            = vytmp;
+                    atom_vz(idx)            = vztmp;
+                    int t                   = rand() % atom->ntypes;
+                    atom->type[idx]         = t;
                     atom->sqrt_epsilon[idx] = atom->sqrt_epsilon_per_type[t];
-                    atom->sigma3[idx] = atom->sigma3_per_type[t];
+                    atom->sigma3[idx]       = atom->sigma3_per_type[t];
                     atom->Nlocal++;
                 }
             }
@@ -235,7 +245,8 @@ void createAtom(Atom* atom, Parameter* param) {
     }
 }
 
-int type_str2int(const char* type) {
+int type_str2int(const char* type)
+{
     // Argon
     if (strncmp(type, "Ar", 2) == 0) {
         return 0;
@@ -246,7 +257,8 @@ int type_str2int(const char* type) {
     return -1;
 }
 
-int readAtom(Atom* atom, Parameter* param) {
+int readAtom(Atom* atom, Parameter* param)
+{
     int me = 0;
 
 #ifdef _MPI
@@ -281,7 +293,8 @@ int readAtom(Atom* atom, Parameter* param) {
     return -1;
 }
 
-int readAtom_pdb(Atom* atom, Parameter* param) {
+int readAtom_pdb(Atom* atom, Parameter* param)
+{
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -366,19 +379,26 @@ int readAtom_pdb(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Per-type arrays for geometric mixing SIMD optimization
     atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type       = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
 
-    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    computePerTypeLJParameters(atom->ntypes,
+        param,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type,
+        atom->epsilon,
+        atom->sigma6);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }
     // Fill per-atom LJ params based on atom types
     for (int i = 0; i < atom->Nlocal; i++) {
-        int t = atom->type[i];
+        int t                 = atom->type[i];
         atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-        atom->sigma3[i] = atom->sigma3_per_type[t];
+        atom->sigma3[i]       = atom->sigma3_per_type[t];
     }
 
     if (me == 0) {
@@ -389,7 +409,8 @@ int readAtom_pdb(Atom* atom, Parameter* param) {
     return read_atoms;
 }
 
-int readAtom_gro(Atom* atom, Parameter* param) {
+int readAtom_gro(Atom* atom, Parameter* param)
+{
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -475,19 +496,26 @@ int readAtom_gro(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Per-type arrays for geometric mixing SIMD optimization
     atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type       = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
 
-    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    computePerTypeLJParameters(atom->ntypes,
+        param,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type,
+        atom->epsilon,
+        atom->sigma6);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }
     // Fill per-atom LJ params based on atom types
     for (int i = 0; i < atom->Nlocal; i++) {
-        int t = atom->type[i];
+        int t                 = atom->type[i];
         atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-        atom->sigma3[i] = atom->sigma3_per_type[t];
+        atom->sigma3[i]       = atom->sigma3_per_type[t];
     }
 
     if (me == 0) {
@@ -498,7 +526,8 @@ int readAtom_gro(Atom* atom, Parameter* param) {
     return read_atoms;
 }
 
-int readAtom_dmp(Atom* atom, Parameter* param) {
+int readAtom_dmp(Atom* atom, Parameter* param)
+{
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -597,19 +626,26 @@ int readAtom_dmp(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Per-type arrays for geometric mixing SIMD optimization
     atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type       = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
 
-    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    computePerTypeLJParameters(atom->ntypes,
+        param,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type,
+        atom->epsilon,
+        atom->sigma6);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }
     // Fill per-atom LJ params based on atom types
     for (int i = 0; i < atom->Nlocal; i++) {
-        int t = atom->type[i];
+        int t                 = atom->type[i];
         atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-        atom->sigma3[i] = atom->sigma3_per_type[t];
+        atom->sigma3[i]       = atom->sigma3_per_type[t];
     }
 
     if (me == 0) {
@@ -619,7 +655,8 @@ int readAtom_dmp(Atom* atom, Parameter* param) {
     return natoms;
 }
 
-int readAtom_in(Atom* atom, Parameter* param) {
+int readAtom_in(Atom* atom, Parameter* param)
+{
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -694,19 +731,26 @@ int readAtom_in(Atom* atom, Parameter* param) {
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
     // Per-type arrays for geometric mixing SIMD optimization
     atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
-    atom->sigma3_per_type = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
+    atom->sigma3_per_type       = allocate(ALIGNMENT, atom->ntypes * sizeof(MD_FLOAT));
 
-    computePerTypeLJParameters(atom->ntypes, param, atom->sqrt_epsilon_per_type, atom->sigma3_per_type);
-    computeTypePairLJParameters(atom->ntypes, atom->sqrt_epsilon_per_type, atom->sigma3_per_type, atom->epsilon, atom->sigma6);
+    computePerTypeLJParameters(atom->ntypes,
+        param,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type);
+    computeTypePairLJParameters(atom->ntypes,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type,
+        atom->epsilon,
+        atom->sigma6);
     for (int i = 0; i < atom->ntypes * atom->ntypes; i++) {
         atom->cutneighsq[i] = param->cutneigh * param->cutneigh;
         atom->cutforcesq[i] = param->cutforce * param->cutforce;
     }
     // Fill per-atom LJ params based on atom types
     for (int i = 0; i < atom->Nlocal; i++) {
-        int t = atom->type[i];
+        int t                 = atom->type[i];
         atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-        atom->sigma3[i] = atom->sigma3_per_type[t];
+        atom->sigma3[i]       = atom->sigma3_per_type[t];
     }
 
     if (me == 0) {
@@ -715,7 +759,8 @@ int readAtom_in(Atom* atom, Parameter* param) {
     return natoms;
 }
 
-void writeAtom(Atom* atom, Parameter* param) {
+void writeAtom(Atom* atom, Parameter* param)
+{
     FILE* fp = fopen(param->write_atom_file, "w");
 
     for (int i = 0; i < atom->Nlocal; i++) {
@@ -740,7 +785,8 @@ void writeAtom(Atom* atom, Parameter* param) {
         param->zprd);
 }
 
-void growAtom(Atom* atom) {
+void growAtom(Atom* atom)
+{
     DeviceAtom* d_atom = &(atom->d_atom);
     int nold           = atom->Nmax;
     atom->Nmax += DELTA;
@@ -768,46 +814,50 @@ void growAtom(Atom* atom) {
 #endif
     REALLOC(type, int, atom->Nmax * sizeof(int), nold * sizeof(int));
     // Per-atom LJ params for geometric mixing SIMD optimization
-    REALLOC(sqrt_epsilon, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
+    REALLOC(sqrt_epsilon,
+        MD_FLOAT,
+        atom->Nmax * sizeof(MD_FLOAT),
+        nold * sizeof(MD_FLOAT));
     REALLOC(sigma3, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
 
-    // NUMA-aware first-touch initialization for newly allocated memory
-    #ifdef _OPENMP
-    #pragma omp parallel
+// NUMA-aware first-touch initialization for newly allocated memory
+#ifdef _OPENMP
+#pragma omp parallel
     {
-        #pragma omp for schedule(runtime)
+#pragma omp for schedule(runtime)
         for (int i = nold; i < atom->Nmax; i++) {
             atom_x(i) = 0.0;
             atom_y(i) = 0.0;
             atom_z(i) = 0.0;
         }
 
-        #pragma omp for schedule(runtime)
+#pragma omp for schedule(runtime)
         for (int i = nold; i < atom->Nmax; i++) {
             atom_vx(i) = 0.0;
             atom_vy(i) = 0.0;
             atom_vz(i) = 0.0;
         }
 
-        #pragma omp for schedule(runtime)
+#pragma omp for schedule(runtime)
         for (int i = nold; i < atom->Nmax; i++) {
             atom_fx(i) = 0.0;
             atom_fy(i) = 0.0;
             atom_fz(i) = 0.0;
         }
 
-        #pragma omp for schedule(runtime)
+#pragma omp for schedule(runtime)
         for (int i = nold; i < atom->Nmax; i++) {
-            atom->type[i] = 0;
+            atom->type[i]         = 0;
             atom->sqrt_epsilon[i] = 0.0;
-            atom->sigma3[i] = 0.0;
+            atom->sigma3[i]       = 0.0;
         }
     }
-    #endif
+#endif
 }
 /* MPI added*/
 
-void freeAtom(Atom* atom) {
+void freeAtom(Atom* atom)
+{
 #undef FREE_ATOM
 #define FREE_ATOM(p)                                                                     \
     ;                                                                                    \
@@ -838,13 +888,14 @@ void freeAtom(Atom* atom) {
     free(atom->sqrt_epsilon_per_type);
     free(atom->sigma3_per_type);
     atom->sqrt_epsilon_per_type = NULL;
-    atom->sigma3_per_type = NULL;
+    atom->sigma3_per_type       = NULL;
 }
 
-void packForward(Atom* atom, int n, int* list, MD_FLOAT* buf, int* pbc) {
+void packForward(Atom* atom, int n, int* list, MD_FLOAT* buf, int* pbc)
+{
     int i, j;
 
-    #pragma omp parallel for private(i, j) schedule(runtime)
+#pragma omp parallel for private(i, j) schedule(runtime)
     for (i = 0; i < n; i++) {
         j        = list[i];
         buf_x(i) = atom_x(j) + pbc[0] * atom->mybox.xprd;
@@ -853,8 +904,9 @@ void packForward(Atom* atom, int n, int* list, MD_FLOAT* buf, int* pbc) {
     }
 }
 
-void unpackForward(Atom* atom, int n, int first, MD_FLOAT* buf) {
-    #pragma omp parallel for schedule(runtime)
+void unpackForward(Atom* atom, int n, int first, MD_FLOAT* buf)
+{
+#pragma omp parallel for schedule(runtime)
     for (int i = 0; i < n; i++) {
         atom_x((first + i)) = buf_x(i);
         atom_y((first + i)) = buf_y(i);
@@ -862,33 +914,36 @@ void unpackForward(Atom* atom, int n, int first, MD_FLOAT* buf) {
     }
 }
 
-int packGhost(Atom* atom, int i, MD_FLOAT* buf, int* pbc) {
+int packGhost(Atom* atom, int i, MD_FLOAT* buf, int* pbc)
+{
     int m    = 0;
     buf[m++] = atom_x(i) + pbc[0] * atom->mybox.xprd;
     buf[m++] = atom_y(i) + pbc[1] * atom->mybox.yprd;
     buf[m++] = atom_z(i) + pbc[2] * atom->mybox.zprd;
-    buf[m++] = (MD_FLOAT) atom->type[i];
+    buf[m++] = (MD_FLOAT)atom->type[i];
     return m;
 }
 
-int unpackGhost(Parameter* param, Atom* atom, int i, MD_FLOAT* buf) {
+int unpackGhost(Parameter* param, Atom* atom, int i, MD_FLOAT* buf)
+{
     while (i >= atom->Nmax) {
         growAtom(atom);
     }
 
-    int m         = 0;
-    atom_x(i)     = buf[m++];
-    atom_y(i)     = buf[m++];
-    atom_z(i)     = buf[m++];
-    int t         = (int)buf[m++];
-    atom->type[i] = t;
+    int m                 = 0;
+    atom_x(i)             = buf[m++];
+    atom_y(i)             = buf[m++];
+    atom_z(i)             = buf[m++];
+    int t                 = (int)buf[m++];
+    atom->type[i]         = t;
     atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-    atom->sigma3[i] = atom->sigma3_per_type[t];
+    atom->sigma3[i]       = atom->sigma3_per_type[t];
     atom->Nghost++;
     return m;
 }
 
-void packReverse(Atom* atom, int n, int first, MD_FLOAT* buf) {
+void packReverse(Atom* atom, int n, int first, MD_FLOAT* buf)
+{
     for (int i = 0; i < n; i++) {
         buf_x(i) = atom_fx(first + i);
         buf_y(i) = atom_fy(first + i);
@@ -896,7 +951,8 @@ void packReverse(Atom* atom, int n, int first, MD_FLOAT* buf) {
     }
 }
 
-void unpackReverse(Atom* atom, int n, int* list, MD_FLOAT* buf) {
+void unpackReverse(Atom* atom, int n, int* list, MD_FLOAT* buf)
+{
     int i, j;
     for (i = 0; i < n; i++) {
         j = list[i];
@@ -906,7 +962,8 @@ void unpackReverse(Atom* atom, int n, int* list, MD_FLOAT* buf) {
     }
 }
 
-int packExchange(Atom* atom, int i, MD_FLOAT* buf) {
+int packExchange(Atom* atom, int i, MD_FLOAT* buf)
+{
     int m    = 0;
     buf[m++] = atom_x(i);
     buf[m++] = atom_y(i);
@@ -914,30 +971,32 @@ int packExchange(Atom* atom, int i, MD_FLOAT* buf) {
     buf[m++] = atom_vx(i);
     buf[m++] = atom_vy(i);
     buf[m++] = atom_vz(i);
-    buf[m++] = (MD_FLOAT) atom->type[i];
+    buf[m++] = (MD_FLOAT)atom->type[i];
     return m;
 }
 
-int unpackExchange(Atom* atom, int i, MD_FLOAT* buf) {
+int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
+{
     while (i >= atom->Nmax) {
         growAtom(atom);
     }
 
-    int m         = 0;
-    atom_x(i)     = buf[m++];
-    atom_y(i)     = buf[m++];
-    atom_z(i)     = buf[m++];
-    atom_vx(i)    = buf[m++];
-    atom_vy(i)    = buf[m++];
-    atom_vz(i)    = buf[m++];
-    int t         = (int)buf[m++];
-    atom->type[i] = t;
+    int m                 = 0;
+    atom_x(i)             = buf[m++];
+    atom_y(i)             = buf[m++];
+    atom_z(i)             = buf[m++];
+    atom_vx(i)            = buf[m++];
+    atom_vy(i)            = buf[m++];
+    atom_vz(i)            = buf[m++];
+    int t                 = (int)buf[m++];
+    atom->type[i]         = t;
     atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-    atom->sigma3[i] = atom->sigma3_per_type[t];
+    atom->sigma3[i]       = atom->sigma3_per_type[t];
     return m;
 }
 
-void pbc(Atom* atom) {
+void pbc(Atom* atom)
+{
     for (int i = 0; i < atom->Nlocal; i++) {
 
         MD_FLOAT xprd = atom->mybox.xprd;
@@ -953,14 +1012,15 @@ void pbc(Atom* atom) {
     }
 }
 
-void copy(Atom* atom, int i, int j) {
-    atom_x(i)     = atom_x(j);
-    atom_y(i)     = atom_y(j);
-    atom_z(i)     = atom_z(j);
-    atom_vx(i)    = atom_vx(j);
-    atom_vy(i)    = atom_vy(j);
-    atom_vz(i)    = atom_vz(j);
-    atom->type[i] = atom->type[j];
+void copy(Atom* atom, int i, int j)
+{
+    atom_x(i)             = atom_x(j);
+    atom_y(i)             = atom_y(j);
+    atom_z(i)             = atom_z(j);
+    atom_vx(i)            = atom_vx(j);
+    atom_vy(i)            = atom_vy(j);
+    atom_vz(i)            = atom_vz(j);
+    atom->type[i]         = atom->type[j];
     atom->sqrt_epsilon[i] = atom->sqrt_epsilon[j];
-    atom->sigma3[i] = atom->sigma3[j];
+    atom->sigma3[i]       = atom->sigma3[j];
 }

@@ -9,8 +9,8 @@
 
 #include <atom.h>
 #include <force.h>
-#include <util.h>
 #include <string.h>
+#include <util.h>
 #include <vtk.h>
 
 #ifdef _MPI
@@ -19,7 +19,9 @@ static MPI_File _fh;
 static inline void flushBuffer(char*);
 #endif
 
-void write_data_to_vtk_file(const char* filename, Atom* atom, Parameter* param, int timestep) {
+void write_data_to_vtk_file(
+    const char* filename, Atom* atom, Parameter* param, int timestep)
+{
     write_local_atoms_to_vtk_file(filename, atom, param, timestep);
     write_ghost_atoms_to_vtk_file(filename, atom, timestep);
     write_local_cluster_edges_to_vtk_file(filename, atom, timestep);
@@ -27,7 +29,8 @@ void write_data_to_vtk_file(const char* filename, Atom* atom, Parameter* param, 
     write_super_clusters_to_vtk_file(filename, atom, timestep);
 }
 
-int write_super_clusters_to_vtk_file(const char* filename, Atom* atom, int timestep) {
+int write_super_clusters_to_vtk_file(const char* filename, Atom* atom, int timestep)
+{
     char timestep_filename[128];
     snprintf(timestep_filename,
         sizeof timestep_filename,
@@ -84,7 +87,9 @@ int write_super_clusters_to_vtk_file(const char* filename, Atom* atom, int times
     return 0;
 }
 
-int write_local_atoms_to_vtk_file(const char* filename, Atom* atom, Parameter* param, int timestep) {
+int write_local_atoms_to_vtk_file(
+    const char* filename, Atom* atom, Parameter* param, int timestep)
+{
     char timestepFilename[128];
     snprintf(timestepFilename,
         sizeof timestepFilename,
@@ -104,7 +109,7 @@ int write_local_atoms_to_vtk_file(const char* filename, Atom* atom, Parameter* p
     fprintf(fp, "DATASET UNSTRUCTURED_GRID\n");
     fprintf(fp, "POINTS %d double\n", atom->Nlocal);
 
-    if(param->super_clustering) {
+    if (param->super_clustering) {
         for (int sci = 0; sci < atom->Nclusters_local; ++sci) {
             int sciVecBase = SCI_VECTOR_BASE_INDEX(sci);
             MD_FLOAT* sciX = &atom->cl_x[sciVecBase];
@@ -161,7 +166,8 @@ int write_local_atoms_to_vtk_file(const char* filename, Atom* atom, Parameter* p
     return 0;
 }
 
-int write_ghost_atoms_to_vtk_file(const char* filename, Atom* atom, int timestep) {
+int write_ghost_atoms_to_vtk_file(const char* filename, Atom* atom, int timestep)
+{
     char timestepFilename[128];
     snprintf(timestepFilename,
         sizeof timestepFilename,
@@ -182,8 +188,8 @@ int write_ghost_atoms_to_vtk_file(const char* filename, Atom* atom, int timestep
     fprintf(fp, "POINTS %d double\n", atom->Nghost);
 
     for (int ci = atom->Nclusters_local;
-         ci < atom->Nclusters_local + atom->Nclusters_ghost;
-         ++ci) {
+        ci < atom->Nclusters_local + atom->Nclusters_ghost;
+        ++ci) {
         int ciVecBase = CI_VECTOR_BASE_INDEX(ci);
         MD_FLOAT* ciX = &atom->cl_x[ciVecBase];
         for (int cii = 0; cii < atom->iclusters[ci].natoms; ++cii) {
@@ -223,7 +229,8 @@ int write_ghost_atoms_to_vtk_file(const char* filename, Atom* atom, int timestep
     return 0;
 }
 
-int write_local_cluster_edges_to_vtk_file(const char* filename, Atom* atom, int timestep) {
+int write_local_cluster_edges_to_vtk_file(const char* filename, Atom* atom, int timestep)
+{
     char timestepFilename[128];
     snprintf(timestepFilename,
         sizeof timestepFilename,
@@ -277,7 +284,8 @@ int write_local_cluster_edges_to_vtk_file(const char* filename, Atom* atom, int 
     return 0;
 }
 
-int write_ghost_cluster_edges_to_vtk_file(const char* filename, Atom* atom, int timestep) {
+int write_ghost_cluster_edges_to_vtk_file(const char* filename, Atom* atom, int timestep)
+{
     char timestepFilename[128];
     snprintf(timestepFilename,
         sizeof timestepFilename,
@@ -332,7 +340,8 @@ int write_ghost_cluster_edges_to_vtk_file(const char* filename, Atom* atom, int 
 }
 
 #ifdef _MPI
-int vtkOpen(const char* filename, Comm* comm, Atom* atom, int timestep) {
+int vtkOpen(const char* filename, Comm* comm, Atom* atom, int timestep)
+{
     char msg[256];
     char timestep_filename[128];
 
@@ -363,7 +372,8 @@ int vtkOpen(const char* filename, Comm* comm, Atom* atom, int timestep) {
     }
 }
 
-int vtkVector(Comm* comm, Atom* atom, Parameter* param) {
+int vtkVector(Comm* comm, Atom* atom, Parameter* param)
+{
     if (_fh == MPI_FILE_NULL) {
         fprintf_once(comm->myproc, stderr, "VTK not initialize, call vtkOpen first!\n");
         return -1;
@@ -454,12 +464,14 @@ int vtkVector(Comm* comm, Atom* atom, Parameter* param) {
     }
 }
 
-void vtkClose() {
+void vtkClose()
+{
     MPI_File_close(&_fh);
     _fh = MPI_FILE_NULL;
 }
 
-static inline void flushBuffer(char* msg) {
+static inline void flushBuffer(char* msg)
+{
     MPI_Offset displ;
     MPI_File_get_size(_fh, &displ);
     MPI_File_write_at(_fh, displ, msg, strlen(msg), MPI_CHAR, MPI_STATUS_IGNORE);
@@ -468,12 +480,14 @@ static inline void flushBuffer(char* msg) {
 #endif
 
 // TODO: print ghost and cluster using MPI
-void printvtk(const char* filename, Comm* comm, Atom* atom, Parameter* param, int timestep) { 
+void printvtk(
+    const char* filename, Comm* comm, Atom* atom, Parameter* param, int timestep)
+{
 #ifdef _MPI
     vtkOpen(filename, comm, atom, timestep);
     vtkVector(comm, atom, param);
     vtkClose();
-#else  
+#else
     write_data_to_vtk_file(filename, atom, param, timestep);
 #endif
 }

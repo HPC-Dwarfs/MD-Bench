@@ -54,7 +54,8 @@ static int ghostClusterinRange(Atom*, int, int, MD_FLOAT);
 static void neighborGhost(Atom*, Neighbor*);
 
 /* exported subroutines */
-void initNeighbor(Neighbor* neighbor, Parameter* param) {
+void initNeighbor(Neighbor* neighbor, Parameter* param)
+{
     MD_FLOAT neighscale = 5.0 / 6.0;
     xprd                = param->nx * param->lattice;
     yprd                = param->ny * param->lattice;
@@ -69,10 +70,10 @@ void initNeighbor(Neighbor* neighbor, Parameter* param) {
     bin_clusters        = NULL;
     bin_nclusters       = NULL;
     // neighbor->half_neigh      = param->half_neigh;
-    if(param->super_clustering) {
-        neighbor->maxneighs       = 800;
+    if (param->super_clustering) {
+        neighbor->maxneighs = 800;
     } else {
-        neighbor->maxneighs       = 200;
+        neighbor->maxneighs = 200;
     }
     neighbor->numneigh        = NULL;
     neighbor->numneigh_masked = NULL;
@@ -104,7 +105,8 @@ void initNeighbor(Neighbor* neighbor, Parameter* param) {
     }
 }
 
-void setupNeighbor(Parameter* param, Atom* atom) {
+void setupNeighbor(Parameter* param, Atom* atom)
+{
     MD_FLOAT coord;
     int mbinxhi, mbinyhi;
     int nextx, nexty, nextz;
@@ -212,7 +214,8 @@ void setupNeighbor(Parameter* param, Atom* atom) {
     */
 }
 
-MD_FLOAT getBoundingBoxDistanceSq(Atom* atom, int ci, int cj) {
+MD_FLOAT getBoundingBoxDistanceSq(Atom* atom, int ci, int cj)
+{
     MD_FLOAT dl  = atom->iclusters[ci].bbminx - atom->jclusters[cj].bbmaxx;
     MD_FLOAT dh  = atom->jclusters[cj].bbminx - atom->iclusters[ci].bbmaxx;
     MD_FLOAT dm  = MAX(dl, dh);
@@ -234,12 +237,14 @@ MD_FLOAT getBoundingBoxDistanceSq(Atom* atom, int ci, int cj) {
 }
 
 /* Returns a diagonal or off-diagonal interaction mask for plain C lists */
-static unsigned int get_imask(int rdiag, int ci, int cj) {
+static unsigned int get_imask(int rdiag, int ci, int cj)
+{
     return (rdiag && ci == cj ? NBNXN_INTERACTION_MASK_DIAG : NBNXN_INTERACTION_MASK_ALL);
 }
 
 /* Returns a diagonal or off-diagonal interaction mask for cj-size=2 */
-static unsigned int get_imask_simd_j2(int rdiag, int ci, int cj) {
+static unsigned int get_imask_simd_j2(int rdiag, int ci, int cj)
+{
     return (rdiag && ci * 2 == cj
                 ? NBNXN_INTERACTION_MASK_DIAG_J2_0
                 : (rdiag && ci * 2 + 1 == cj ? NBNXN_INTERACTION_MASK_DIAG_J2_1
@@ -247,12 +252,14 @@ static unsigned int get_imask_simd_j2(int rdiag, int ci, int cj) {
 }
 
 /* Returns a diagonal or off-diagonal interaction mask for cj-size=4 */
-static unsigned int get_imask_simd_j4(int rdiag, int ci, int cj) {
+static unsigned int get_imask_simd_j4(int rdiag, int ci, int cj)
+{
     return (rdiag && ci == cj ? NBNXN_INTERACTION_MASK_DIAG : NBNXN_INTERACTION_MASK_ALL);
 }
 
 /* Returns a diagonal or off-diagonal interaction mask for cj-size=8 */
-static unsigned int get_imask_simd_j8(int rdiag, int ci, int cj) {
+static unsigned int get_imask_simd_j8(int rdiag, int ci, int cj)
+{
     return (rdiag && ci == cj * 2
                 ? NBNXN_INTERACTION_MASK_DIAG_J8_0
                 : (rdiag && ci == cj * 2 + 1 ? NBNXN_INTERACTION_MASK_DIAG_J8_1
@@ -272,7 +279,8 @@ static unsigned int get_imask_simd_j8(int rdiag, int ci, int cj) {
 #error "Invalid cluster configuration"
 #endif
 
-void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
+void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("buildNeighbor start\n");
 
     /* extend atom arrays if necessary */
@@ -302,9 +310,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs) reduction(| : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
+    reduction(| : resize_local)
         for (int ci = 0; ci < atom->Nclusters_local; ci++) {
-            int ci_cj0    = CJ0_FROM_CI(ci);
+            int ci_cj0 = CJ0_FROM_CI(ci);
             int n = 0, nmasked = 0;
             int ibin        = atom->cluster_bin[ci];
             int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
@@ -352,10 +361,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
             MD_SIMD_FLOAT zi3_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-            MD_SIMD_INT tbase0    = simd_i32_broadcast(ci_t[0] * atom->ntypes);
-            MD_SIMD_INT tbase1    = simd_i32_broadcast(ci_t[1] * atom->ntypes);
-            MD_SIMD_INT tbase2    = simd_i32_broadcast(ci_t[2] * atom->ntypes);
-            MD_SIMD_INT tbase3    = simd_i32_broadcast(ci_t[3] * atom->ntypes);
+            MD_SIMD_INT tbase0 = simd_i32_broadcast(ci_t[0] * atom->ntypes);
+            MD_SIMD_INT tbase1 = simd_i32_broadcast(ci_t[1] * atom->ntypes);
+            MD_SIMD_INT tbase2 = simd_i32_broadcast(ci_t[2] * atom->ntypes);
+            MD_SIMD_INT tbase3 = simd_i32_broadcast(ci_t[3] * atom->ntypes);
 #else
             MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutneighsq);
 #endif
@@ -480,9 +489,12 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
 
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
 
-                                    MD_SIMD_FLOAT xj_tmp = simd_real_load(&cj_x[CL_X_INDEX_3D(0)]);
-                                    MD_SIMD_FLOAT yj_tmp = simd_real_load(&cj_x[CL_Y_INDEX_3D(0)]);
-                                    MD_SIMD_FLOAT zj_tmp = simd_real_load(&cj_x[CL_Z_INDEX_3D(0)]);
+                                    MD_SIMD_FLOAT xj_tmp = simd_real_load(
+                                        &cj_x[CL_X_INDEX_3D(0)]);
+                                    MD_SIMD_FLOAT yj_tmp = simd_real_load(
+                                        &cj_x[CL_Y_INDEX_3D(0)]);
+                                    MD_SIMD_FLOAT zj_tmp = simd_real_load(
+                                        &cj_x[CL_Z_INDEX_3D(0)]);
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
                                     MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                                     MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
@@ -593,15 +605,45 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
 
                                     if (n < neighbor->maxneighs) {
                                         if (imask == NBNXN_INTERACTION_MASK_ALL) {
-                                            neighs(neighbor->neighbors, ci, n, nbM, nbN) = cj;
-                                            neighs(neighbor->neighbors_imask, ci, n, nbM, nbN) = imask;
+                                            neighs(neighbor->neighbors,
+                                                ci,
+                                                n,
+                                                nbM,
+                                                nbN) = cj;
+                                            neighs(neighbor->neighbors_imask,
+                                                ci,
+                                                n,
+                                                nbM,
+                                                nbN) = imask;
                                         } else {
-                                            neighs(neighbor->neighbors, ci, n, nbM, nbN) =
-                                                                    neighs(neighbor->neighbors, ci, nmasked, nbM, nbN);
-                                            neighs(neighbor->neighbors_imask, ci, n, nbM, nbN) =
-                                                                    neighs(neighbor->neighbors_imask, ci, nmasked, nbM, nbN);
-                                            neighs(neighbor->neighbors, ci, nmasked, nbM, nbN) = cj;
-                                            neighs(neighbor->neighbors_imask, ci, nmasked, nbM, nbN) = imask;
+                                            neighs(neighbor->neighbors,
+                                                ci,
+                                                n,
+                                                nbM,
+                                                nbN) = neighs(neighbor->neighbors,
+                                                ci,
+                                                nmasked,
+                                                nbM,
+                                                nbN);
+                                            neighs(neighbor->neighbors_imask,
+                                                ci,
+                                                n,
+                                                nbM,
+                                                nbN) = neighs(neighbor->neighbors_imask,
+                                                ci,
+                                                nmasked,
+                                                nbM,
+                                                nbN);
+                                            neighs(neighbor->neighbors,
+                                                ci,
+                                                nmasked,
+                                                nbM,
+                                                nbN) = cj;
+                                            neighs(neighbor->neighbors_imask,
+                                                ci,
+                                                nmasked,
+                                                nbM,
+                                                nbN) = imask;
                                             nmasked++;
                                         }
                                     }
@@ -723,7 +765,8 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
 }
 
 // TODO For future parallelization on GPU
-void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor) {
+void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("buildNeighborSuperclusters start\n");
 
     /* extend atom arrays if necessary */
@@ -750,14 +793,14 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor) {
 
         for (int sci = 0; sci < atom->Nclusters_local; sci++) {
             const int sci_vec_base = SCI_VECTOR_BASE_INDEX(sci);
-            int n             = 0;
-            int ibin          = atom->cluster_bin[sci];
-            MD_FLOAT ibb_xmin = atom->siclusters[sci].bbminx;
-            MD_FLOAT ibb_xmax = atom->siclusters[sci].bbmaxx;
-            MD_FLOAT ibb_ymin = atom->siclusters[sci].bbminy;
-            MD_FLOAT ibb_ymax = atom->siclusters[sci].bbmaxy;
-            MD_FLOAT ibb_zmin = atom->siclusters[sci].bbminz;
-            MD_FLOAT ibb_zmax = atom->siclusters[sci].bbmaxz;
+            int n                  = 0;
+            int ibin               = atom->cluster_bin[sci];
+            MD_FLOAT ibb_xmin      = atom->siclusters[sci].bbminx;
+            MD_FLOAT ibb_xmax      = atom->siclusters[sci].bbmaxx;
+            MD_FLOAT ibb_ymin      = atom->siclusters[sci].bbminy;
+            MD_FLOAT ibb_ymax      = atom->siclusters[sci].bbmaxy;
+            MD_FLOAT ibb_zmin      = atom->siclusters[sci].bbminz;
+            MD_FLOAT ibb_zmax      = atom->siclusters[sci].bbmaxz;
 
             for (int k = 0; k < nstencil; k++) {
                 int jbin     = ibin + stencil[k];
@@ -816,23 +859,37 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor) {
                             if (d_bb_sq < cutneighsq) {
                                 int is_neighbor = (d_bb_sq < rbb_sq) ? 1 : 0;
                                 if (!is_neighbor) {
-                                    for (int sci_ci = 0; sci_ci < atom->siclusters[sci].nclusters; sci_ci++) {
-                                        const int ci = sci * SCLUSTER_SIZE + sci_ci;
+                                    for (int sci_ci = 0;
+                                        sci_ci < atom->siclusters[sci].nclusters;
+                                        sci_ci++) {
+                                        const int ci    = sci * SCLUSTER_SIZE + sci_ci;
                                         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
 #ifdef SOA_SUP
-                                        MD_FLOAT* ci_x  = &atom->cl_x[sci_vec_base + sci_ci * CLUSTER_M];                             
-#else                                     
-                                        MD_FLOAT* ci_x  = &atom->cl_x[sci_vec_base + sci_ci * CLUSTER_M * ATOM_DIM];
+                                        MD_FLOAT* ci_x = &atom->cl_x[sci_vec_base +
+                                                                     sci_ci * CLUSTER_M];
+#else
+                                        MD_FLOAT* ci_x =
+                                            &atom->cl_x[sci_vec_base +
+                                                        sci_ci * CLUSTER_M * ATOM_DIM];
 #endif
-                                        MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
+                                        MD_FLOAT* cj_x = &atom->cl_x[cj_vec_base];
 
-                                        for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
-                                            for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
-                                                MD_FLOAT delx = ci_x[CL_X_INDEX(cii)] - cj_x[CL_X_INDEX(cjj)];
-                                                MD_FLOAT dely = ci_x[CL_Y_INDEX(cii)] - cj_x[CL_Y_INDEX(cjj)];
-                                                MD_FLOAT delz = ci_x[CL_Z_INDEX(cii)] - cj_x[CL_Z_INDEX(cjj)];
+                                        for (int cii = 0;
+                                            cii < atom->iclusters[ci].natoms;
+                                            cii++) {
+                                            for (int cjj = 0;
+                                                cjj < atom->jclusters[cj].natoms;
+                                                cjj++) {
+                                                MD_FLOAT delx = ci_x[CL_X_INDEX(cii)] -
+                                                                cj_x[CL_X_INDEX(cjj)];
+                                                MD_FLOAT dely = ci_x[CL_Y_INDEX(cii)] -
+                                                                cj_x[CL_Y_INDEX(cjj)];
+                                                MD_FLOAT delz = ci_x[CL_Z_INDEX(cii)] -
+                                                                cj_x[CL_Z_INDEX(cjj)];
 
-                                                if (delx * delx + dely * dely + delz * delz < cutneighsq) {
+                                                if (delx * delx + dely * dely +
+                                                        delz * delz <
+                                                    cutneighsq) {
                                                     is_neighbor = 1;
                                                     goto distance_check_out;
                                                 }
@@ -841,7 +898,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor) {
                                     }
                                 }
 
-distance_check_out:
+                            distance_check_out:
                                 if (is_neighbor) {
                                     neighs(neighbor->neighbors, sci, n, nbM, nbN) = cj;
                                     n++;
@@ -890,8 +947,8 @@ distance_check_out:
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
         }
     }
-    // if (atom->Nclusters_local > 0) debug_check_supercluster_neighbors(atom, neighbor, 0);
-
+    // if (atom->Nclusters_local > 0) debug_check_supercluster_neighbors(atom, neighbor,
+    // 0);
 
     // int sci = 0;
     //  for (int sci = 0; sci < atom->Nclusters_local; sci++) {
@@ -908,50 +965,46 @@ distance_check_out:
     //             local_neighs++;
     //         }
     //     }
-   
-    // printf("sci=%d, total neighs:%d, local:%d, ghost:%d\n", sci, total_neighs, local_neighs, ghost_neighs);
+
+    // printf("sci=%d, total neighs:%d, local:%d, ghost:%d\n", sci, total_neighs,
+    // local_neighs, ghost_neighs);
     // }
-//  printf("\n");
+    //  printf("\n");
 
-//     bool cj_check[MAX_CJ_VALUE] = {0}; 
-    
+    //     bool cj_check[MAX_CJ_VALUE] = {0};
 
-//     bool cj_out_of_range = false; 
-//   int sci = 0;
-//     printf("sci=%d, numneighs=%d\n", sci, neighbor->numneigh[sci]);
+    //     bool cj_out_of_range = false;
+    //   int sci = 0;
+    //     printf("sci=%d, numneighs=%d\n", sci, neighbor->numneigh[sci]);
 
+    //     for(int k = 0; k < neighbor->numneigh[sci]; k++) {
+    //         const int nbM     = atom->Nclusters_local;
+    //         const int nbN     = neighbor->maxneighs;
+    //         int cj = neighs(neighbor->neighbors, sci, k, nbM, nbN);
 
-    
-//     for(int k = 0; k < neighbor->numneigh[sci]; k++) {
-//         const int nbM     = atom->Nclusters_local;
-//         const int nbN     = neighbor->maxneighs;
-//         int cj = neighs(neighbor->neighbors, sci, k, nbM, nbN);
+    //         // printf("cj=%d\n", cj);
 
-//         // printf("cj=%d\n", cj);
+    //         if(cj >= (atom->Nclusters_local * SCLUSTER_SIZE)){
+    //             printf("👻 cj is ghost cluster: %d\n", cj);
+    //         }
 
-//         if(cj >= (atom->Nclusters_local * SCLUSTER_SIZE)){
-//             printf("👻 cj is ghost cluster: %d\n", cj);
-//         }
+    //         if (cj >= 0 && cj < MAX_CJ_VALUE) {
 
-        
-//         if (cj >= 0 && cj < MAX_CJ_VALUE) {
+    //             if (cj_check[cj]) {
+    //                 fprintf(stderr, "🚨 cj repeated\n", sci, cj);
 
-//             if (cj_check[cj]) {
-//                 fprintf(stderr, "🚨 cj repeated\n", sci, cj);
+    //             } else {
+    //                 cj_check[cj] = true;
+    //             }
+    //         } else {
+    //             // cj 值不合法或超出预设范围
+    //             if (!cj_out_of_range) {
+    //                 fprintf(stderr, "⚠️ increase MAX_CJ_VALUE size。\n", cj,
+    //                 MAX_CJ_VALUE); cj_out_of_range = true;
+    //             }
+    //         }
+    //     }
 
-//             } else {
-//                 cj_check[cj] = true;
-//             }
-//         } else {
-//             // cj 值不合法或超出预设范围
-//             if (!cj_out_of_range) {
-//                 fprintf(stderr, "⚠️ increase MAX_CJ_VALUE size。\n", cj, MAX_CJ_VALUE);
-//                 cj_out_of_range = true;
-//             }
-//         }
-//     }
-
-  
     //  for (int sci = 0; sci < atom->Nclusters_local; sci++) {
     // const int sci_vec_base = SCI_VECTOR_BASE_INDEX(sci);
     // for (int sci_ci = 0; sci_ci < atom->siclusters[sci].nclusters; sci_ci++){
@@ -959,20 +1012,21 @@ distance_check_out:
     //     MD_FLOAT* ci_x  = &atom->cl_x[sci_vec_base + sci_ci * CLUSTER_M * ATOM_DIM];
     //     for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
     //         int id = ci *  CLUSTER_M + cii;
-    //         printf("atom %d: x=%f y=%f z=%f\n", id, ci_x[CL_X_INDEX_3D(cii)], ci_x[CL_Y_INDEX_3D(cii)], ci_x[CL_Z_INDEX_3D(cii)]);
+    //         printf("atom %d: x=%f y=%f z=%f\n", id, ci_x[CL_X_INDEX_3D(cii)],
+    //         ci_x[CL_Y_INDEX_3D(cii)], ci_x[CL_Z_INDEX_3D(cii)]);
     //     }
-        
-        // printf("\n");
-        // printf("Cluster %d, bbx = {%f, %f}, bby = {%f, %f}, bbz = {%f, %f}\n",
-        //     ci,
-        //     atom->iclusters[ci].bbminx,
-        //     atom->iclusters[ci].bbmaxx,
-        //     atom->iclusters[ci].bbminy,
-        //     atom->iclusters[ci].bbmaxy,
-        //     atom->iclusters[ci].bbminz,
-        //     atom->iclusters[ci].bbmaxz);
-        // }
-        // }
+
+    // printf("\n");
+    // printf("Cluster %d, bbx = {%f, %f}, bby = {%f, %f}, bbz = {%f, %f}\n",
+    //     ci,
+    //     atom->iclusters[ci].bbminx,
+    //     atom->iclusters[ci].bbmaxx,
+    //     atom->iclusters[ci].bbminy,
+    //     atom->iclusters[ci].bbmaxy,
+    //     atom->iclusters[ci].bbminz,
+    //     atom->iclusters[ci].bbmaxz);
+    // }
+    // }
     // }
     // exit(0);
 
@@ -1014,7 +1068,8 @@ distance_check_out:
             atom->iclusters[ci].bbmaxz);
 
         for(int cii = 0; cii < CLUSTER_M; cii++) {
-            DEBUG_MESSAGE("%f, %f, %f\n", ci_x[CL_X_INDEX(cii)], ci_x[CL_Y_INDEX(cii)], ci_x[CL_Z_INDEX(cii)]);
+            DEBUG_MESSAGE("%f, %f, %f\n", ci_x[CL_X_INDEX(cii)], ci_x[CL_Y_INDEX(cii)],
+    ci_x[CL_Z_INDEX(cii)]);
         }
 
         DEBUG_MESSAGE("Neighbors:\n");
@@ -1023,14 +1078,16 @@ distance_check_out:
             int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
             MD_FLOAT *cj_x = &atom->cl_x[cj_vec_base];
 
-            DEBUG_MESSAGE("    Cluster %d, bbx = {%f, %f}, bby = {%f, %f}, bbz = {%f,%f}\n", cj, atom->jclusters[cj].bbminx, atom->jclusters[cj].bbmaxx,
+            DEBUG_MESSAGE("    Cluster %d, bbx = {%f, %f}, bby = {%f, %f}, bbz =
+    {%f,%f}\n", cj, atom->jclusters[cj].bbminx, atom->jclusters[cj].bbmaxx,
                 atom->jclusters[cj].bbminy,
                 atom->jclusters[cj].bbmaxy,
                 atom->jclusters[cj].bbminz,
                 atom->jclusters[cj].bbmaxz);
 
             for(int cjj = 0; cjj < CLUSTER_N; cjj++) {
-                DEBUG_MESSAGE("    %f, %f, %f\n", cj_x[CL_X_INDEX(cjj)],cj_x[CL_Y_INDEX(cjj)], cj_x[CL_Z_INDEX(cjj)]);
+                DEBUG_MESSAGE("    %f, %f, %f\n",
+    cj_x[CL_X_INDEX(cjj)],cj_x[CL_Y_INDEX(cjj)], cj_x[CL_Z_INDEX(cjj)]);
             }
         }
     }
@@ -1039,19 +1096,20 @@ distance_check_out:
     DEBUG_MESSAGE("buildNeighborSuperclusters end\n");
 }
 
-void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor) {
+void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("pruneNeighbor start\n");
     // MD_FLOAT cutsq = param->cutforce * param->cutforce;
     MD_FLOAT cutsq = cutneighsq;
-    const int nbM = atom->Nclusters_local;
-    const int nbN = neighbor->maxneighs;
+    const int nbM  = atom->Nclusters_local;
+    const int nbN  = neighbor->maxneighs;
 
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
-        int numneighs              = neighbor->numneigh[ci];
-        int numneighs_masked       = neighbor->numneigh_masked[ci];
-        int k                      = 0;
-        int ci_vec_base            = CI_VECTOR3_BASE_INDEX(ci);
-        MD_FLOAT* ci_x             = &atom->cl_x[ci_vec_base];
+        int numneighs        = neighbor->numneigh[ci];
+        int numneighs_masked = neighbor->numneigh_masked[ci];
+        int k                = 0;
+        int ci_vec_base      = CI_VECTOR3_BASE_INDEX(ci);
+        MD_FLOAT* ci_x       = &atom->cl_x[ci_vec_base];
 
 #if defined(CLUSTERPAIR_KERNEL_2XNN)
         MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutsq);
@@ -1063,23 +1121,24 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor) {
         MD_SIMD_FLOAT zi2_tmp        = simd_real_load_h_dual(&ci_x[CL_Z_INDEX_3D(2)]);
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutsq);
-        MD_SIMD_FLOAT xi0_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(0)]);
-        MD_SIMD_FLOAT xi1_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(1)]);
-        MD_SIMD_FLOAT xi2_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(2)]);
-        MD_SIMD_FLOAT xi3_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(3)]);
-        MD_SIMD_FLOAT yi0_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(0)]);
-        MD_SIMD_FLOAT yi1_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(1)]);
-        MD_SIMD_FLOAT yi2_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(2)]);
-        MD_SIMD_FLOAT yi3_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(3)]);
-        MD_SIMD_FLOAT zi0_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(0)]);
-        MD_SIMD_FLOAT zi1_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(1)]);
-        MD_SIMD_FLOAT zi2_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(2)]);
-        MD_SIMD_FLOAT zi3_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
+        MD_SIMD_FLOAT xi0_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(0)]);
+        MD_SIMD_FLOAT xi1_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(1)]);
+        MD_SIMD_FLOAT xi2_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(2)]);
+        MD_SIMD_FLOAT xi3_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(3)]);
+        MD_SIMD_FLOAT yi0_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(0)]);
+        MD_SIMD_FLOAT yi1_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(1)]);
+        MD_SIMD_FLOAT yi2_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(2)]);
+        MD_SIMD_FLOAT yi3_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(3)]);
+        MD_SIMD_FLOAT zi0_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(0)]);
+        MD_SIMD_FLOAT zi1_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(1)]);
+        MD_SIMD_FLOAT zi2_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(2)]);
+        MD_SIMD_FLOAT zi3_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
 #endif
 
         // Remove dummy clusters if necessary
         if (CLUSTER_N < VECTOR_WIDTH) {
-            while (neighs(neighbor->neighbors, ci, numneighs - 1, nbM, nbN) == atom->dummy_cj) {
+            while (neighs(neighbor->neighbors, ci, numneighs - 1, nbM, nbN) ==
+                   atom->dummy_cj) {
                 numneighs--;
             }
         }
@@ -1120,18 +1179,18 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor) {
             MD_SIMD_FLOAT xj_tmp = simd_real_load(&cj_x[CL_X_INDEX_3D(0)]);
             MD_SIMD_FLOAT yj_tmp = simd_real_load(&cj_x[CL_Y_INDEX_3D(0)]);
             MD_SIMD_FLOAT zj_tmp = simd_real_load(&cj_x[CL_Z_INDEX_3D(0)]);
-            MD_SIMD_FLOAT delx0 = simd_real_sub(xi0_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely0 = simd_real_sub(yi0_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz0 = simd_real_sub(zi0_tmp, zj_tmp);
-            MD_SIMD_FLOAT delx1 = simd_real_sub(xi1_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely1 = simd_real_sub(yi1_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz1 = simd_real_sub(zi1_tmp, zj_tmp);
-            MD_SIMD_FLOAT delx2 = simd_real_sub(xi2_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely2 = simd_real_sub(yi2_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz2 = simd_real_sub(zi2_tmp, zj_tmp);
-            MD_SIMD_FLOAT delx3 = simd_real_sub(xi3_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely3 = simd_real_sub(yi3_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz3 = simd_real_sub(zi3_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx0  = simd_real_sub(xi0_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely0  = simd_real_sub(yi0_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz0  = simd_real_sub(zi0_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx1  = simd_real_sub(xi1_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely1  = simd_real_sub(yi1_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz1  = simd_real_sub(zi1_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx2  = simd_real_sub(xi2_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely2  = simd_real_sub(yi2_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz2  = simd_real_sub(zi2_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx3  = simd_real_sub(xi3_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely3  = simd_real_sub(yi3_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz3  = simd_real_sub(zi3_tmp, zj_tmp);
 
             MD_SIMD_FLOAT rsq0 = simd_real_fma(delx0,
                 delx0,
@@ -1176,15 +1235,22 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor) {
                 if (k < numneighs_masked) {
                     numneighs_masked--;
                 }
-                neighs(neighbor->neighbors, ci, k, nbM, nbN) = neighs(neighbor->neighbors, ci, numneighs, nbM, nbN);
+                neighs(neighbor->neighbors, ci, k, nbM, nbN) = neighs(neighbor->neighbors,
+                    ci,
+                    numneighs,
+                    nbM,
+                    nbN);
             }
         }
 
         // Readd dummy clusters if necessary
         if (CLUSTER_N < VECTOR_WIDTH) {
             while (numneighs % (VECTOR_WIDTH / CLUSTER_N)) {
-                neighs(neighbor->neighbors, ci, numneighs, nbM, nbN) =
-                    atom->dummy_cj; // Last cluster is always a dummy cluster
+                neighs(neighbor->neighbors,
+                    ci,
+                    numneighs,
+                    nbM,
+                    nbN) = atom->dummy_cj; // Last cluster is always a dummy cluster
                 neighs(neighbor->neighbors_imask, ci, numneighs, nbM, nbN) = 0;
                 numneighs++;
             }
@@ -1197,12 +1263,13 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor) {
     DEBUG_MESSAGE("pruneNeighbor end\n");
 }
 
-void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor) {
+void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("pruneNeighbor start\n");
     // MD_FLOAT cutsq = param->cutforce * param->cutforce;
     MD_FLOAT cutsq = cutneighsq;
-    const int nbM = atom->Nclusters_local;
-    const int nbN = neighbor->maxneighs;
+    const int nbM  = atom->Nclusters_local;
+    const int nbN  = neighbor->maxneighs;
 
     for (int sci = 0; sci < atom->Nclusters_local; sci++) {
         for (int scii = 0; scii < atom->siclusters[sci].nclusters; scii++) {
@@ -1211,7 +1278,8 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
 
             // Remove dummy clusters if necessary
             if (CLUSTER_N < VECTOR_WIDTH) {
-                while (neighs(neighbor->neighbors, sci, numneighs - 1, nbM, nbN) == atom->dummy_cj) {
+                while (neighs(neighbor->neighbors, sci, numneighs - 1, nbM, nbN) ==
+                       atom->dummy_cj) {
                     numneighs--;
                 }
             }
@@ -1229,12 +1297,9 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
 
                     for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
                         for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
-                            MD_FLOAT delx = ci_x[CL_X_INDEX(cii)] -
-                                            cj_x[CL_X_INDEX(cjj)];
-                            MD_FLOAT dely = ci_x[CL_Y_INDEX(cii)] -
-                                            cj_x[CL_Y_INDEX(cjj)];
-                            MD_FLOAT delz = ci_x[CL_Z_INDEX(cii)] -
-                                            cj_x[CL_Z_INDEX(cjj)];
+                            MD_FLOAT delx = ci_x[CL_X_INDEX(cii)] - cj_x[CL_X_INDEX(cjj)];
+                            MD_FLOAT dely = ci_x[CL_Y_INDEX(cii)] - cj_x[CL_Y_INDEX(cjj)];
+                            MD_FLOAT delz = ci_x[CL_Z_INDEX(cii)] - cj_x[CL_Z_INDEX(cjj)];
                             if (delx * delx + dely * dely + delz * delz < cutsq) {
                                 is_neighbor = 1;
                                 break;
@@ -1247,15 +1312,22 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
                     k++;
                 } else {
                     numneighs--;
-                    neighs(neighbor->neighbors, sci, k, nbM, nbN) = neighs(neighbor->neighbors, sci, numneighs, nbM, nbN);
+                    neighs(neighbor->neighbors,
+                        sci,
+                        k,
+                        nbM,
+                        nbN) = neighs(neighbor->neighbors, sci, numneighs, nbM, nbN);
                 }
             }
 
             // Readd dummy clusters if necessary
             if (CLUSTER_N < VECTOR_WIDTH) {
                 while (numneighs % (VECTOR_WIDTH / CLUSTER_N)) {
-                    neighs(neighbor->neighbors, sci, numneighs, nbM, nbN) =
-                        atom->dummy_cj; // Last cluster is always a dummy cluster
+                    neighs(neighbor->neighbors,
+                        sci,
+                        numneighs,
+                        nbM,
+                        nbN) = atom->dummy_cj; // Last cluster is always a dummy cluster
                     neighs(neighbor->neighbors_imask, sci, numneighs, nbM, nbN) = 0;
                     numneighs++;
                 }
@@ -1269,7 +1341,8 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
 }
 
 /* internal subroutines */
-MD_FLOAT bindist(int i, int j) {
+MD_FLOAT bindist(int i, int j)
+{
     MD_FLOAT delx, dely, delz;
 
     if (i > 0) {
@@ -1291,7 +1364,8 @@ MD_FLOAT bindist(int i, int j) {
     return (delx * delx + dely * dely);
 }
 
-int coord2bin(MD_FLOAT xin, MD_FLOAT yin) {
+int coord2bin(MD_FLOAT xin, MD_FLOAT yin)
+{
     int ix, iy;
 
     if (xin >= xprd) {
@@ -1313,7 +1387,8 @@ int coord2bin(MD_FLOAT xin, MD_FLOAT yin) {
     return (iy * mbinx + ix + 1);
 }
 
-void coord2bin2D(MD_FLOAT xin, MD_FLOAT yin, int* ix, int* iy) {
+void coord2bin2D(MD_FLOAT xin, MD_FLOAT yin, int* ix, int* iy)
+{
     if (xin >= xprd) {
         *ix = (int)((xin - xprd) * bininvx) + nbinx - mbinxlo;
     } else if (xin >= 0.0) {
@@ -1331,7 +1406,8 @@ void coord2bin2D(MD_FLOAT xin, MD_FLOAT yin, int* ix, int* iy) {
     }
 }
 
-void binAtoms(Atom* atom) {
+void binAtoms(Atom* atom)
+{
     DEBUG_MESSAGE("binAtoms start\n");
     int resize = 1;
 
@@ -1345,10 +1421,12 @@ void binAtoms(Atom* atom) {
         for (int i = 0; i < atom->Nlocal; i++) {
             int ibin = coord2bin(atom_x(i), atom_y(i));
             if (ibin < 0 || ibin >= mbins) {
-                fprintf(
-                    stderr,
+                fprintf(stderr,
                     "Error: Atom %d assigned to invalid bin %d, position: %.4f, %.4f\n",
-                    i, ibin, atom_x(i), atom_y(i));
+                    i,
+                    ibin,
+                    atom_x(i),
+                    atom_y(i));
 
                 exit(EXIT_FAILURE);
             }
@@ -1371,7 +1449,8 @@ void binAtoms(Atom* atom) {
 }
 
 // TODO: Use pigeonhole sorting
-void sortAtomsByZCoord(Atom* atom) {
+void sortAtomsByZCoord(Atom* atom)
+{
     DEBUG_MESSAGE("sortAtomsByZCoord start\n");
     for (int bin = 0; bin < mbins; bin++) {
         int c        = bincount[bin];
@@ -1402,7 +1481,8 @@ void sortAtomsByZCoord(Atom* atom) {
 }
 
 // TODO: Use pigeonhole sorting
-void sortAtomsByCoord(Atom* atom, int dim, int bin, int start_index, int end_index) {
+void sortAtomsByCoord(Atom* atom, int dim, int bin, int start_index, int end_index)
+{
     // DEBUG_MESSAGE("sortAtomsByCoord start\n");
     int* bin_ptr = &bins[bin * atoms_per_bin];
 
@@ -1410,15 +1490,11 @@ void sortAtomsByCoord(Atom* atom, int dim, int bin, int start_index, int end_ind
         int i              = bin_ptr[ac_i];
         int min_ac         = ac_i;
         int min_idx        = i;
-        MD_FLOAT min_coord = (dim == 0) ? atom_x(i) :
-                             (dim == 1) ? atom_y(i) :
-                                          atom_z(i);
+        MD_FLOAT min_coord = (dim == 0) ? atom_x(i) : (dim == 1) ? atom_y(i) : atom_z(i);
 
         for (int ac_j = ac_i + 1; ac_j <= end_index; ac_j++) {
             int j           = bin_ptr[ac_j];
-            MD_FLOAT coordj = (dim == 0) ? atom_x(j) :
-                              (dim == 1) ? atom_y(j) :
-                                           atom_z(j);
+            MD_FLOAT coordj = (dim == 0) ? atom_x(j) : (dim == 1) ? atom_y(j) : atom_z(j);
 
             if (coordj < min_coord) {
                 min_ac    = ac_j;
@@ -1434,7 +1510,8 @@ void sortAtomsByCoord(Atom* atom, int dim, int bin, int start_index, int end_ind
     // DEBUG_MESSAGE("sortAtomsByCoord end\n");
 }
 
-void buildClustersCPU(Atom* atom) {
+void buildClustersCPU(Atom* atom)
+{
     DEBUG_MESSAGE("buildClusters start\n");
     atom->Nclusters_local = 0;
 
@@ -1455,11 +1532,11 @@ void buildClustersCPU(Atom* atom) {
                 growClusters(atom, 0);
             }
 
-            int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
-            int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
-            MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
-            MD_FLOAT* ci_v  = &atom->cl_v[ci_vec_base];
-            int* ci_t       = &atom->cl_t[ci_sca_base];
+            int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
+            int ci_vec_base       = CI_VECTOR3_BASE_INDEX(ci);
+            MD_FLOAT* ci_x        = &atom->cl_x[ci_vec_base];
+            MD_FLOAT* ci_v        = &atom->cl_v[ci_vec_base];
+            int* ci_t             = &atom->cl_t[ci_sca_base];
             MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[ci_sca_base];
             MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[ci_sca_base];
             MD_FLOAT bbminx = INF, bbmaxx = -INF;
@@ -1502,8 +1579,8 @@ void buildClustersCPU(Atom* atom) {
                         bbmaxz = ztmp;
                     }
 
-                    ci_t[cii] = atom->type[i];
-                    int t = atom->type[i];
+                    ci_t[cii]        = atom->type[i];
+                    int t            = atom->type[i];
                     ci_sqrt_eps[cii] = atom->sqrt_epsilon_per_type[t];
                     ci_sigma3[cii]   = atom->sigma3_per_type[t];
                     atom->iclusters[ci].natoms++;
@@ -1533,9 +1610,10 @@ void buildClustersCPU(Atom* atom) {
     DEBUG_MESSAGE("buildClusters end\n");
 }
 
-void buildSuperclusters(Atom* atom) {
+void buildSuperclusters(Atom* atom)
+{
     DEBUG_MESSAGE("buildSuperclusters start\n");
-    atom->Nclusters_local  = 0;
+    atom->Nclusters_local = 0;
 
     /* bin local atoms */
     binAtoms(atom);
@@ -1563,30 +1641,31 @@ void buildSuperclusters(Atom* atom) {
 
             for (int scl_z = 0; scl_z < SCLUSTER_SIZE_Z; scl_z++) {
                 const int scl_z_size = SCLUSTER_SIZE_X * SCLUSTER_SIZE_Y * CLUSTER_M;
-                const int atom_CL_Z_OFFSET = scl_bin_offset + scl_z * scl_z_size;
-                const int atom_scl_z_end_idx = MIN(atom_CL_Z_OFFSET + scl_z_size - 1, c - 1);
+                const int atom_CL_Z_OFFSET   = scl_bin_offset + scl_z * scl_z_size;
+                const int atom_scl_z_end_idx = MIN(atom_CL_Z_OFFSET + scl_z_size - 1,
+                    c - 1);
 
                 // Sort atoms in the Y dimension
                 sortAtomsByCoord(atom, 1, bin, atom_CL_Z_OFFSET, atom_scl_z_end_idx);
 
                 for (int scl_y = 0; scl_y < SCLUSTER_SIZE_Y; scl_y++) {
-                    const int scl_y_size = SCLUSTER_SIZE_X * CLUSTER_M;
-                    const int atom_CL_Y_OFFSET = scl_bin_offset +
-                                                  scl_z * scl_z_size +
-                                                  scl_y * scl_y_size;
-                    const int atom_scl_y_end_idx = MIN(atom_CL_Y_OFFSET + scl_y_size - 1, c - 1);
+                    const int scl_y_size       = SCLUSTER_SIZE_X * CLUSTER_M;
+                    const int atom_CL_Y_OFFSET = scl_bin_offset + scl_z * scl_z_size +
+                                                 scl_y * scl_y_size;
+                    const int atom_scl_y_end_idx = MIN(atom_CL_Y_OFFSET + scl_y_size - 1,
+                        c - 1);
 
                     // Sort atoms in the X dimension
                     sortAtomsByCoord(atom, 0, bin, atom_CL_Y_OFFSET, atom_scl_y_end_idx);
 
                     for (int scl_x = 0; scl_x < SCLUSTER_SIZE_X; scl_x++) {
-                        const int sci_ci = atom->siclusters[sci].nclusters;
-                        const int ci = sci * SCLUSTER_SIZE + sci_ci;
-                        int sci_vec_base = SCI_VECTOR3_BASE_INDEX(sci);
-                        int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
-                        MD_FLOAT* sci_x  = &atom->cl_x[SCI_VECTOR_BASE_INDEX(sci)];
-                        MD_FLOAT* sci_v  = &atom->cl_v[sci_vec_base];
-                        int* sci_t       = &atom->cl_t[sci_sca_base];
+                        const int sci_ci       = atom->siclusters[sci].nclusters;
+                        const int ci           = sci * SCLUSTER_SIZE + sci_ci;
+                        int sci_vec_base       = SCI_VECTOR3_BASE_INDEX(sci);
+                        int sci_sca_base       = SCI_SCALAR_BASE_INDEX(sci);
+                        MD_FLOAT* sci_x        = &atom->cl_x[SCI_VECTOR_BASE_INDEX(sci)];
+                        MD_FLOAT* sci_v        = &atom->cl_v[sci_vec_base];
+                        int* sci_t             = &atom->cl_t[sci_sca_base];
                         MD_FLOAT* sci_sqrt_eps = &atom->cl_sqrt_epsilon[sci_sca_base];
                         MD_FLOAT* sci_sigma3   = &atom->cl_sigma3[sci_sca_base];
 
@@ -1605,13 +1684,18 @@ void buildSuperclusters(Atom* atom) {
                                 sci_x[CL_X_INDEX(sci_ci * CLUSTER_M + cii)] = xtmp;
                                 sci_x[CL_Y_INDEX(sci_ci * CLUSTER_M + cii)] = ytmp;
                                 sci_x[CL_Z_INDEX(sci_ci * CLUSTER_M + cii)] = ztmp;
-                                sci_v[CL_X_INDEX_3D(sci_ci * CLUSTER_M + cii)] = atom->vx[i];
-                                sci_v[CL_Y_INDEX_3D(sci_ci * CLUSTER_M + cii)] = atom->vy[i];
-                                sci_v[CL_Z_INDEX_3D(sci_ci * CLUSTER_M + cii)] = atom->vz[i];
-                                int t = atom->type[i];
+                                sci_v[CL_X_INDEX_3D(sci_ci * CLUSTER_M + cii)] =
+                                    atom->vx[i];
+                                sci_v[CL_Y_INDEX_3D(sci_ci * CLUSTER_M + cii)] =
+                                    atom->vy[i];
+                                sci_v[CL_Z_INDEX_3D(sci_ci * CLUSTER_M + cii)] =
+                                    atom->vz[i];
+                                int t                           = atom->type[i];
                                 sci_t[sci_ci * CLUSTER_M + cii] = t;
-                                sci_sqrt_eps[sci_ci * CLUSTER_M + cii] = atom->sqrt_epsilon_per_type[t];
-                                sci_sigma3[sci_ci * CLUSTER_M + cii]   = atom->sigma3_per_type[t];
+                                sci_sqrt_eps[sci_ci * CLUSTER_M + cii] =
+                                    atom->sqrt_epsilon_per_type[t];
+                                sci_sigma3[sci_ci * CLUSTER_M + cii] =
+                                    atom->sigma3_per_type[t];
 
                                 // TODO: To create the bounding boxes faster, we can use
                                 // SIMD operations
@@ -1693,9 +1777,8 @@ void buildSuperclusters(Atom* atom) {
 
     /*
     for(int sci = 0; sci < atom->Nclusters_local; sci++) {
-        printf("Supercluster %d: nclusters=%d, bbminx=%.6f, bbmaxx=%.6f, bbminy=%.6f, bbmaxy=%.6f, bbminz=%.6f, bbmaxz=%.6f\n",
-            sci,
-            atom->siclusters[sci].nclusters,
+        printf("Supercluster %d: nclusters=%d, bbminx=%.6f, bbmaxx=%.6f, bbminy=%.6f,
+    bbmaxy=%.6f, bbminz=%.6f, bbmaxz=%.6f\n", sci, atom->siclusters[sci].nclusters,
             atom->siclusters[sci].bbminx,
             atom->siclusters[sci].bbmaxx,
             atom->siclusters[sci].bbminy,
@@ -1721,11 +1804,12 @@ void buildSuperclusters(Atom* atom) {
     DEBUG_MESSAGE("buildSuperclusters end\n");
 }
 
-void defineJClusters(Parameter* param, Atom* atom) {
+void defineJClusters(Parameter* param, Atom* atom)
+{
     DEBUG_MESSAGE("defineJClusters start\n");
 
-    const int jfac            = MAX(1, CLUSTER_N / CLUSTER_M);
-    atom->ncj                 = atom->Nclusters_local * SCLUSTER_SIZE / jfac;
+    const int jfac = MAX(1, CLUSTER_N / CLUSTER_M);
+    atom->ncj      = atom->Nclusters_local * SCLUSTER_SIZE / jfac;
 
     for (int ci = 0; ci < atom->Nclusters_local * SCLUSTER_SIZE; ci++) {
         int cj0 = CJ0_FROM_CI(ci);
@@ -1842,7 +1926,8 @@ void defineJClusters(Parameter* param, Atom* atom) {
     DEBUG_MESSAGE("defineJClusters end\n");
 }
 
-void binJClusters(Parameter* param, Atom* atom) {
+void binJClusters(Parameter* param, Atom* atom)
+{
     DEBUG_MESSAGE("binJClusters start\n");
 
     /*
@@ -1878,12 +1963,13 @@ void binJClusters(Parameter* param, Atom* atom) {
         }
 
         for (int ci = 0; ci < nlocal && !resize; ci++) {
-            if(param->super_clustering) {
-                for(int sci_cj = 0; sci_cj < SCLUSTER_SIZE; sci_cj++) {
+            if (param->super_clustering) {
+                for (int sci_cj = 0; sci_cj < SCLUSTER_SIZE; sci_cj++) {
                     int bin = atom->cluster_bin[ci];
                     int c   = bin_nclusters[bin];
                     if (c + 1 < clusters_per_bin) {
-                        bin_clusters[bin * clusters_per_bin + c] = ci * SCLUSTER_SIZE + sci_cj;
+                        bin_clusters[bin * clusters_per_bin + c] = ci * SCLUSTER_SIZE +
+                                                                   sci_cj;
                         bin_nclusters[bin]++;
                     } else {
                         resize = 1;
@@ -2007,11 +2093,12 @@ void binJClusters(Parameter* param, Atom* atom) {
     DEBUG_MESSAGE("binJClusters stop\n");
 }
 
-void updateSingleAtoms(Parameter* param, Atom* atom) {
+void updateSingleAtoms(Parameter* param, Atom* atom)
+{
     DEBUG_MESSAGE("updateSingleAtoms start\n");
     int Natom = 0;
 
-    if(param->super_clustering) {
+    if (param->super_clustering) {
         for (int sci = 0; sci < atom->Nclusters_local; sci++) {
             int sci_vec_base = SCI_VECTOR3_BASE_INDEX(sci);
             int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
@@ -2019,9 +2106,9 @@ void updateSingleAtoms(Parameter* param, Atom* atom) {
             MD_FLOAT* sci_v  = &atom->cl_v[sci_vec_base];
             int* sci_t       = &atom->cl_t[sci_sca_base];
 
-            for(int sci_ci = 0; sci_ci < atom->siclusters[sci].nclusters; sci_ci++) {
+            for (int sci_ci = 0; sci_ci < atom->siclusters[sci].nclusters; sci_ci++) {
                 const int ci = sci * SCLUSTER_SIZE + sci_ci;
-                for(int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
+                for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
                     atom_x(Natom)     = sci_x[CL_X_INDEX(sci_ci * CLUSTER_M + cii)];
                     atom_y(Natom)     = sci_x[CL_Y_INDEX(sci_ci * CLUSTER_M + cii)];
                     atom_z(Natom)     = sci_x[CL_Z_INDEX(sci_ci * CLUSTER_M + cii)];
@@ -2062,7 +2149,8 @@ void updateSingleAtoms(Parameter* param, Atom* atom) {
 }
 
 // MPI Shell Methods
-static int eightZoneCluster(Atom* atom, int cj) {
+static int eightZoneCluster(Atom* atom, int cj)
+{
     // Mapping: 0->0, 1->1, 2->2, 3->6, 4->3, 5->5, 6->4, 7->7
     int zoneMapping[] = { 0, 1, 2, 6, 3, 5, 4, 7 };
     int zone          = 0;
@@ -2083,15 +2171,15 @@ static int eightZoneCluster(Atom* atom, int cj) {
     return zoneMapping[zone];
 }
 
-static int halfZoneCluster(Atom* atom, int cj) {
+static int halfZoneCluster(Atom* atom, int cj)
+{
     MD_FLOAT* hi = atom->mybox.hi;
     MD_FLOAT* lo = atom->mybox.lo;
 
     if (atom->jclusters[cj].bbmaxx < lo[0] && atom->jclusters[cj].bbmaxy < hi[1] &&
         atom->jclusters[cj].bbmaxz < hi[2]) {
         return 0;
-    } else if (atom->jclusters[cj].bbmaxy < lo[1] &&
-               atom->jclusters[cj].bbmaxz < hi[2]) {
+    } else if (atom->jclusters[cj].bbmaxy < lo[1] && atom->jclusters[cj].bbmaxz < hi[2]) {
         return 0;
     } else if (atom->jclusters[cj].bbmaxz < lo[2]) {
         return 0;
@@ -2100,7 +2188,8 @@ static int halfZoneCluster(Atom* atom, int cj) {
     }
 }
 
-int BoxGhostDistance(Atom* atom, int ci, int cj) {
+int BoxGhostDistance(Atom* atom, int ci, int cj)
+{
     MD_FLOAT dl  = atom->jclusters[ci].bbminx - atom->jclusters[cj].bbmaxx;
     MD_FLOAT dh  = atom->jclusters[cj].bbminx - atom->jclusters[ci].bbmaxx;
     MD_FLOAT dm  = MAX(dl, dh);
@@ -2122,7 +2211,8 @@ int BoxGhostDistance(Atom* atom, int ci, int cj) {
     return dx2 > cutneighsq ? 0 : dy2 > cutneighsq ? 0 : dz2 > cutneighsq ? 0 : 1;
 }
 
-static int ghostClusterinRange(Atom* atom, int cs, int cg, MD_FLOAT rsq) {
+static int ghostClusterinRange(Atom* atom, int cs, int cg, MD_FLOAT rsq)
+{
     int cs_vec_base = CJ_VECTOR_BASE_INDEX(cs);
     int cj_vec_base = CJ_VECTOR_BASE_INDEX(cg);
     MD_FLOAT* cs_x  = &atom->cl_x[cs_vec_base];
@@ -2142,7 +2232,8 @@ static int ghostClusterinRange(Atom* atom, int cs, int cg, MD_FLOAT rsq) {
     return 0;
 }
 
-static void neighborGhost(Atom* atom, Neighbor* neighbor){
+static void neighborGhost(Atom* atom, Neighbor* neighbor)
+{
     int Nshell         = 0;
     int Ncluster_local = atom->Nclusters_local;
     int Nclusterghost  = atom->Nclusters_ghost;

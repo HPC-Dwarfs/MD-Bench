@@ -41,7 +41,8 @@ static int test_pbc_wraps_positions(void)
     atom->x = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
     atom->y = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
     atom->z = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
-    ASSERT_TRUE(atom->x != NULL && atom->y != NULL && atom->z != NULL, "alloc x,y,z (SOA)");
+    ASSERT_TRUE(atom->x != NULL && atom->y != NULL && atom->z != NULL,
+        "alloc x,y,z (SOA)");
 #endif
     atom->vx   = (MD_FLOAT*)calloc(atom->Nmax, sizeof(MD_FLOAT));
     atom->vy   = (MD_FLOAT*)calloc(atom->Nmax, sizeof(MD_FLOAT));
@@ -96,7 +97,8 @@ static int test_pack_unpack_exchange_roundtrip(void)
     atom->x = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
     atom->y = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
     atom->z = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
-    ASSERT_TRUE(atom->x != NULL && atom->y != NULL && atom->z != NULL, "alloc x,y,z (SOA)");
+    ASSERT_TRUE(atom->x != NULL && atom->y != NULL && atom->z != NULL,
+        "alloc x,y,z (SOA)");
 #endif
     atom->vx   = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
     atom->vy   = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
@@ -106,24 +108,24 @@ static int test_pack_unpack_exchange_roundtrip(void)
     ASSERT_TRUE(atom->vx && atom->vy && atom->vz && atom->type, "alloc velocities/types");
 
     /* Original values. */
-    atom_x(0)    = 1.0;
-    atom_y(0)    = 2.0;
-    atom_z(0)    = 3.0;
-    atom_vx(0)   = 0.1;
-    atom_vy(0)   = 0.2;
-    atom_vz(0)   = 0.3;
+    atom_x(0)     = 1.0;
+    atom_y(0)     = 2.0;
+    atom_z(0)     = 3.0;
+    atom_vx(0)    = 0.1;
+    atom_vy(0)    = 0.2;
+    atom_vz(0)    = 0.3;
     atom->type[0] = 7;
 
     MD_FLOAT buf[7];
     int m1 = packExchange(atom, 0, buf);
 
     /* Clear atom and unpack. */
-    atom_x(0)    = 0.0;
-    atom_y(0)    = 0.0;
-    atom_z(0)    = 0.0;
-    atom_vx(0)   = 0.0;
-    atom_vy(0)   = 0.0;
-    atom_vz(0)   = 0.0;
+    atom_x(0)     = 0.0;
+    atom_y(0)     = 0.0;
+    atom_z(0)     = 0.0;
+    atom_vx(0)    = 0.0;
+    atom_vy(0)    = 0.0;
+    atom_vz(0)    = 0.0;
     atom->type[0] = 0;
 
     int m2 = unpackExchange(atom, 0, buf);
@@ -158,19 +160,15 @@ int run_atom_tests(void)
 
     tr_log("  atom: typeStr2int");
     rc = test_typeStr2int_valid_and_error();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  atom: pbc wraps positions");
     rc = test_pbc_wraps_positions();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  atom: pack/unpack exchange roundtrip");
     rc = test_pack_unpack_exchange_roundtrip();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     return 0;
 }
-

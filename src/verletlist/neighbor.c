@@ -87,7 +87,7 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
         half_stencil      = 1;
     }
     neighbor->half_neigh = param->half_neigh;
-    
+
     me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -147,7 +147,7 @@ void setupNeighbor(Parameter* param)
         bininvy  = 1.0 / binsizey;
         bininvz  = 1.0 / binsizez;
     }
-   
+
     pad_x = (int)(cutneigh * bininvx);
     while (pad_x * binsizex < FACTOR * cutneigh)
         pad_x++;
@@ -190,21 +190,21 @@ void setupNeighbor(Parameter* param)
     mbinzlo = mbinzlo - 1;
     mbinzhi = mbinzhi + 1;
 
-/*
-    mbinxlo = mbinxlo - 1;
-    mbinxhi = mbinxhi + 1;
-    mbinx   = mbinxhi - mbinxlo + 1;
+    /*
+        mbinxlo = mbinxlo - 1;
+        mbinxhi = mbinxhi + 1;
+        mbinx   = mbinxhi - mbinxlo + 1;
 
-    mbinylo = mbinylo - 1;
-    mbinyhi = mbinyhi + 1;
-    mbiny   = mbinyhi - mbinylo + 1;
+        mbinylo = mbinylo - 1;
+        mbinyhi = mbinyhi + 1;
+        mbiny   = mbinyhi - mbinylo + 1;
 
-    mbinzlo = mbinzlo - 1;
-    mbinzhi = mbinzhi + 1;
-    mbinz   = mbinzhi - mbinzlo + 1;
-*/
+        mbinzlo = mbinzlo - 1;
+        mbinzhi = mbinzhi + 1;
+        mbinz   = mbinzhi - mbinzlo + 1;
+    */
     nextx = (int)(cutneigh * bininvx);
-    while (nextx * binsizex < FACTOR * cutneigh) { 
+    while (nextx * binsizex < FACTOR * cutneigh) {
         nextx++;
         pad_x++;
     }
@@ -257,7 +257,8 @@ void setupNeighbor(Parameter* param)
     bins = (int*)malloc(mbins * atoms_per_bin * sizeof(int));
 }
 
-void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
+void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("buildNeighborCPU begin\n");
     int nall = atom->Nlocal + atom->Nghost;
 
@@ -277,9 +278,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
     /* loop over each atom, storing neighbors */
     while (resize) {
         int new_maxneighs = neighbor->maxneighs;
-        int resize_local   = 0;
+        int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs) reduction(| : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
+    reduction(| : resize_local)
         for (int i = 0; i < atom->Nlocal; i++) {
             int n         = 0;
             MD_FLOAT xtmp = atom_x(i);
@@ -312,7 +314,11 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
                     const MD_FLOAT cutoff = cutneighsq;
 #endif
                     if (rsq <= cutoff) {
-                        neighs(neighbor->neighbors, i, n, atom->Nlocal, neighbor->maxneighs) = j;
+                        neighs(neighbor->neighbors,
+                            i,
+                            n,
+                            atom->Nlocal,
+                            neighbor->maxneighs) = j;
                         n++;
                     }
                 }
@@ -346,7 +352,8 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor) {
 }
 
 /* internal subroutines */
-MD_FLOAT bindist(int i, int j, int k) {
+MD_FLOAT bindist(int i, int j, int k)
+{
     MD_FLOAT delx, dely, delz;
 
     if (i > 0) {
@@ -376,7 +383,8 @@ MD_FLOAT bindist(int i, int j, int k) {
     return (delx * delx + dely * dely + delz * delz);
 }
 
-int coord2bin(MD_FLOAT xin, MD_FLOAT yin, MD_FLOAT zin) {
+int coord2bin(MD_FLOAT xin, MD_FLOAT yin, MD_FLOAT zin)
+{
     int ix, iy, iz;
     MD_FLOAT eps = 1e-9;
     MD_FLOAT xlo = 0.0;
@@ -420,7 +428,8 @@ int coord2bin(MD_FLOAT xin, MD_FLOAT yin, MD_FLOAT zin) {
     */
 }
 
-void binatoms(Atom* atom) {
+void binatoms(Atom* atom)
+{
     DEBUG_MESSAGE("binatoms begin\n");
 
     int nall   = atom->Nlocal + atom->Nghost;
@@ -454,7 +463,8 @@ void binatoms(Atom* atom) {
     DEBUG_MESSAGE("binatoms end\n");
 }
 
-void sortAtom(Atom* atom) {
+void sortAtom(Atom* atom)
+{
     DEBUG_MESSAGE("sortAtom begin\n");
 
     binatoms(atom);
@@ -528,7 +538,8 @@ void sortAtom(Atom* atom) {
 /* internal subroutines
 Added with MPI*/
 
-static int ghostZone(Atom* atom, int i) {
+static int ghostZone(Atom* atom, int i)
+{
     if (i < atom->Nlocal) return 1;
     else if (method == halfShell)
         return halfZone(atom, i);
@@ -538,7 +549,8 @@ static int ghostZone(Atom* atom, int i) {
         return 0;
 }
 
-static int eightZone(Atom* atom, int i) {
+static int eightZone(Atom* atom, int i)
+{
     // Mapping: 0->0, 1->1, 2->2, 3->6, 4->3, 5->5, 6->4, 7->7
     int zoneMapping[] = { 0, 1, 2, 6, 3, 5, 4, 7 };
     MD_FLOAT* hi      = atom->mybox.hi;
@@ -559,7 +571,8 @@ static int eightZone(Atom* atom, int i) {
     return zoneMapping[zone];
 }
 
-static int halfZone(Atom* atom, int i) {
+static int halfZone(Atom* atom, int i)
+{
     MD_FLOAT* hi = atom->mybox.hi;
     MD_FLOAT* lo = atom->mybox.lo;
 
@@ -574,7 +587,8 @@ static int halfZone(Atom* atom, int i) {
     }
 }
 
-static void neighborGhost(Atom* atom, Neighbor* neighbor) {
+static void neighborGhost(Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("neighborGhost begin\n");
 
     int Nshell = 0;
@@ -610,13 +624,13 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor) {
     while (resize) {
         resize = 0;
         for (int i = 0; i < Nshell; i++) {
-            int n           = 0;
-            int iatom       = neighbor->listshell[i];
-            int izone       = ghostZone(atom, iatom);
-            MD_FLOAT xtmp   = atom_x(iatom);
-            MD_FLOAT ytmp   = atom_y(iatom);
-            MD_FLOAT ztmp   = atom_z(iatom);
-            int ibin        = coord2bin(xtmp, ytmp, ztmp);
+            int n         = 0;
+            int iatom     = neighbor->listshell[i];
+            int izone     = ghostZone(atom, iatom);
+            MD_FLOAT xtmp = atom_x(iatom);
+            MD_FLOAT ytmp = atom_y(iatom);
+            MD_FLOAT ztmp = atom_z(iatom);
+            int ibin      = coord2bin(xtmp, ytmp, ztmp);
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
             int type_i = atom->type[iatom];
@@ -648,7 +662,11 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor) {
                     const MD_FLOAT cutoff = cutneighsq;
 #endif
                     if (rsq <= cutoff) {
-                        neighs(neighbor->neighshell, i, n, Nshell, neighbor->maxneighs) = jatom;
+                        neighs(neighbor->neighshell,
+                            i,
+                            n,
+                            Nshell,
+                            neighbor->maxneighs) = jatom;
                         n++;
                     }
                 }
@@ -673,7 +691,8 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor) {
     DEBUG_MESSAGE("neighborGhost end\n");
 }
 
-static inline int skipNeigh(Atom* atom, int i, int j) {
+static inline int skipNeigh(Atom* atom, int i, int j)
+{
     if (i > j && j < atom->Nlocal) {
         return 1;
     } else if (atom_z(i) > atom_z(j) && j >= atom->Nlocal) {

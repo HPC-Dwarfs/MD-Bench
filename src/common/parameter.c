@@ -4,10 +4,10 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #include <atom.h>
 #include <force.h>
@@ -28,38 +28,49 @@
 #endif
 
 // Compute per-type sqrt(epsilon) and sigma^3 for geometric combination rule
-void computePerTypeLJParameters(int ntypes, Parameter* param, MD_FLOAT* sqrt_epsilon, MD_FLOAT* sigma3) {
+void computePerTypeLJParameters(
+    int ntypes, Parameter* param, MD_FLOAT* sqrt_epsilon, MD_FLOAT* sigma3)
+{
     int param_ntypes = param->ntypes;
     for (int t = 0; t < ntypes; t++) {
-        MD_FLOAT eps = (t < param_ntypes && param->epsilon_per_type) ? param->epsilon_per_type[t] : param->epsilon;
-        MD_FLOAT sig = (t < param_ntypes && param->sigma_per_type) ? param->sigma_per_type[t] : param->sigma;
+        MD_FLOAT eps    = (t < param_ntypes && param->epsilon_per_type)
+                              ? param->epsilon_per_type[t]
+                              : param->epsilon;
+        MD_FLOAT sig    = (t < param_ntypes && param->sigma_per_type)
+                              ? param->sigma_per_type[t]
+                              : param->sigma;
         sqrt_epsilon[t] = sqrt(eps);
-        sigma3[t] = sig * sig * sig;
+        sigma3[t]       = sig * sig * sig;
     }
 }
 
 // Compute type-pair matrix from per-type arrays (for scalar kernels)
 // epsilon[i*ntypes+j] = sqrt_epsilon[i] * sqrt_epsilon[j]
 // sigma6[i*ntypes+j] = sigma3[i] * sigma3[j]
-void computeTypePairLJParameters(int ntypes, MD_FLOAT* sqrt_epsilon_per_type, MD_FLOAT* sigma3_per_type,
-                                  MD_FLOAT* epsilon, MD_FLOAT* sigma6) {
+void computeTypePairLJParameters(int ntypes,
+    MD_FLOAT* sqrt_epsilon_per_type,
+    MD_FLOAT* sigma3_per_type,
+    MD_FLOAT* epsilon,
+    MD_FLOAT* sigma6)
+{
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     // For single type, we only need one value (will be broadcast anyway)
     epsilon[0] = sqrt_epsilon_per_type[0] * sqrt_epsilon_per_type[0];
-    sigma6[0] = sigma3_per_type[0] * sigma3_per_type[0];
+    sigma6[0]  = sigma3_per_type[0] * sigma3_per_type[0];
 #else
     // Geometric combination: compute all pairs
     for (int i = 0; i < ntypes; i++) {
         for (int j = 0; j < ntypes; j++) {
-            int idx = i * ntypes + j;
+            int idx      = i * ntypes + j;
             epsilon[idx] = sqrt_epsilon_per_type[i] * sqrt_epsilon_per_type[j];
-            sigma6[idx] = sigma3_per_type[i] * sigma3_per_type[j];
+            sigma6[idx]  = sigma3_per_type[i] * sigma3_per_type[j];
         }
     }
 #endif
 }
 
-void initParameter(Parameter* param) {
+void initParameter(Parameter* param)
+{
     param->input_file      = NULL;
     param->vtk_file        = NULL;
     param->xtc_file        = NULL;
@@ -71,34 +82,34 @@ void initParameter(Parameter* param) {
     param->sigma6          = 1.0;
     param->rho             = 0.8442;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
-    param->ntypes        = 1;
+    param->ntypes = 1;
 #else
-    param->ntypes        = 4;
+    param->ntypes = 4;
 #endif
-    param->epsilon_per_type  = NULL;
-    param->sigma_per_type    = NULL;
-    param->ntimes        = 200;
-    param->dt            = 0.005;
-    param->nx            = 32;
-    param->ny            = 32;
-    param->nz            = 32;
-    param->pbc_x         = 1;
-    param->pbc_y         = 1;
-    param->pbc_z         = 1;
-    param->cutforce      = 2.5;
-    param->skin          = 0.3;
-    param->cutneigh      = param->cutforce + param->skin;
-    param->temp          = 1.44;
-    param->nstat         = 100;
-    param->mass          = 1.0;
-    param->dtforce       = 0.5 * param->dt;
-    param->reneigh_every = 20;
-    param->resort_every  = 400;
-    param->prune_every   = 1000;
-    param->x_out_every   = 20;
-    param->v_out_every   = 5;
-    param->half_neigh    = 0;
-    param->proc_freq     = 2.4;
+    param->epsilon_per_type = NULL;
+    param->sigma_per_type   = NULL;
+    param->ntimes           = 200;
+    param->dt               = 0.005;
+    param->nx               = 32;
+    param->ny               = 32;
+    param->nz               = 32;
+    param->pbc_x            = 1;
+    param->pbc_y            = 1;
+    param->pbc_z            = 1;
+    param->cutforce         = 2.5;
+    param->skin             = 0.3;
+    param->cutneigh         = param->cutforce + param->skin;
+    param->temp             = 1.44;
+    param->nstat            = 100;
+    param->mass             = 1.0;
+    param->dtforce          = 0.5 * param->dt;
+    param->reneigh_every    = 20;
+    param->resort_every     = 400;
+    param->prune_every      = 1000;
+    param->x_out_every      = 20;
+    param->v_out_every      = 5;
+    param->half_neigh       = 0;
+    param->proc_freq        = 2.4;
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
     param->super_clustering = 1;
 #else
@@ -111,7 +122,8 @@ void initParameter(Parameter* param) {
     param->setup         = 1;
 }
 
-void readParameter(Parameter* param, const char* filename) {
+void readParameter(Parameter* param, const char* filename)
+{
     FILE* fp = fopen(filename, "r");
     char line[MAXLINE];
     int i;
@@ -177,7 +189,8 @@ void readParameter(Parameter* param, const char* filename) {
                 int type_id = atoi(tok + 13);
                 if (type_id >= 0 && type_id < param->ntypes) {
                     if (param->epsilon_per_type == NULL) {
-                        param->epsilon_per_type = (MD_FLOAT*)malloc(param->ntypes * sizeof(MD_FLOAT));
+                        param->epsilon_per_type = (MD_FLOAT*)malloc(
+                            param->ntypes * sizeof(MD_FLOAT));
                         for (int i = 0; i < param->ntypes; i++) {
                             param->epsilon_per_type[i] = param->epsilon;
                         }
@@ -191,7 +204,8 @@ void readParameter(Parameter* param, const char* filename) {
                 int type_id = atoi(tok + 11);
                 if (type_id >= 0 && type_id < param->ntypes) {
                     if (param->sigma_per_type == NULL) {
-                        param->sigma_per_type = (MD_FLOAT*)malloc(param->ntypes * sizeof(MD_FLOAT));
+                        param->sigma_per_type = (MD_FLOAT*)malloc(
+                            param->ntypes * sizeof(MD_FLOAT));
                         for (int i = 0; i < param->ntypes; i++) {
                             param->sigma_per_type[i] = param->sigma;
                         }
@@ -214,13 +228,18 @@ void readParameter(Parameter* param, const char* filename) {
     fclose(fp);
 }
 
-void printParameter(Parameter* param) {
+void printParameter(Parameter* param)
+{
     fprintf(stdout, "SIMULATION PARAMETERS\n");
-    fprintf(stdout, "-------------------------------------------------------------------------------\n");
+    fprintf(stdout,
+        "-------------------------------------------------------------------------------"
+        "\n");
 
     // Computational kernel
     fprintf(stdout, "  Computational Kernel:\n");
-    fprintf(stdout, "    Force field:                       %s\n", ff2str(param->force_field));
+    fprintf(stdout,
+        "    Force field:                       %s\n",
+        ff2str(param->force_field));
 #ifdef CLUSTER_M
     fprintf(stdout,
         "    Kernel:                            %s (MxN: %dx%d, Vector width: %d)\n",
@@ -234,7 +253,9 @@ void printParameter(Parameter* param) {
 
 #ifdef CUDA_TARGET
     fprintf(stdout, "    SIMD/Architecture:                 CUDA\n");
-    fprintf(stdout, "    Super-clustering:                  %s\n", (param->super_clustering) ? "yes" : "no");
+    fprintf(stdout,
+        "    Super-clustering:                  %s\n",
+        (param->super_clustering) ? "yes" : "no");
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
 #endif
@@ -256,15 +277,18 @@ void printParameter(Parameter* param) {
     if (param->eam_file != NULL) {
         fprintf(stdout, "    EAM file:                          %s\n", param->eam_file);
     }
-    fprintf(stdout, "    Unit cells (nx,ny,nz):             %d x %d x %d\n",
+    fprintf(stdout,
+        "    Unit cells (nx,ny,nz):             %d x %d x %d\n",
         param->nx,
         param->ny,
         param->nz);
-    fprintf(stdout, "    Domain box sizes:                  %.2e x %.2e x %.2e\n",
+    fprintf(stdout,
+        "    Domain box sizes:                  %.2e x %.2e x %.2e\n",
         param->xprd,
         param->yprd,
         param->zprd);
-    fprintf(stdout, "    Periodic boundary:                 %s %s %s\n",
+    fprintf(stdout,
+        "    Periodic boundary:                 %s %s %s\n",
         param->pbc_x ? "x" : "-",
         param->pbc_y ? "y" : "-",
         param->pbc_z ? "z" : "-");
@@ -302,11 +326,17 @@ void printParameter(Parameter* param) {
     fprintf(stdout, "    Timestep (dt):                     %.6e\n", param->dt);
     fprintf(stdout, "    Cutoff radius:                     %.6e\n", param->cutforce);
     fprintf(stdout, "    Skin distance:                     %.6e\n", param->skin);
-    fprintf(stdout, "    Half neighbor-lists:               %s\n", param->half_neigh ? "yes" : "no");
-    fprintf(stdout, "    Reneighbor every:                  %d steps\n", param->reneigh_every);
+    fprintf(stdout,
+        "    Half neighbor-lists:               %s\n",
+        param->half_neigh ? "yes" : "no");
+    fprintf(stdout,
+        "    Reneighbor every:                  %d steps\n",
+        param->reneigh_every);
     fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
 #ifdef SORT_ATOMS
-    fprintf(stdout, "    Resort atoms every:                %d steps\n", param->resort_every);
+    fprintf(stdout,
+        "    Resort atoms every:                %d steps\n",
+        param->resort_every);
 #endif
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     fprintf(stdout, "    LJ combination rule:               single\n");
@@ -315,10 +345,18 @@ void printParameter(Parameter* param) {
 #else
     fprintf(stdout, "    LJ combination rule:               none\n");
 #endif
-    fprintf(stdout, "    Prune every:                       %d steps\n", param->prune_every);
-    fprintf(stdout, "    Output positions:                  every %d steps\n", param->x_out_every);
-    fprintf(stdout, "    Output velocities:                 every %d steps\n", param->v_out_every);
-    fprintf(stdout, "    Processor freq:                    %.2f GHz\n", param->proc_freq);
+    fprintf(stdout,
+        "    Prune every:                       %d steps\n",
+        param->prune_every);
+    fprintf(stdout,
+        "    Output positions:                  every %d steps\n",
+        param->x_out_every);
+    fprintf(stdout,
+        "    Output velocities:                 every %d steps\n",
+        param->v_out_every);
+    fprintf(stdout,
+        "    Processor freq:                    %.2f GHz\n",
+        param->proc_freq);
 
     // Parallel configuration
     fprintf(stdout, "\n  Parallel Configuration:\n");
@@ -340,7 +378,9 @@ void printParameter(Parameter* param) {
                                 : "cartesian");
     fprintf(stdout, "    Domain partition:                  %s\n", str);
     if (param->balance)
-        fprintf(stdout, "    Rebalancing every:                 %d steps\n", param->balance_every);
+        fprintf(stdout,
+            "    Rebalancing every:                 %d steps\n",
+            param->balance_every);
 #else
     fprintf(stdout, "    MPI ranks:                         1 (not compiled)\n");
 #endif
@@ -377,11 +417,16 @@ void printParameter(Parameter* param) {
     }
 
     fprintf(stdout, "    OpenMP threads:                    %d\n", nthreads);
-    fprintf(stdout, "    OpenMP schedule:                   (%s,%d)\n", schedType, chunkSize);
+    fprintf(stdout,
+        "    OpenMP schedule:                   (%s,%d)\n",
+        schedType,
+        chunkSize);
 #else
     fprintf(stdout, "    OpenMP threads:                    1 (not compiled)\n");
 #endif
 
-    fprintf(stdout, "-------------------------------------------------------------------------------\n");
+    fprintf(stdout,
+        "-------------------------------------------------------------------------------"
+        "\n");
     fflush(stdout);
 }

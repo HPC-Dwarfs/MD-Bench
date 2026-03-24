@@ -71,8 +71,8 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
     }
 
     for (int i = 0; i < atom->Nlocal; i++) {
-        int j         = (pattern == P_SEQ) ? (i + 1) : 0;
-        int m         = (pattern == P_SEQ) ? atom->Nlocal : nneighs;
+        int j = (pattern == P_SEQ) ? (i + 1) : 0;
+        int m = (pattern == P_SEQ) ? atom->Nlocal : nneighs;
 
         for (int k = 0; k < nneighs; k++) {
             if (pattern == P_RAND) {
@@ -88,15 +88,22 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
                     }
                 } while (found == 1);
             } else {
-		neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor->maxneighs) = j;
-                j           = (j + 1) % m;
+                neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor->maxneighs) = j;
+                j = (j + 1) % m;
             }
         }
 
         for (int r = 1; r < nreps; r++) {
             for (int k = 0; k < nneighs; k++) {
-		neighs(neighbor->neighbors, i, r * nneighs + k, atom->Nlocal, neighbor->maxneighs) = 
-		    neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor->maxneighs);
+                neighs(neighbor->neighbors,
+                    i,
+                    r * nneighs + k,
+                    atom->Nlocal,
+                    neighbor->maxneighs) = neighs(neighbor->neighbors,
+                    i,
+                    k,
+                    atom->Nlocal,
+                    neighbor->maxneighs);
             }
         }
 
@@ -227,9 +234,9 @@ int main(int argc, const char* argv[])
         }
 
         atom->type[atom->Nlocal] = rand() % atom->ntypes;
-        atom_x(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
-        atom_y(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
-        atom_z(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
+        atom_x(atom->Nlocal)     = (MD_FLOAT)(i) * 0.00001;
+        atom_y(atom->Nlocal)     = (MD_FLOAT)(i) * 0.00001;
+        atom_z(atom->Nlocal)     = (MD_FLOAT)(i) * 0.00001;
         atom_vx(atom->Nlocal)    = 0.0;
         atom_vy(atom->Nlocal)    = 0.0;
         atom_vz(atom->Nlocal)    = 0.0;

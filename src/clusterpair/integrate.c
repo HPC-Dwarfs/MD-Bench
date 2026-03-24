@@ -26,10 +26,11 @@ IntegrationFunction initialIntegrate = initialIntegrateCPU;
 IntegrationFunction finalIntegrate   = finalIntegrateCPU;
 #endif
 
-void initialIntegrateCPU(Parameter* param, Atom* atom) {
+void initialIntegrateCPU(Parameter* param, Atom* atom)
+{
     DEBUG_MESSAGE("cpuInitialIntegrate start\n");
 
-    #pragma omp parallel for schedule(runtime)
+#pragma omp parallel for schedule(runtime)
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
         int ciVecBase = CI_VECTOR3_BASE_INDEX(ci);
         MD_FLOAT* ciX = &atom->cl_x[ciVecBase];
@@ -50,13 +51,12 @@ void initialIntegrateCPU(Parameter* param, Atom* atom) {
         MD_FLOAT threshold = 10000.0;
         for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
             if(
-                ciX[CL_X_INDEX_3D(cii)] < -threshold || ciX[CL_X_INDEX_3D(cii)] > threshold ||
-                ciX[CL_Y_INDEX_3D(cii)] < -threshold || ciX[CL_Y_INDEX_3D(cii)] > threshold ||
-                ciX[CL_Z_INDEX_3D(cii)] < -threshold || ciX[CL_Z_INDEX_3D(cii)] > threshold) {
-                fprintf(stdout, "INVALID CLUSTER: %d\n", ci);
-                fprintf(stdout, "%f, %f, %f\n", ciX[CL_X_INDEX_3D + cii], ciX[CL_Y_INDEX_3D(cii)], ciX[CL_Z_INDEX_3D(cii)]);
-                exit(-1);
-                break;
+                ciX[CL_X_INDEX_3D(cii)] < -threshold || ciX[CL_X_INDEX_3D(cii)] >
+        threshold || ciX[CL_Y_INDEX_3D(cii)] < -threshold || ciX[CL_Y_INDEX_3D(cii)] >
+        threshold || ciX[CL_Z_INDEX_3D(cii)] < -threshold || ciX[CL_Z_INDEX_3D(cii)] >
+        threshold) { fprintf(stdout, "INVALID CLUSTER: %d\n", ci); fprintf(stdout, "%f,
+        %f, %f\n", ciX[CL_X_INDEX_3D + cii], ciX[CL_Y_INDEX_3D(cii)],
+        ciX[CL_Z_INDEX_3D(cii)]); exit(-1); break;
             }
         }
         */
@@ -65,10 +65,11 @@ void initialIntegrateCPU(Parameter* param, Atom* atom) {
     DEBUG_MESSAGE("cpuInitialIntegrate end\n");
 }
 
-void finalIntegrateCPU(Parameter* param, Atom* atom) {
+void finalIntegrateCPU(Parameter* param, Atom* atom)
+{
     DEBUG_MESSAGE("cpuFinalIntegrate start\n");
 
-    #pragma omp parallel for schedule(runtime)
+#pragma omp parallel for schedule(runtime)
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
         int ciVecBase = CI_VECTOR3_BASE_INDEX(ci);
         MD_FLOAT* ciV = &atom->cl_v[ciVecBase];

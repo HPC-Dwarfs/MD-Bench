@@ -1,9 +1,9 @@
 #include "test_runner.h"
 
 #include <atom.h>
+#include <force.h>
 #include <neighbor.h>
 #include <parameter.h>
-#include <force.h>
 #include <pbc.h>
 #include <util.h>
 
@@ -35,10 +35,10 @@ static void build_small_system(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
     initParameter(param);
     /* Keep the default LJ solid but reduce system size. */
-    param->nx       = 4;
-    param->ny       = 4;
-    param->nz       = 4;
-    param->ntimes   = 0;
+    param->nx         = 4;
+    param->ny         = 4;
+    param->nz         = 4;
+    param->ntimes     = 0;
     param->half_neigh = 0;
 
     initAtom(atom);
@@ -65,12 +65,12 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
 
     build_small_system(&param, &atom, &neighbor);
 
-    const MD_FLOAT cutneigh     = param.cutneigh;
-    const MD_FLOAT cutneighsq   = cutneigh * cutneigh;
-    const int nci               = atom.Nclusters_local;
-    const int ncj_total         = atom.ncj + atom.Nclusters_ghost;
-    const int nbM               = nci;
-    const int nbN               = neighbor.maxneighs;
+    const MD_FLOAT cutneigh   = param.cutneigh;
+    const MD_FLOAT cutneighsq = cutneigh * cutneigh;
+    const int nci             = atom.Nclusters_local;
+    const int ncj_total       = atom.ncj + atom.Nclusters_ghost;
+    const int nbM             = nci;
+    const int nbN             = neighbor.maxneighs;
 
     /* If no clusters or neighbor arrays are present (e.g., degenerate setup),
        skip this check without failing the whole test suite. */
@@ -107,7 +107,7 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
         }
 
         /* Check soundness: any listed neighbor should be reasonably close. */
-        int spurious = 0;
+        int spurious          = 0;
         const MD_FLOAT margin = (MD_FLOAT)1.01; /* tiny numerical slack */
         for (int cj = 0; cj < ncj_total && !spurious; ++cj) {
             if (present[cj]) {
@@ -133,9 +133,7 @@ int run_neighbor_tests(void)
 
     tr_log("  neighbor: bbox vs list consistency");
     rc = test_neighbor_vs_bruteforce_bounding_boxes();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     return 0;
 }
-

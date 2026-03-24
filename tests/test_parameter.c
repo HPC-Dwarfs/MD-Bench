@@ -1,7 +1,7 @@
 #include "test_runner.h"
 
-#include <parameter.h>
 #include <force.h>
+#include <parameter.h>
 
 /* Simple helper to write a small temporary parameter file. */
 static const char* write_temp_param_file(void)
@@ -57,7 +57,9 @@ static int test_initParameter_defaults(void)
     ASSERT_NEAR(p.dtforce, 0.5 * p.dt, 1e-12, "dtforce = 0.5 * dt");
 
     ASSERT_INT_EQ(p.reneigh_every, 20, "default reneigh_every");
-    ASSERT_INT_EQ(p.balance_every, p.reneigh_every, "default balance_every = reneigh_every");
+    ASSERT_INT_EQ(p.balance_every,
+        p.reneigh_every,
+        "default balance_every = reneigh_every");
 
     return 0;
 }
@@ -101,9 +103,9 @@ static int test_computePerTypeLJParameters(void)
 
     MD_FLOAT eps_arr[2] = { 1.0, 4.0 };
     MD_FLOAT sig_arr[2] = { 1.0, 2.0 };
-    p.ntypes           = 2;
-    p.epsilon_per_type = eps_arr;
-    p.sigma_per_type   = sig_arr;
+    p.ntypes            = 2;
+    p.epsilon_per_type  = eps_arr;
+    p.sigma_per_type    = sig_arr;
 
     MD_FLOAT sqrt_eps[2], sigma3[2];
     computePerTypeLJParameters(2, &p, sqrt_eps, sigma3);
@@ -201,29 +203,23 @@ int run_parameter_tests(void)
 
     tr_log("  parameter: initParameter defaults");
     rc = test_initParameter_defaults();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  parameter: readParameter overrides and derived values");
     rc = test_readParameter_overrides_and_derived();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  parameter: computePerTypeLJParameters math and fallback");
     rc = test_computePerTypeLJParameters();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  parameter: computeTypePairLJParameters NxN matrix");
     rc = test_computeTypePairLJParameters();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  parameter: readParameter multi-type LJ parsing");
     rc = test_readParameter_multitype_lj();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     return 0;
 }
-

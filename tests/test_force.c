@@ -3,8 +3,15 @@
 #include <math.h>
 
 /* Mirror the Lennard-Jones force calculation used in computeForceLJRef. */
-static void lj_force(
-    double epsilon, double sigma6, double cutforcesq, double dx, double dy, double dz, double* fx, double* fy, double* fz)
+static void lj_force(double epsilon,
+    double sigma6,
+    double cutforcesq,
+    double dx,
+    double dy,
+    double dz,
+    double* fx,
+    double* fy,
+    double* fz)
 {
     double rsq = dx * dx + dy * dy + dz * dz;
     if (rsq >= cutforcesq) {
@@ -80,7 +87,15 @@ static int test_lj_cutoff_gating(void)
     /* Slightly inside the cutoff */
     lj_force(epsilon, sigma6, cutforcesq, 0.99 * rcut, 0.0, 0.0, &fx_in, &fy_in, &fz_in);
     /* Slightly outside the cutoff */
-    lj_force(epsilon, sigma6, cutforcesq, 1.01 * rcut, 0.0, 0.0, &fx_out, &fy_out, &fz_out);
+    lj_force(epsilon,
+        sigma6,
+        cutforcesq,
+        1.01 * rcut,
+        0.0,
+        0.0,
+        &fx_out,
+        &fy_out,
+        &fz_out);
 
     ASSERT_TRUE(fabs(fx_in) > 0.0, "non-zero force inside cutoff");
     ASSERT_NEAR(fx_out, 0.0, 1e-15, "zero force outside cutoff (x)");
@@ -95,8 +110,8 @@ static int test_lj_geom_combination_formula(void)
     const double r          = 1.3;
 
     /* Type A: eps=1.0, sig=1.0.  Type B: eps=4.0, sig=2.0. */
-    const double eps_A  = 1.0, sig_A = 1.0;
-    const double eps_B  = 4.0, sig_B = 2.0;
+    const double eps_A = 1.0, sig_A = 1.0;
+    const double eps_B = 4.0, sig_B = 2.0;
 
     /* Geometric combination */
     const double eps_AB    = sqrt(eps_A) * sqrt(eps_B); /* = 2.0 */
@@ -108,8 +123,8 @@ static int test_lj_geom_combination_formula(void)
     lj_force(eps_AB, sigma6_AB, cutforcesq, r, 0.0, 0.0, &fx_geom, &fy_geom, &fz_geom);
 
     /* Independently compute using the explicit sigma_AB = cbrt(sigma6_AB) */
-    const double sig_AB  = cbrt(sigma6_AB);
-    const double sig2_AB = sig_AB * sig_AB;
+    const double sig_AB          = cbrt(sigma6_AB);
+    const double sig2_AB         = sig_AB * sig_AB;
     const double sigma6_explicit = sig2_AB * sig2_AB * sig2_AB;
     double fx_exp, fy_exp, fz_exp;
     lj_force(eps_AB, sigma6_explicit, cutforcesq, r, 0.0, 0.0, &fx_exp, &fy_exp, &fz_exp);
@@ -141,24 +156,19 @@ int run_force_tests(void)
 
     tr_log("  force: LJ zero at minimum");
     rc = test_lj_zero_force_at_minimum();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  force: Newton's third law");
     rc = test_lj_newtons_third_law();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  force: cutoff gating");
     rc = test_lj_cutoff_gating();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     tr_log("  force: geometric combination formula");
     rc = test_lj_geom_combination_formula();
-    if (rc)
-        return rc;
+    if (rc) return rc;
 
     return 0;
 }
-

@@ -61,7 +61,7 @@ static inline MD_FLOAT simd_real_h_dual_incr_reduced_sum(
     t0 = _mm256_add_pd(t0, t1);
 
     __m256d mval = _mm256_load_pd(m);
-    mval = _mm256_add_pd(mval, t0);
+    mval         = _mm256_add_pd(mval, t0);
     _mm256_store_pd(m, mval);
 
     __m128d sum1 = _mm_add_pd(_mm256_castpd256_pd128(t0), _mm256_extractf128_pd(t0, 1));
@@ -135,7 +135,10 @@ static inline MD_SIMD_MASK simd_mask_from_u32(unsigned int a)
         (a & 0x1) ? all : none));
 }
 // TODO: Implement this, althrough it is just required for debugging
-static inline unsigned int simd_mask_to_u32(MD_SIMD_MASK a) { return (unsigned int)_mm256_movemask_pd(a); }
+static inline unsigned int simd_mask_to_u32(MD_SIMD_MASK a)
+{
+    return (unsigned int)_mm256_movemask_pd(a);
+}
 static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
 {
     __m128d a0, a1;
@@ -149,12 +152,12 @@ static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
 
 static inline void simd_h_decr(MD_FLOAT* m, MD_SIMD_FLOAT a)
 {
-    __m128d t0 = _mm256_castpd256_pd128(a);
-    __m128d t1 = _mm256_extractf128_pd(a, 1);
+    __m128d t0  = _mm256_castpd256_pd128(a);
+    __m128d t1  = _mm256_extractf128_pd(a, 1);
     __m256d dup = _mm256_set_m128d(t1, t0);
 
     __m256d t = _mm256_load_pd(m);
-    t = _mm256_sub_pd(t, dup);
+    t         = _mm256_sub_pd(t, dup);
     _mm256_store_pd(m, t);
 }
 
@@ -220,8 +223,7 @@ static inline MD_SIMD_FLOAT simd_real_gather(
     }
 }
 
-static inline MD_SIMD_INT simd_i32_gather(
-    MD_SIMD_INT vidx, int* base, const int scale)
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
     // For double precision, MD_SIMD_INT is __m128i (4 ints)
     // AVX2 doesn't have _mm_i32gather_epi32, use scalar fallback
@@ -242,8 +244,16 @@ static inline void simd_real_masked_scatter_sub(
     int idx[4] __attribute__((aligned(16)));
     simd_real_store(vals, v);
     simd_i32_store(idx, vidx);
-    if ((m >> 0) & 1) { _Pragma("omp atomic") base[idx[0]] -= vals[0]; }
-    if ((m >> 1) & 1) { _Pragma("omp atomic") base[idx[1]] -= vals[1]; }
-    if ((m >> 2) & 1) { _Pragma("omp atomic") base[idx[2]] -= vals[2]; }
-    if ((m >> 3) & 1) { _Pragma("omp atomic") base[idx[3]] -= vals[3]; }
+    if ((m >> 0) & 1) {
+        _Pragma("omp atomic") base[idx[0]] -= vals[0];
+    }
+    if ((m >> 1) & 1) {
+        _Pragma("omp atomic") base[idx[1]] -= vals[1];
+    }
+    if ((m >> 2) & 1) {
+        _Pragma("omp atomic") base[idx[2]] -= vals[2];
+    }
+    if ((m >> 3) & 1) {
+        _Pragma("omp atomic") base[idx[3]] -= vals[3];
+    }
 }

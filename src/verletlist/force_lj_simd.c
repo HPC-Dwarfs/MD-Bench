@@ -62,8 +62,8 @@ double computeForceLJFullNeigh_simd(
     // Cutoff is uniform for all types, broadcast it
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
+    MD_SIMD_FLOAT c48_vec = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec = simd_real_broadcast(0.5);
 
 #pragma omp parallel
     {
@@ -95,31 +95,40 @@ double computeForceLJFullNeigh_simd(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
-                MD_SIMD_INT j            = simd_i32_mask_load(&neighs[k], mask_numneighs);
+                MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 // Direct gather of per-atom LJ params (avoids type index computation)
-                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j, atom->sqrt_epsilon, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j, atom->sigma3, sizeof(MD_FLOAT));
-                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij = sigma3_i * sigma3_j
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
+                    atom->sqrt_epsilon,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
+                    atom->sigma3,
+                    sizeof(MD_FLOAT));
+                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij =
+                // sigma3_i * sigma3_j
                 MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
                 MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
 #elif LJ_COMB_RULE == LJ_COMB_NONE
                 MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
                 MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
-                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij, atom->sigma6, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij, atom->epsilon, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij,
+                    atom->sigma6,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij,
+                    atom->epsilon,
+                    sizeof(MD_FLOAT));
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = xtmp - simd_real_gather(j3,
                                                 &(atom->x[0]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT dely = ytmp - simd_real_gather(j3,
                                                 &(atom->x[1]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delz = ztmp - simd_real_gather(j3,
                                                 &(atom->x[2]),
                                                 sizeof(MD_FLOAT));
 #else
@@ -192,9 +201,9 @@ double computeForceLJHalfNeigh_simd(
     // Cutoff is uniform for all types, broadcast it
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
-    MD_SIMD_INT nlocal_vec       = simd_i32_broadcast(Nlocal);
+    MD_SIMD_FLOAT c48_vec  = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec  = simd_real_broadcast(0.5);
+    MD_SIMD_INT nlocal_vec = simd_i32_broadcast(Nlocal);
 
 #pragma omp parallel
     {
@@ -225,31 +234,40 @@ double computeForceLJHalfNeigh_simd(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
-                MD_SIMD_INT j            = simd_i32_mask_load(&neighs[k], mask_numneighs);
+                MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 // Direct gather of per-atom LJ params (avoids type index computation)
-                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j, atom->sqrt_epsilon, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j, atom->sigma3, sizeof(MD_FLOAT));
-                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij = sigma3_i * sigma3_j
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
+                    atom->sqrt_epsilon,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
+                    atom->sigma3,
+                    sizeof(MD_FLOAT));
+                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij =
+                // sigma3_i * sigma3_j
                 MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
                 MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
 #elif LJ_COMB_RULE == LJ_COMB_NONE
                 MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
                 MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
-                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij, atom->sigma6, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij, atom->epsilon, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij,
+                    atom->sigma6,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij,
+                    atom->epsilon,
+                    sizeof(MD_FLOAT));
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = xtmp - simd_real_gather(j3,
                                                 &(atom->x[0]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT dely = ytmp - simd_real_gather(j3,
                                                 &(atom->x[1]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delz = ztmp - simd_real_gather(j3,
                                                 &(atom->x[2]),
                                                 sizeof(MD_FLOAT));
 #else

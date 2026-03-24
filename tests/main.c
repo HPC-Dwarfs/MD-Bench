@@ -42,5 +42,3 @@ int main(void)
     tr_log("All tests OK");
     return 0;
 }
-
-
