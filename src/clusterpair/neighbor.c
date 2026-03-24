@@ -1556,9 +1556,9 @@ void buildSuperclusters(Atom* atom) {
             }
 
             int scl_bin_offset = scl * natoms_sc;
-            MD_FLOAT sc_bbminx = INFINITY, sc_bbmaxx = -INFINITY;
-            MD_FLOAT sc_bbminy = INFINITY, sc_bbmaxy = -INFINITY;
-            MD_FLOAT sc_bbminz = INFINITY, sc_bbmaxz = -INFINITY;
+            MD_FLOAT sc_bbminx = INF, sc_bbmaxx = -INF;
+            MD_FLOAT sc_bbminy = INF, sc_bbmaxy = -INF;
+            MD_FLOAT sc_bbminz = INF, sc_bbmaxz = -INF;
             atom->siclusters[sci].nclusters = 0;
 
             for (int scl_z = 0; scl_z < SCLUSTER_SIZE_Z; scl_z++) {
@@ -1590,9 +1590,9 @@ void buildSuperclusters(Atom* atom) {
                         MD_FLOAT* sci_sqrt_eps = &atom->cl_sqrt_epsilon[sci_sca_base];
                         MD_FLOAT* sci_sigma3   = &atom->cl_sigma3[sci_sca_base];
 
-                        MD_FLOAT bbminx = INFINITY, bbmaxx = -INFINITY;
-                        MD_FLOAT bbminy = INFINITY, bbmaxy = -INFINITY;
-                        MD_FLOAT bbminz = INFINITY, bbmaxz = -INFINITY;
+                        MD_FLOAT bbminx = INF, bbmaxx = -INF;
+                        MD_FLOAT bbminy = INF, bbmaxy = -INF;
+                        MD_FLOAT bbminz = INF, bbmaxz = -INF;
                         atom->iclusters[ci].natoms = 0;
 
                         for (int cii = 0; cii < CLUSTER_M; cii++) {
@@ -1636,9 +1636,9 @@ void buildSuperclusters(Atom* atom) {
 
                                 atom->iclusters[ci].natoms++;
                             } else {
-                                sci_x[CL_X_INDEX(sci_ci * CLUSTER_M + cii)] = INFINITY;
-                                sci_x[CL_Y_INDEX(sci_ci * CLUSTER_M + cii)] = INFINITY;
-                                sci_x[CL_Z_INDEX(sci_ci * CLUSTER_M + cii)] = INFINITY;
+                                sci_x[CL_X_INDEX(sci_ci * CLUSTER_M + cii)] = INF;
+                                sci_x[CL_Y_INDEX(sci_ci * CLUSTER_M + cii)] = INF;
+                                sci_x[CL_Z_INDEX(sci_ci * CLUSTER_M + cii)] = INF;
                                 sci_t[sci_ci * CLUSTER_M + cii]             = 0;
                                 sci_sqrt_eps[sci_ci * CLUSTER_M + cii]      = 0.0;
                                 sci_sigma3[sci_ci * CLUSTER_M + cii]        = 0.0;

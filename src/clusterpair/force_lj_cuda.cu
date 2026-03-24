@@ -856,11 +856,11 @@ int c0, MD_FLOAT* cuda_buf)
     int displ       = j * CLUSTER_N;
 
     for (int cjj = 0; cjj < cuda_jclusters_natoms[cj]; cjj++) {
-        if (cj_x[CL_X_INDEX(cjj)] < INFINITY)
+        if (cj_x[CL_X_INDEX(cjj)] < INF)
             cj_x[CL_X_INDEX(cjj)] = cuda_buf[3 * (displ + cjj) + 0];
-        if (cj_x[CL_Y_INDEX(cjj)] < INFINITY)
+        if (cj_x[CL_Y_INDEX(cjj)] < INF)
             cj_x[CL_Y_INDEX(cjj)] = cuda_buf[3 * (displ + cjj) + 1];
-        if (cj_x[CL_Z_INDEX(cjj)] < INFINITY)
+        if (cj_x[CL_Z_INDEX(cjj)] < INF)
             cj_x[CL_Z_INDEX(cjj)] = cuda_buf[3 * (displ + cjj) + 2];
     }
 }

@@ -276,9 +276,9 @@ int main(int argc, const char* argv[])
         }
 
         for (int cii = iclusters_natoms; cii < CLUSTER_M; cii++) {
-            ci_x[CL_X_INDEX_3D(cii)] = INFINITY;
-            ci_x[CL_Y_INDEX_3D(cii)] = INFINITY;
-            ci_x[CL_Z_INDEX_3D(cii)] = INFINITY;
+            ci_x[CL_X_INDEX_3D(cii)] = INF;
+            ci_x[CL_Y_INDEX_3D(cii)] = INF;
+            ci_x[CL_Z_INDEX_3D(cii)] = INF;
         }
 
         atom->iclusters[ci].natoms = iclusters_natoms;
