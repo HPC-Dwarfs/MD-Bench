@@ -190,7 +190,7 @@ static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 }
 static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
 {
-    return _mm256_mask_load_epi32(simd_i32_zero(), k, m);
+    return _mm256_mask_loadu_epi32(simd_i32_zero(), k, m);
 }
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 {

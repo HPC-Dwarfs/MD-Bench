@@ -36,7 +36,6 @@ double computeForceLJFullNeigh_simd(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
-    int* neighs;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
@@ -72,7 +71,7 @@ double computeForceLJFullNeigh_simd(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
-            neighs                    = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
             int numneighs             = neighbor->numneigh[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
@@ -167,7 +166,6 @@ double computeForceLJHalfNeigh_simd(
 {
     int Nlocal = atom->Nlocal;
     int Nghost = atom->Nghost;
-    int* neighs;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
@@ -204,7 +202,7 @@ double computeForceLJHalfNeigh_simd(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
-            neighs                    = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
             int numneighs             = neighbor->numneigh[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
