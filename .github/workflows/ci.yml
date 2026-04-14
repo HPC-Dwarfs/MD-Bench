@@ -173,7 +173,11 @@ jobs:
       - name: Run data layout test
         run: |
           chmod +x tests/test_data_layout.sh
-          OPT_SCHEME=${{ matrix.opt_scheme }} TOOLCHAIN=GCC SIMD=NONE ./tests/test_data_layout.sh
+          if [ "${{ matrix.opt_scheme }}" = "clusterpair" ]; then
+            echo "Skipping clusterpair data layout test: SIMD=NONE not supported for clusterpair."
+          else
+            OPT_SCHEME=${{ matrix.opt_scheme }} TOOLCHAIN=GCC SIMD=NONE ./tests/test_data_layout.sh
+          fi
 
   mpi:
     name: MPI correctness
