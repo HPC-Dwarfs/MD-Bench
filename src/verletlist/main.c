@@ -395,7 +395,6 @@ int main(int argc, char** argv)
             timer[NEIGH] += reneighbour(n, &param, &atom, &neighbor, &comm);
         } else {
             timer[FORWARD] += forward(&comm, &atom, &param);
-            updatePbc(&atom, &param, false);
         }
 
 #if defined(MEM_TRACER) || defined(INDEX_TRACER)

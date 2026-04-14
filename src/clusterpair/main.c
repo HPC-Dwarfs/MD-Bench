@@ -332,7 +332,6 @@ int main(int argc, char** argv)
             }
 
             timer[FORWARD] += forward(&comm, &atom, &param);
-            // updatePbc(&atom, &param, 0);
         } else {
 #ifdef CUDA_TARGET
             copyDataFromCUDADevice(&param, &atom);

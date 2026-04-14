@@ -107,7 +107,7 @@ if [[ "${scalar_kernel}" != "SCALAR" ]]; then
   exit 1
 fi
 
-echo "✓ Kernel selection verified"
+echo "Kernel selection verified"
 
 # Extract final T and P values
 get_last_tp() {
@@ -162,7 +162,7 @@ if diff_T > tol_T or diff_P > tol_P:
     sys.exit(1)
 PY
 
-echo "✓ Temperature and pressure match within tolerance"
+echo "Temperature and pressure match within tolerance"
 echo ""
 echo "SIMD vs SCALAR kernel validation PASSED"
 
