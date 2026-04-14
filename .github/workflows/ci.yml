@@ -137,6 +137,65 @@ jobs:
         run: |
           echo "Skipping regression case opt_scheme=${{ matrix.opt_scheme }} simd=${{ matrix.simd }} data_type=${{ matrix.data_type }} due to missing SIMD or GCC on this runner."
 
+  copper-fcc:
+    name: Copper FCC regression matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        opt_scheme: [verletlist, clusterpair]
+        simd: [AVX, AVX2, AVX512]
+        data_type: [SP, DP]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Probe CPU SIMD and compiler
+        id: probe
+        run: |
+          HAS_AVX=$(grep -m1 -o 'avx ' /proc/cpuinfo || true)
+          HAS_AVX2=$(grep -m1 -o 'avx2' /proc/cpuinfo || true)
+          HAS_AVX512=$(grep -m1 -o 'avx512f' /proc/cpuinfo || true)
+
+          case "${{ matrix.simd }}" in
+            AVX)
+              [ -z "${HAS_AVX}" ] && echo "supported=false" >> $GITHUB_OUTPUT || echo "supported=true" >> $GITHUB_OUTPUT ;;
+            AVX2)
+              [ -z "${HAS_AVX2}" ] && echo "supported=false" >> $GITHUB_OUTPUT || echo "supported=true" >> $GITHUB_OUTPUT ;;
+            AVX512)
+              [ -z "${HAS_AVX512}" ] && echo "supported=false" >> $GITHUB_OUTPUT || echo "supported=true" >> $GITHUB_OUTPUT ;;
+          esac
+
+          command -v gcc >/dev/null 2>&1 && echo "has_gcc=true" >> $GITHUB_OUTPUT || echo "has_gcc=false" >> $GITHUB_OUTPUT
+
+      - name: Build and run copper FCC regression
+        if: steps.probe.outputs.supported == 'true' && steps.probe.outputs.has_gcc == 'true'
+        run: |
+          make clean
+          make TOOLCHAIN=${TOOLCHAIN} ISA=${ISA} OPT_SCHEME=${{ matrix.opt_scheme }} SIMD=${{ matrix.simd }} DATA_TYPE=${{ matrix.data_type }}
+
+          if [ "${{ matrix.opt_scheme }}" = "verletlist" ]; then
+            OPT_TAG="VL"
+          else
+            OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
+          fi
+          TOOL_TAG="${TOOLCHAIN}-${ISA}-${{ matrix.simd }}"
+          BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}"
+          echo "Using binary ${BIN}"
+
+          chmod +x tests/sim_copper_fcc_regression.sh
+          ./tests/sim_copper_fcc_regression.sh "${BIN}"
+
+      - name: Skip reason
+        if: steps.probe.outputs.supported != 'true' || steps.probe.outputs.has_gcc != 'true'
+        run: |
+          echo "Skipping copper FCC case opt_scheme=${{ matrix.opt_scheme }} simd=${{ matrix.simd }} data_type=${{ matrix.data_type }} due to missing SIMD or GCC on this runner."
+
   half-neigh:
     name: Half neighbor-list equivalence
     runs-on: ubuntu-latest

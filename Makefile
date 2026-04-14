@@ -117,6 +117,8 @@ test: $(TEST_BIN) $(TARGET)
 	@./$(TEST_BIN)
 	@echo "===>  RUNNING  sim_argon_regression on $(TARGET)"
 	@bash tests/sim_argon_regression.sh ./$(TARGET)
+	@echo "===>  RUNNING  sim_copper_fcc_regression on $(TARGET)"
+	@bash tests/sim_copper_fcc_regression.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_energy_lj on $(TARGET)"
 	@bash tests/regression_energy_lj.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_scheme_equiv (geometric)"
