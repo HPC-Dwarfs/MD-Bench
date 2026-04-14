@@ -6,7 +6,7 @@
 /* Simple helper to write a small temporary parameter file. */
 static const char* write_temp_param_file(void)
 {
-    const char* fname = "test_params.conf";
+    const char* fname = "tests/test_params.conf";
     FILE* fp          = fopen(fname, "w");
     if (!fp) {
         perror("fopen");
@@ -155,22 +155,28 @@ static int test_computeTypePairLJParameters(void)
 
 static const char* write_temp_multitype_param_file(void)
 {
-    const char* fname = "test_multitype_params.conf";
+    const char* types_fname = "tests/test_lj_types.dat";
+    FILE* tfp               = fopen(types_fname, "w");
+    if (!tfp) {
+        perror("fopen");
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(tfp, "# epsilon  sigma\n");
+    fprintf(tfp, "1.0  1.0\n");
+    fprintf(tfp, "4.0  2.0\n");
+    fclose(tfp);
+
+    const char* fname = "tests/test_multitype_params.conf";
     FILE* fp          = fopen(fname, "w");
     if (!fp) {
         perror("fopen");
         exit(EXIT_FAILURE);
     }
 
-    fprintf(fp, "epsilon 9.0\n");
-    fprintf(fp, "sigma 3.0\n");
-    fprintf(fp, "ntypes 2\n");
-    fprintf(fp, "epsilon_type_0 1.0\n");
-    fprintf(fp, "epsilon_type_1 4.0\n");
-    fprintf(fp, "sigma_type_0 1.0\n");
-    fprintf(fp, "sigma_type_1 2.0\n");
-
+    fprintf(fp, "types_file %s\n", types_fname);
     fclose(fp);
+
     return fname;
 }
 
@@ -182,17 +188,14 @@ static int test_readParameter_multitype_lj(void)
     const char* fname = write_temp_multitype_param_file();
     readParameter(&p, fname);
 
-    ASSERT_INT_EQ(p.ntypes, 2, "ntypes == 2");
+    ASSERT_INT_EQ(p.ntypes, 2, "ntypes inferred from types file");
     ASSERT_TRUE(p.epsilon_per_type != NULL, "epsilon_per_type allocated");
     ASSERT_TRUE(p.sigma_per_type != NULL, "sigma_per_type allocated");
 
-    ASSERT_NEAR(p.epsilon_per_type[0], 1.0, 1e-12, "epsilon_type_0");
-    ASSERT_NEAR(p.epsilon_per_type[1], 4.0, 1e-12, "epsilon_type_1");
-    ASSERT_NEAR(p.sigma_per_type[0], 1.0, 1e-12, "sigma_type_0");
-    ASSERT_NEAR(p.sigma_per_type[1], 2.0, 1e-12, "sigma_type_1");
-
-    /* Global epsilon/sigma remain as set in the file */
-    ASSERT_NEAR(p.epsilon, 9.0, 1e-12, "global epsilon unchanged");
+    ASSERT_NEAR(p.epsilon_per_type[0], 1.0, 1e-12, "epsilon[0]");
+    ASSERT_NEAR(p.epsilon_per_type[1], 4.0, 1e-12, "epsilon[1]");
+    ASSERT_NEAR(p.sigma_per_type[0], 1.0, 1e-12, "sigma[0]");
+    ASSERT_NEAR(p.sigma_per_type[1], 2.0, 1e-12, "sigma[1]");
 
     return 0;
 }

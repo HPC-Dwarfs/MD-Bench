@@ -4,6 +4,9 @@ int run_parameter_tests(void);
 int run_atom_tests(void);
 int run_force_tests(void);
 int run_neighbor_tests(void);
+int run_integrate_tests(void);
+int run_box_tests(void);
+int run_thermo_tests(void);
 
 int main(void)
 {
@@ -38,6 +41,27 @@ int main(void)
         return rc;
     }
     tr_log("neighbor tests OK");
+
+    rc = run_integrate_tests();
+    if (rc) {
+        tr_log("integrate tests FAILED");
+        return rc;
+    }
+    tr_log("integrate tests OK");
+
+    rc = run_box_tests();
+    if (rc) {
+        tr_log("box tests FAILED");
+        return rc;
+    }
+    tr_log("box tests OK");
+
+    rc = run_thermo_tests();
+    if (rc) {
+        tr_log("thermo tests FAILED");
+        return rc;
+    }
+    tr_log("thermo tests OK");
 
     tr_log("All tests OK");
     return 0;

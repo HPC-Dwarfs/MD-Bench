@@ -76,6 +76,7 @@ typedef struct {
     char* vtk_file;
     char* xtc_file;
     char* write_atom_file;
+    char* types_file;
     MD_FLOAT epsilon;
     MD_FLOAT sigma;
     MD_FLOAT sigma6;
@@ -115,6 +116,7 @@ typedef struct {
 
 void initParameter(Parameter*);
 void readParameter(Parameter*, const char*);
+void readTypesFile(Parameter*);
 void printParameter(Parameter*);
 void computePerTypeLJParameters(int, Parameter*, MD_FLOAT*, MD_FLOAT*);
 void computeTypePairLJParameters(int, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*);

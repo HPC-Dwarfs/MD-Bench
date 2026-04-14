@@ -122,9 +122,8 @@ static int test_lj_geom_combination_formula(void)
     double fx_geom, fy_geom, fz_geom;
     lj_force(eps_AB, sigma6_AB, cutforcesq, r, 0.0, 0.0, &fx_geom, &fy_geom, &fz_geom);
 
-    /* Independently compute using the explicit sigma_AB = cbrt(sigma6_AB) */
-    const double sig_AB          = cbrt(sigma6_AB);
-    const double sig2_AB         = sig_AB * sig_AB;
+    /* Independently recompute sigma6 via sigma^2 = cbrt(sigma^6). */
+    const double sig2_AB         = cbrt(sigma6_AB);
     const double sigma6_explicit = sig2_AB * sig2_AB * sig2_AB;
     double fx_exp, fy_exp, fz_exp;
     lj_force(eps_AB, sigma6_explicit, cutforcesq, r, 0.0, 0.0, &fx_exp, &fy_exp, &fz_exp);

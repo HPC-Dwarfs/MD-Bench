@@ -137,3 +137,58 @@ jobs:
         run: |
           echo "Skipping regression case opt_scheme=${{ matrix.opt_scheme }} simd=${{ matrix.simd }} data_type=${{ matrix.data_type }} due to missing SIMD or GCC on this runner."
 
+  half-neigh:
+    name: Half neighbor-list equivalence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3
+
+      - name: Run half neighbor-list test
+        run: |
+          chmod +x tests/test_half_neigh.sh
+          TOOLCHAIN=GCC SIMD=NONE ./tests/test_half_neigh.sh
+
+  data-layout:
+    name: AOS vs SOA data layout equivalence
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        opt_scheme: [verletlist, clusterpair]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3
+
+      - name: Run data layout test
+        run: |
+          chmod +x tests/test_data_layout.sh
+          OPT_SCHEME=${{ matrix.opt_scheme }} TOOLCHAIN=GCC SIMD=NONE ./tests/test_data_layout.sh
+
+  mpi:
+    name: MPI correctness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 libopenmpi-dev openmpi-bin
+
+      - name: Run MPI test
+        run: |
+          chmod +x tests/test_mpi.sh
+          TOOLCHAIN=GCC SIMD=NONE ./tests/test_mpi.sh
+

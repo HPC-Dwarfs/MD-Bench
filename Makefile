@@ -67,6 +67,7 @@ endif
 $(BUILD_DIR)/%.hip: %.cu
 	$(info ===>  GENERATE HIP  $@)
 	$(Q)hipify-perl $< > $@
+
 $(BUILD_DIR)/%.s:  %.c
 	$(info ===>  GENERATE ASM  $@)
 	$(Q)$(CC) -S $(ASFLAGS) $(CPPFLAGS) $(CFLAGS) $< -o $@
@@ -124,17 +125,22 @@ test: $(TEST_BIN) $(TARGET)
 	@LJ_COMB_RULE=single bash tests/regression_scheme_equiv.sh
 	@echo "===>  RUNNING  test_simd_vs_scalar"
 	@bash tests/test_simd_vs_scalar.sh
+	@echo "===>  RUNNING  test_half_neigh"
+	@bash tests/test_half_neigh.sh
+	@echo "===>  RUNNING  test_data_layout"
+	@bash tests/test_data_layout.sh
+	@echo "===>  RUNNING  test_mpi"
+	@bash tests/test_mpi.sh
 
-$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c
+TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c
+TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neighbor.c $(SRC_ROOT)/clusterpair/pbc.c $(SRC_ROOT)/clusterpair/integrate.c
+
+$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS)
 	@echo "===>  BUILDING $(TEST_BIN)"
-	$(Q)$(CC) -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) \
+	$(Q)$(CC) -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) -DCLUSTER_PAIR -DCLUSTERPAIR_KERNEL_AUTO \
 		tests/main.c tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c \
-		$(COMMON_DIR)/parameter.c \
-		$(SRC_ROOT)/clusterpair/atom.c \
-		$(SRC_ROOT)/clusterpair/neighbor.c \
-		$(SRC_ROOT)/clusterpair/pbc.c \
-		$(COMMON_DIR)/allocate.c \
-		$(COMMON_DIR)/util.c \
+		tests/test_integrate.c tests/test_box.c tests/test_thermo.c \
+		$(TEST_COMMON_SRCS) $(TEST_CP_SRCS) \
 		-lm -o $(TEST_BIN)
 
 $(BUILD_DIR):

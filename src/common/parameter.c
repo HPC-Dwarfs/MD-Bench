@@ -76,6 +76,7 @@ void initParameter(Parameter* param)
     param->xtc_file        = NULL;
     param->eam_file        = NULL;
     param->write_atom_file = NULL;
+    param->types_file      = NULL;
     param->force_field     = FF_LJ;
     param->epsilon         = 1.0;
     param->sigma           = 1.0;
@@ -122,11 +123,72 @@ void initParameter(Parameter* param)
     param->setup         = 1;
 }
 
+void readTypesFile(Parameter* param)
+{
+    FILE* fp = fopen(param->types_file, "r");
+    char line[MAXLINE];
+
+    if (!fp) {
+        fprintf(stderr, "Could not open types file: %s\n", param->types_file);
+        exit(-1);
+    }
+
+    // First pass: count data lines
+    int count = 0;
+    while (fgets(line, MAXLINE, fp) != NULL) {
+        int i;
+        for (i = 0; line[i] != '\0' && line[i] != '#'; i++)
+            ;
+        line[i] = '\0';
+        if (strtok(line, " \t\n") != NULL) {
+            count++;
+        }
+    }
+
+    if (count == 0) {
+        fprintf(stderr, "Types file contains no data: %s\n", param->types_file);
+        fclose(fp);
+        exit(-1);
+    }
+
+    param->ntypes           = count;
+    param->epsilon_per_type = (MD_FLOAT*)malloc(count * sizeof(MD_FLOAT));
+    param->sigma_per_type   = (MD_FLOAT*)malloc(count * sizeof(MD_FLOAT));
+
+    // Second pass: read values
+    rewind(fp);
+    int t = 0;
+    while (fgets(line, MAXLINE, fp) != NULL && t < count) {
+        int i;
+        for (i = 0; line[i] != '\0' && line[i] != '#'; i++)
+            ;
+        line[i]     = '\0';
+        char* s_eps = strtok(line, " \t\n");
+        if (s_eps == NULL) {
+            continue;
+        }
+        char* s_sig = strtok(NULL, " \t\n");
+        if (s_sig == NULL) {
+            fprintf(stderr,
+                "Types file line %d: expected 'epsilon sigma', got only one value\n",
+                t + 1);
+            fclose(fp);
+            exit(-1);
+        }
+        param->epsilon_per_type[t] = atof(s_eps);
+        param->sigma_per_type[t]   = atof(s_sig);
+        t++;
+    }
+
+    fclose(fp);
+}
+
 void readParameter(Parameter* param, const char* filename)
 {
     FILE* fp = fopen(filename, "r");
     char line[MAXLINE];
     int i;
+    int explicit_epsilon = 0, explicit_sigma = 0, explicit_ntypes = 0;
 
     if (!fp) {
         fprintf(stderr, "Could not open parameter file: %s\n", filename);
@@ -138,12 +200,17 @@ void readParameter(Parameter* param, const char* filename)
             ;
         line[i] = '\0';
 
-        char* tok = strtok(line, " ");
-        char* val = strtok(NULL, " ");
+        char* tok = strtok(line, " \t\n\r");
+        char* val = strtok(NULL, " \t\n\r");
 
 #define PARSE_PARAM(p, f)                                                                \
     if (strncmp(tok, #p, sizeof(#p) / sizeof(#p[0]) - 1) == 0) {                         \
         param->p = f(val);                                                               \
+    }
+#define PARSE_PARAM_FLAG(p, f, flag)                                                     \
+    if (strncmp(tok, #p, sizeof(#p) / sizeof(#p[0]) - 1) == 0) {                         \
+        param->p = f(val);                                                               \
+        flag     = 1;                                                                    \
     }
 #define PARSE_STRING(p) PARSE_PARAM(p, strdup)
 #define PARSE_INT(p)    PARSE_PARAM(p, atoi)
@@ -155,8 +222,9 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_STRING(eam_file);
             PARSE_STRING(vtk_file);
             PARSE_STRING(xtc_file);
-            PARSE_REAL(epsilon);
-            PARSE_REAL(sigma);
+            PARSE_STRING(types_file);
+            PARSE_PARAM_FLAG(epsilon, atof, explicit_epsilon);
+            PARSE_PARAM_FLAG(sigma, atof, explicit_sigma);
             PARSE_REAL(rho);
             PARSE_REAL(dt);
             PARSE_REAL(cutforce);
@@ -164,7 +232,7 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_REAL(temp);
             PARSE_REAL(mass);
             PARSE_REAL(proc_freq);
-            PARSE_INT(ntypes);
+            PARSE_PARAM_FLAG(ntypes, atoi, explicit_ntypes);
             PARSE_INT(ntimes);
             PARSE_INT(nx);
             PARSE_INT(ny);
@@ -184,36 +252,18 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
 
-            // Parse per-type epsilon
-            if (strncmp(tok, "epsilon_type_", 13) == 0) {
-                int type_id = atoi(tok + 13);
-                if (type_id >= 0 && type_id < param->ntypes) {
-                    if (param->epsilon_per_type == NULL) {
-                        param->epsilon_per_type = (MD_FLOAT*)malloc(
-                            param->ntypes * sizeof(MD_FLOAT));
-                        for (int i = 0; i < param->ntypes; i++) {
-                            param->epsilon_per_type[i] = param->epsilon;
-                        }
-                    }
-                    param->epsilon_per_type[type_id] = atof(val);
-                }
-            }
-
-            // Parse per-type sigma
-            if (strncmp(tok, "sigma_type_", 11) == 0) {
-                int type_id = atoi(tok + 11);
-                if (type_id >= 0 && type_id < param->ntypes) {
-                    if (param->sigma_per_type == NULL) {
-                        param->sigma_per_type = (MD_FLOAT*)malloc(
-                            param->ntypes * sizeof(MD_FLOAT));
-                        for (int i = 0; i < param->ntypes; i++) {
-                            param->sigma_per_type[i] = param->sigma;
-                        }
-                    }
-                    param->sigma_per_type[type_id] = atof(val);
-                }
-            }
         }
+    }
+
+    if (param->types_file != NULL && (explicit_epsilon || explicit_sigma || explicit_ntypes)) {
+        fprintf(stderr,
+            "Error: 'types_file' cannot be combined with 'epsilon', 'sigma', or 'ntypes'."
+            " Per-type parameters must be specified exclusively in the types file.\n");
+        exit(-1);
+    }
+
+    if (param->types_file != NULL) {
+        readTypesFile(param);
     }
 
     // Update dtforce
@@ -276,6 +326,9 @@ void printParameter(Parameter* param)
     }
     if (param->eam_file != NULL) {
         fprintf(stdout, "    EAM file:                          %s\n", param->eam_file);
+    }
+    if (param->types_file != NULL) {
+        fprintf(stdout, "    Types file:                        %s\n", param->types_file);
     }
     fprintf(stdout,
         "    Unit cells (nx,ny,nz):             %d x %d x %d\n",
