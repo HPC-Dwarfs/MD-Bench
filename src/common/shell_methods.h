@@ -23,15 +23,16 @@ extern void copyGhostFromGPU(Atom*);
 extern void copyGhostToGPU(Atom*);
 extern void copyForceFromGPU(Atom*);
 extern void copyForceToGPU(Atom*);
-#endif 
+#endif
 
-double forward(Comm* comm, Atom* atom, Parameter* param) {
+double forward(Comm* comm, Atom* atom, Parameter* param)
+{
     double S, E;
     S = getTimeStamp();
 #ifdef _MPI
 
 #ifdef CUDA_TARGET
-    copyGhostFromGPU(atom); 
+    copyGhostFromGPU(atom);
 #endif
 
     if (param->method == halfShell) {
@@ -48,20 +49,21 @@ double forward(Comm* comm, Atom* atom, Parameter* param) {
     copyGhostToGPU(atom);
 #endif
 
-#else 
+#else
     updatePbc(atom, param, false);
 #endif
     E = getTimeStamp();
     return E - S;
 }
 
-double reverse(Comm* comm, Atom* atom, Parameter* param) {
+double reverse(Comm* comm, Atom* atom, Parameter* param)
+{
     double S, E;
     S = getTimeStamp();
 #ifdef _MPI
 
 #ifdef CUDA_TARGET
-    copyForceFromGPU(atom); 
+    copyForceFromGPU(atom);
 #endif
 
     if (param->method == halfShell) {
@@ -86,7 +88,8 @@ double reverse(Comm* comm, Atom* atom, Parameter* param) {
 }
 
 #ifdef _MPI
-void ghostNeighbor(Comm* comm, Atom* atom, Parameter* param) {
+void ghostNeighbor(Comm* comm, Atom* atom, Parameter* param)
+{
 #ifdef CLUSTER_PAIR
     atom->Nclusters_ghost = 0;
 #endif
@@ -101,15 +104,16 @@ void ghostNeighbor(Comm* comm, Atom* atom, Parameter* param) {
         for (int iswap = 0; iswap < 6; iswap++)
             ghostComm(comm, param, atom, iswap);
     }
-#ifdef CLUSTER_PAIR    
-    addDummyCluster(param, atom);    
+#ifdef CLUSTER_PAIR
+    addDummyCluster(param, atom);
 #endif
 }
 #endif
 
 #ifdef CLUSTER_PAIR
 
-void addDummyCluster(Parameter* param, Atom* atom) {
+void addDummyCluster(Parameter* param, Atom* atom)
+{
     // atom->Nclusters_ghost++; // GHOST J CLUSTERS
     // atom->Nclusters = atom->Nclusters_local + Nghost + 1;
     atom->dummy_cj = LOCAL + GHOST;
@@ -126,6 +130,6 @@ void addDummyCluster(Parameter* param, Atom* atom) {
         cjX[CL_X_INDEX(cjj)] = INF;
         cjX[CL_Y_INDEX(cjj)] = INF;
         cjX[CL_Z_INDEX(cjj)] = INF;
-    } 
+    }
 }
 #endif

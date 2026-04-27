@@ -229,8 +229,8 @@ static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
 {
     // AVX doesn't have masked load; emulate with scalar fallback
-    unsigned int u32_mask = simd_mask_to_u32(k);
-    int result[8] __attribute__((aligned(32))) = {0};
+    unsigned int u32_mask                      = simd_mask_to_u32(k);
+    int result[8] __attribute__((aligned(32))) = { 0 };
     for (int i = 0; i < 8; i++) {
         if ((u32_mask >> i) & 1) {
             result[i] = m[i];
@@ -244,6 +244,6 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
         _mm256_extractf128_si256(b, 0));
     __m128i high_cmp = _mm_cmplt_epi32(_mm256_extractf128_si256(a, 1),
         _mm256_extractf128_si256(b, 1));
-    __m256i imask = _mm256_set_m128i(high_cmp, low_cmp);
+    __m256i imask    = _mm256_set_m128i(high_cmp, low_cmp);
     return _mm256_castsi256_ps(imask);
 }

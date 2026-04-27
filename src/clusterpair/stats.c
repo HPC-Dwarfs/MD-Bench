@@ -16,7 +16,8 @@
 #include <mpi.h>
 #endif
 
-void initStats(Stats* s) {
+void initStats(Stats* s)
+{
     s->calculated_forces       = 0;
     s->num_neighs              = 0;
     s->force_iters             = 0;
@@ -28,23 +29,47 @@ void initStats(Stats* s) {
 
 void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer)
 {
-    int me = 0;
-    long long int neigh_sum = 0;
-    long long int forces_sum = 0;
-    long long int iters_sum = 0;
+    int me                     = 0;
+    long long int neigh_sum    = 0;
+    long long int forces_sum   = 0;
+    long long int iters_sum    = 0;
     long long int Ncluster_sum = 0;
 
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
-    MPI_Reduce(&stats->num_neighs, &neigh_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&stats->calculated_forces, &forces_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&stats->force_iters, &iters_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&atom->Nclusters_local, &Ncluster_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&stats->num_neighs,
+        &neigh_sum,
+        1,
+        MPI_LONG_LONG_INT,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    MPI_Reduce(&stats->calculated_forces,
+        &forces_sum,
+        1,
+        MPI_LONG_LONG_INT,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    MPI_Reduce(&stats->force_iters,
+        &iters_sum,
+        1,
+        MPI_LONG_LONG_INT,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    MPI_Reduce(&atom->Nclusters_local,
+        &Ncluster_sum,
+        1,
+        MPI_LONG_LONG_INT,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
 
-    stats->num_neighs = neigh_sum;
+    stats->num_neighs        = neigh_sum;
     stats->calculated_forces = forces_sum;
-    stats->force_iters = iters_sum;
-    atom->Nclusters_local = Ncluster_sum;
+    stats->force_iters       = iters_sum;
+    atom->Nclusters_local    = Ncluster_sum;
 
 #endif
 
@@ -52,17 +77,18 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
 
     const int MxN            = CLUSTER_M * CLUSTER_N;
     double avgAtomsCluster   = (double)(atom->Natoms) / (double)(atom->Nclusters_local);
-    double forceUsefulVolume = 1e-9 * ((double)(atom->Natoms * (param->ntimes + 1)) *
-                                              (sizeof(MD_FLOAT) * 6 + sizeof(int)) +
-                                          (double)(stats->num_neighs) *
-                                              (sizeof(MD_FLOAT) * ATOM_DIM + sizeof(int)));
-    double avgNeighAtom      = (stats->num_neighs * CLUSTER_N) /
+    double forceUsefulVolume = 1e-9 *
+                               ((double)(atom->Natoms * (param->ntimes + 1)) *
+                                       (sizeof(MD_FLOAT) * 6 + sizeof(int)) +
+                                   (double)(stats->num_neighs) *
+                                       (sizeof(MD_FLOAT) * ATOM_DIM + sizeof(int)));
+    double avgNeighAtom = (stats->num_neighs * CLUSTER_N) /
                           (double)(atom->Natoms * (param->ntimes + 1));
     double avgNeighCluster = (double)(stats->num_neighs) /
                              (double)(stats->calculated_forces);
     double avgSimd = stats->force_iters / (double)(atom->Natoms * (param->ntimes + 1));
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
     forceUsefulVolume += 1e-9 *
                          (double)((atom->Natoms * (param->ntimes + 1)) +
                                   stats->num_neighs) *
@@ -88,13 +114,25 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
 
 #ifdef USE_REFERENCE_KERNEL
 
-    long long int within_cutoff_sum = 0;
+    long long int within_cutoff_sum  = 0;
     long long int outside_cutoff_sum = 0;
 
 #ifdef _MPI
-    MPI_Reduce(&stats->atoms_within_cutoff, &within_cutoff_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(&stats->atoms_outside_cutoff, &outside_cutoff_sum, 1, MPI_LONG_LONG_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-    stats->atoms_within_cutoff = within_cutoff_sum;
+    MPI_Reduce(&stats->atoms_within_cutoff,
+        &within_cutoff_sum,
+        1,
+        MPI_LONG_LONG_INT,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    MPI_Reduce(&stats->atoms_outside_cutoff,
+        &outside_cutoff_sum,
+        1,
+        MPI_LONG_LONG_INT,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    stats->atoms_within_cutoff  = within_cutoff_sum;
     stats->atoms_outside_cutoff = outside_cutoff_sum;
 #endif
 

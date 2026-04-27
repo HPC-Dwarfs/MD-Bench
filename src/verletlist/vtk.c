@@ -8,8 +8,8 @@
 #include <stdlib.h>
 
 #include <atom.h>
-#include <util.h>
 #include <string.h>
+#include <util.h>
 #include <vtk.h>
 
 #ifdef _MPI
@@ -248,12 +248,14 @@ int vtkVector(Comm* comm, Atom* atom, Parameter* param)
     }
 }
 
-void vtkClose() {
+void vtkClose()
+{
     MPI_File_close(&_fh);
     _fh = MPI_FILE_NULL;
 }
 
-static inline void flushBuffer(char* msg) {
+static inline void flushBuffer(char* msg)
+{
     MPI_Offset displ;
     MPI_File_get_size(_fh, &displ);
     MPI_File_write_at(_fh, displ, msg, strlen(msg), MPI_CHAR, MPI_STATUS_IGNORE);
@@ -262,12 +264,12 @@ static inline void flushBuffer(char* msg) {
 
 void printvtk(
     const char* filename, Comm* comm, Atom* atom, Parameter* param, int timestep)
-{ 
+{
 #ifdef _MPI
     vtkOpen(filename, comm, atom, timestep);
     vtkVector(comm, atom, param);
     vtkClose();
-#else  
+#else
     write_atoms_to_vtk_file(filename, atom, timestep);
 #endif
 }

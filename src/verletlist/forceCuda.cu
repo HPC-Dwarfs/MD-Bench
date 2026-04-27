@@ -35,7 +35,8 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     int neigh_maxneighs,
     int* neigh_neighbors,
     int* neigh_numneigh,
-    int ntypes) {
+    int ntypes)
+{
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= Nlocal) {
@@ -53,7 +54,7 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
     const int type_i = atom->type[i];
 #endif
 
@@ -64,7 +65,7 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
         MD_FLOAT delz = ztmp - atom_z(j);
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
         const int type_j          = atom->type[j];
         const int type_ij         = type_i * ntypes + type_j;
         const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -95,7 +96,8 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     int neigh_maxneighs,
     int* neigh_neighbors,
     int* neigh_numneigh,
-    int ntypes) {
+    int ntypes)
+{
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= Nlocal) {
@@ -113,7 +115,7 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
     const int type_i = atom->type[i];
 #endif
 
@@ -124,7 +126,7 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
         MD_FLOAT delz = ztmp - atom_z(j);
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
         const int type_j          = atom->type[j];
         const int type_ij         = type_i * ntypes + type_j;
         const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -156,7 +158,8 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
 }
 
 __global__ void kernel_initial_integrate(
-    MD_FLOAT dtforce, MD_FLOAT dt, int Nlocal, DeviceAtom a) {
+    MD_FLOAT dtforce, MD_FLOAT dt, int Nlocal, DeviceAtom a)
+{
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= Nlocal) {
         return;
@@ -172,7 +175,8 @@ __global__ void kernel_initial_integrate(
     atom_z(i) = atom_z(i) + dt * atom_vz(i);
 }
 
-__global__ void kernel_final_integrate(MD_FLOAT dtforce, int Nlocal, DeviceAtom a) {
+__global__ void kernel_final_integrate(MD_FLOAT dtforce, int Nlocal, DeviceAtom a)
+{
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= Nlocal) {
         return;
@@ -187,7 +191,8 @@ __global__ void kernel_final_integrate(MD_FLOAT dtforce, int Nlocal, DeviceAtom 
 
 extern "C" {
 
-void finalIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom) {
+void finalIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom)
+{
     DEBUG_MESSAGE("finalIntegrateCUDA begin\n");
 
     const int Nlocal                = atom->Nlocal;
@@ -207,7 +212,8 @@ void finalIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom) {
     DEBUG_MESSAGE("finalIntegrateCUDA end\n");
 }
 
-void initialIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom) {
+void initialIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom)
+{
     DEBUG_MESSAGE("initialIntegrateCUDA begin\n");
 
     const int Nlocal                = atom->Nlocal;
@@ -228,7 +234,8 @@ void initialIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom) {
     DEBUG_MESSAGE("initialIntegrateCUDA end\n");
 }
 
-double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats) {
+double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
     DEBUG_MESSAGE("computeForceLJCUDA begin\n");
 
     const int num_threads_per_block = get_cuda_num_threads();
@@ -299,31 +306,37 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
 }
 }
 
-extern "C" void copyGhostFromGPU(Atom* atom) {
+extern "C" void copyGhostFromGPU(Atom* atom)
+{
     memcpyFromGPU(atom->x, atom->d_atom.x, atom->Nlocal * sizeof(MD_FLOAT) * 3);
 }
 
-extern "C" void copyGhostToGPU(Atom* atom) {
+extern "C" void copyGhostToGPU(Atom* atom)
+{
     memcpyToGPU(&atom->d_atom.x[atom->Nlocal * 3],
         &atom->x[atom->Nlocal * 3],
         atom->Nghost * sizeof(MD_FLOAT) * 3);
 }
 
-extern "C" void copyForceFromGPU(Atom* atom) {
+extern "C" void copyForceFromGPU(Atom* atom)
+{
     memcpyFromGPU(atom->fx, atom->d_atom.fx, atom->Nmax * sizeof(MD_FLOAT) * 3);
 }
 
-extern "C" void copyForceToGPU(Atom* atom) {
+extern "C" void copyForceToGPU(Atom* atom)
+{
     memcpyToGPU(atom->d_atom.fx, atom->fx, atom->Nmax * sizeof(MD_FLOAT) * 3);
 }
 
-extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom) {
+extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
+{
     memcpyFromGPU(atom->x, atom->d_atom.x, atom->Nmax * sizeof(MD_FLOAT) * 3);
     memcpyFromGPU(atom->vx, atom->d_atom.vx, atom->Nmax * sizeof(MD_FLOAT) * 3);
     memcpyFromGPU(atom->type, atom->d_atom.type, atom->Nmax * sizeof(int));
 }
 
-extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom) {
+extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom)
+{
     memcpyToGPU(atom->d_atom.x, atom->x, atom->Nmax * sizeof(MD_FLOAT) * 3);
     memcpyToGPU(atom->d_atom.vx, atom->vx, atom->Nmax * sizeof(MD_FLOAT) * 3);
     memcpyToGPU(atom->d_atom.type, atom->type, atom->Nmax * sizeof(int));

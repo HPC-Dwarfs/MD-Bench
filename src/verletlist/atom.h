@@ -23,6 +23,9 @@ typedef struct {
     MD_FLOAT* sigma6;
     MD_FLOAT* cutforcesq;
     MD_FLOAT* cutneighsq;
+    // Per-atom LJ params for geometric mixing (avoids indirect gathers)
+    MD_FLOAT* sqrt_epsilon; // sqrt(epsilon) per atom
+    MD_FLOAT* sigma3;       // sigma^3 per atom (sigma6 = sigma3_i * sigma3_j)
 } DeviceAtom;
 
 typedef struct {
@@ -37,6 +40,12 @@ typedef struct {
     MD_FLOAT* sigma6;
     MD_FLOAT* cutforcesq;
     MD_FLOAT* cutneighsq;
+    // Per-atom LJ params for geometric mixing (avoids indirect gathers)
+    MD_FLOAT* sqrt_epsilon; // sqrt(epsilon) per atom
+    MD_FLOAT* sigma3;       // sigma^3 per atom (sigma6 = sigma3_i * sigma3_j)
+    // Per-type LJ params for filling per-atom arrays
+    MD_FLOAT* sqrt_epsilon_per_type;
+    MD_FLOAT* sigma3_per_type;
 
     // Device data
     DeviceAtom d_atom;
@@ -68,15 +77,15 @@ void copy(Atom*, int, int);
 
 #ifdef ATOM_POSITION_AOS
 #define POS_DATA_LAYOUT "AoS"
-#define atom_x(i)       atom->x[(i)*3 + 0]
-#define atom_y(i)       atom->x[(i)*3 + 1]
-#define atom_z(i)       atom->x[(i)*3 + 2]
-#define atom_vx(i)      atom->vx[(i)*3 + 0]
-#define atom_vy(i)      atom->vx[(i)*3 + 1]
-#define atom_vz(i)      atom->vx[(i)*3 + 2]
-#define atom_fx(i)      atom->fx[(i)*3 + 0]
-#define atom_fy(i)      atom->fx[(i)*3 + 1]
-#define atom_fz(i)      atom->fx[(i)*3 + 2]
+#define atom_x(i)       atom->x[(i) * 3 + 0]
+#define atom_y(i)       atom->x[(i) * 3 + 1]
+#define atom_z(i)       atom->x[(i) * 3 + 2]
+#define atom_vx(i)      atom->vx[(i) * 3 + 0]
+#define atom_vy(i)      atom->vx[(i) * 3 + 1]
+#define atom_vz(i)      atom->vx[(i) * 3 + 2]
+#define atom_fx(i)      atom->fx[(i) * 3 + 0]
+#define atom_fy(i)      atom->fx[(i) * 3 + 1]
+#define atom_fz(i)      atom->fx[(i) * 3 + 2]
 #else
 #define POS_DATA_LAYOUT "SoA"
 #define atom_x(i)       atom->x[i]

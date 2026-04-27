@@ -29,7 +29,8 @@ UpdatePbcFunction updateAtomsPbc = updateAtomsPbcCPU;
 static void growPbc(Atom*);
 
 /* exported subroutines */
-void initPbc(Atom* atom) {
+void initPbc(Atom* atom)
+{
     NmaxGhost        = 0;
     atom->border_map = NULL;
     atom->PBCx       = NULL;
@@ -39,7 +40,8 @@ void initPbc(Atom* atom) {
 
 /* update coordinates of ghost atoms */
 /* uses mapping created in setupPbc */
-void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate) {
+void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
+{
     DEBUG_MESSAGE("updatePbc start\n");
     int ncj       = get_ncj_from_nci(atom->Nclusters_local);
     MD_FLOAT xprd = param->xprd;
@@ -68,7 +70,7 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate) {
             cjX[CL_X_INDEX(cjj)] = xtmp;
             cjX[CL_Y_INDEX(cjj)] = ytmp;
             cjX[CL_Z_INDEX(cjj)] = ztmp;
-            cjT[cjj]               = bmapT[cjj];
+            cjT[cjj]             = bmapT[cjj];
 
             if (firstUpdate) {
                 // TODO: To create the bounding boxes faster, we can use SIMD operations
@@ -98,7 +100,7 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate) {
                 cjX[CL_X_INDEX(cjj)] = INF;
                 cjX[CL_Y_INDEX(cjj)] = INF;
                 cjX[CL_Z_INDEX(cjj)] = INF;
-                cjT[cjj]               = 0;
+                cjT[cjj]             = 0;
             }
 
             atom->jclusters[cj].bbminx = bbminx;
@@ -115,7 +117,8 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate) {
 
 /* relocate atoms that have left domain according
  * to periodic boundary conditions */
-void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy) {
+void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy)
+{
     MD_FLOAT xprd = param->xprd;
     MD_FLOAT yprd = param->yprd;
     MD_FLOAT zprd = param->zprd;
@@ -159,10 +162,14 @@ void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy) {
     int cg_sca_base = CJ_SCALAR_BASE_INDEX(cg);                                          \
     for (int cjj = 0; cjj < cj_natoms; cjj++) {                                          \
         atom->cl_t[cg_sca_base + cjj] = atom->cl_t[cj_sca_base + cjj];                   \
+        atom->cl_sqrt_epsilon[cg_sca_base + cjj] =                                       \
+            atom->cl_sqrt_epsilon[cj_sca_base + cjj];                                    \
+        atom->cl_sigma3[cg_sca_base + cjj] = atom->cl_sigma3[cj_sca_base + cjj];         \
     }
 
 /* internal subroutines */
-void growPbc(Atom* atom) {
+void growPbc(Atom* atom)
+{
     int nold = NmaxGhost;
     NmaxGhost += DELTA;
 
@@ -178,7 +185,8 @@ void growPbc(Atom* atom) {
         reallocate(atom->PBCz, ALIGNMENT, NmaxGhost * sizeof(int), nold * sizeof(int));
 }
 
-void setupPbc(Atom* atom, Parameter* param) {
+void setupPbc(Atom* atom, Parameter* param)
+{
     DEBUG_MESSAGE("setupPbc start\n");
     MD_FLOAT xprd     = param->xprd;
     MD_FLOAT yprd     = param->yprd;
@@ -309,7 +317,7 @@ void setupPbc(Atom* atom, Parameter* param) {
         cjX[CL_X_INDEX(cjj)] = INF;
         cjX[CL_Y_INDEX(cjj)] = INF;
         cjX[CL_Z_INDEX(cjj)] = INF;
-        cjT[cjj]               = 0;
+        cjT[cjj]             = 0;
     }
 
     // Increase by one to make it the ghost atom count

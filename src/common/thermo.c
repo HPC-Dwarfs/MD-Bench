@@ -67,7 +67,7 @@ void computeThermo(int iflag, Parameter* param, Atom* atom)
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
 #endif
 
-    #pragma omp parallel for reduction(+:t) schedule(runtime)
+#pragma omp parallel for reduction(+ : t) schedule(runtime)
     for (int i = 0; i < atom->Nlocal; i++) {
         t += (atom_vx(i) * atom_vx(i) + atom_vy(i) * atom_vy(i) +
                  atom_vz(i) * atom_vz(i)) *

@@ -21,7 +21,7 @@ double computeForceLJFullNeigh(
 
     int nlocal = atom->Nlocal;
     int* neighs;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -51,18 +51,18 @@ double computeForceLJFullNeigh(
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_i = atom->type[i];
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
+                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -109,13 +109,15 @@ double computeForceLJFullNeigh(
     return timeStop - timeStart;
 }
 
-double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats) {
+double computeForceLJHalfNeigh(
+    Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
     DEBUG_MESSAGE("computeForceLJHalfNeigh begin\n");
 
     int nlocal = atom->Nlocal;
     int nghost = atom->Nghost;
     int* neighs;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -146,20 +148,20 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_i = atom->type[i];
 #endif
 
 // Pragma required to vectorize the inner loop
 #pragma omp simd reduction(+ : fix, fiy, fiz)
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
+                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor->maxneighs);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -203,10 +205,11 @@ double computeForceLJHalfNeigh(Parameter* param, Atom* atom, Neighbor* neighbor,
     return timeStop - timeStart;
 }
 
-void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor) {
+void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
+{
     DEBUG_MESSAGE("computeForceGhostShell begin\n");
     int Nshell = neighbor->Nshell;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -225,18 +228,18 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor) {
         MD_FLOAT fiy  = 0;
         MD_FLOAT fiz  = 0;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
         const int type_i = atom->type[iatom];
 #endif
 
         for (int k = 0; k < numneigh; k++) {
-            int jatom     = neighs(neighbor->neighshell, i, k, Nshell, neighbor->maxneighs);
+            int jatom = neighs(neighbor->neighshell, i, k, Nshell, neighbor->maxneighs);
             MD_FLOAT delx = xtmp - atom_x(jatom);
             MD_FLOAT dely = ytmp - atom_y(jatom);
             MD_FLOAT delz = ztmp - atom_z(jatom);
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_j          = atom->type[jatom];
             const int type_ij         = type_i * atom->ntypes + type_j;
             const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

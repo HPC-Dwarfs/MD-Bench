@@ -3,6 +3,15 @@
  * All rights reserved. This file is part of MD-Bench.
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
+ *
+ * SIMD-optimized Lennard-Jones force kernels for Verlet Lists
+ * Supports: AVX2, AVX512, NEON, SVE (double precision)
+ * Requires: __SIMD_KERNEL__ flag and NBLIST_AOS layout
+ *
+ * LJ combination rules (compile-time via -DLJ_COMB_RULE=<value>):
+ *   LJ_COMB_SINGLE (0): Single atom type - broadcast global epsilon/sigma
+ *   LJ_COMB_GEOM   (1): Geometric - sqrt(eps_i*eps_j), sigma3_i*sigma3_j
+ *   LJ_COMB_NONE   (2): Full type-pair matrix lookup via gather
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,16 +27,16 @@
 #include <simd.h>
 #endif
 
+// Compile-time guards for unsupported configurations
+#ifdef NBLIST_SOA
+#error "SIMD kernel not implemented when NBLIST_DATA_LAYOUT is SOA"
+#endif
+
 double computeForceLJFullNeigh_simd(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
-#ifdef NBLIST_SOA
-    fprintf(stderr, "Error: SIMD kernel not implemented when NBLIST_DATA_LAYOUT is SOA!");
-    exit(-1);
-#endif
     int Nlocal = atom->Nlocal;
-    int* neighs;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -45,16 +54,16 @@ double computeForceLJFullNeigh_simd(
     fprintf(stderr, "Error: SIMD kernel not implemented for specified instruction set!");
     exit(-1);
 #else
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
     MD_SIMD_FLOAT sigma6_vec     = simd_real_broadcast(sigma6);
     MD_SIMD_FLOAT eps_vec        = simd_real_broadcast(epsilon);
+#else
+    // Cutoff is uniform for all types, broadcast it
+    MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
-#ifndef ONE_ATOM_TYPE
-    MD_SIMD_INT ntypes_vec       = simd_i32_broadcast(atom->ntypes);
-#endif
+    MD_SIMD_FLOAT c48_vec = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec = simd_real_broadcast(0.5);
 
 #pragma omp parallel
     {
@@ -62,7 +71,7 @@ double computeForceLJFullNeigh_simd(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
-            neighs                    = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
             int numneighs             = neighbor->numneigh[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
@@ -72,9 +81,12 @@ double computeForceLJFullNeigh_simd(
             MD_SIMD_FLOAT fiy         = simd_real_zero();
             MD_SIMD_FLOAT fiz         = simd_real_zero();
 
-#ifndef ONE_ATOM_TYPE
-            const int type_i             = atom->type[i];
-            MD_SIMD_INT type_i_vec       = simd_i32_broadcast(type_i);
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            // Broadcast per-atom LJ params for atom i (geometric combination)
+            MD_SIMD_FLOAT sqrt_eps_i = simd_real_broadcast(atom->sqrt_epsilon[i]);
+            MD_SIMD_FLOAT sigma3_i   = simd_real_broadcast(atom->sigma3[i]);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            MD_SIMD_INT tbase_i = simd_i32_broadcast(atom->type[i] * atom->ntypes);
 #endif
 
             for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
@@ -83,28 +95,40 @@ double computeForceLJFullNeigh_simd(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
-                MD_SIMD_INT j            = simd_i32_mask_load(&neighs[k], mask_numneighs);
+                MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 
-#ifndef ONE_ATOM_TYPE
-                // Gather atom types and compute pair-type indices
-                MD_SIMD_INT type_j       = simd_i32_gather(j, atom->type, sizeof(int));
-                MD_SIMD_INT type_ij      = simd_i32_add(simd_i32_mul(type_i_vec, ntypes_vec), type_j);
-
-                // Gather LJ parameters for each pair type
-                MD_SIMD_FLOAT cutforcesq_vec = simd_real_gather(type_ij, atom->cutforcesq, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT sigma6_vec     = simd_real_gather(type_ij, atom->sigma6, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT eps_vec        = simd_real_gather(type_ij, atom->epsilon, sizeof(MD_FLOAT));
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                // Direct gather of per-atom LJ params (avoids type index computation)
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
+                    atom->sqrt_epsilon,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
+                    atom->sigma3,
+                    sizeof(MD_FLOAT));
+                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij =
+                // sigma3_i * sigma3_j
+                MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+                MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
+                MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij,
+                    atom->sigma6,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij,
+                    atom->epsilon,
+                    sizeof(MD_FLOAT));
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = xtmp - simd_real_gather(j3,
                                                 &(atom->x[0]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT dely = ytmp - simd_real_gather(j3,
                                                 &(atom->x[1]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delz = ztmp - simd_real_gather(j3,
                                                 &(atom->x[2]),
                                                 sizeof(MD_FLOAT));
 #else
@@ -149,14 +173,9 @@ double computeForceLJFullNeigh_simd(
 double computeForceLJHalfNeigh_simd(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
-#ifdef NBLIST_SOA
-    fprintf(stderr, "Error: SIMD kernel not implemented when NBLIST_DATA_LAYOUT is SOA!");
-    exit(-1);
-#endif
     int Nlocal = atom->Nlocal;
     int Nghost = atom->Nghost;
-    int* neighs;
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
@@ -174,17 +193,17 @@ double computeForceLJHalfNeigh_simd(
     fprintf(stderr, "Error: SIMD kernel not implemented for specified instruction set!");
     exit(-1);
 #else
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
     MD_SIMD_FLOAT sigma6_vec     = simd_real_broadcast(sigma6);
     MD_SIMD_FLOAT eps_vec        = simd_real_broadcast(epsilon);
+#else
+    // Cutoff is uniform for all types, broadcast it
+    MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
-#ifndef ONE_ATOM_TYPE
-    MD_SIMD_INT ntypes_vec       = simd_i32_broadcast(atom->ntypes);
-#endif
-    MD_SIMD_INT nlocal_vec       = simd_i32_broadcast(Nlocal);
+    MD_SIMD_FLOAT c48_vec  = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec  = simd_real_broadcast(0.5);
+    MD_SIMD_INT nlocal_vec = simd_i32_broadcast(Nlocal);
 
 #pragma omp parallel
     {
@@ -192,7 +211,7 @@ double computeForceLJHalfNeigh_simd(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
-            neighs                    = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
             int numneighs             = neighbor->numneigh[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
@@ -202,9 +221,12 @@ double computeForceLJHalfNeigh_simd(
             MD_SIMD_FLOAT fiy         = simd_real_zero();
             MD_SIMD_FLOAT fiz         = simd_real_zero();
 
-#ifndef ONE_ATOM_TYPE
-            const int type_i       = atom->type[i];
-            MD_SIMD_INT type_i_vec = simd_i32_broadcast(type_i);
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            // Broadcast per-atom LJ params for atom i (geometric combination)
+            MD_SIMD_FLOAT sqrt_eps_i = simd_real_broadcast(atom->sqrt_epsilon[i]);
+            MD_SIMD_FLOAT sigma3_i   = simd_real_broadcast(atom->sigma3[i]);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            MD_SIMD_INT tbase_i = simd_i32_broadcast(atom->type[i] * atom->ntypes);
 #endif
 
             for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
@@ -212,28 +234,40 @@ double computeForceLJHalfNeigh_simd(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
-                MD_SIMD_INT j            = simd_i32_mask_load(&neighs[k], mask_numneighs);
+                MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 
-#ifndef ONE_ATOM_TYPE
-                // Gather atom types and compute pair-type indices
-                MD_SIMD_INT type_j       = simd_i32_gather(j, atom->type, sizeof(int));
-                MD_SIMD_INT type_ij      = simd_i32_add(simd_i32_mul(type_i_vec, ntypes_vec), type_j);
-
-                // Gather LJ parameters for each pair type
-                MD_SIMD_FLOAT cutforcesq_vec = simd_real_gather(type_ij, atom->cutforcesq, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT sigma6_vec     = simd_real_gather(type_ij, atom->sigma6, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT eps_vec        = simd_real_gather(type_ij, atom->epsilon, sizeof(MD_FLOAT));
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                // Direct gather of per-atom LJ params (avoids type index computation)
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
+                    atom->sqrt_epsilon,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
+                    atom->sigma3,
+                    sizeof(MD_FLOAT));
+                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij =
+                // sigma3_i * sigma3_j
+                MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+                MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
+                MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij,
+                    atom->sigma6,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij,
+                    atom->epsilon,
+                    sizeof(MD_FLOAT));
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = xtmp - simd_real_gather(j3,
                                                 &(atom->x[0]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT dely = ytmp - simd_real_gather(j3,
                                                 &(atom->x[1]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delz = ztmp - simd_real_gather(j3,
                                                 &(atom->x[2]),
                                                 sizeof(MD_FLOAT));
 #else

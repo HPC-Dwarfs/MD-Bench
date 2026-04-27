@@ -43,7 +43,14 @@ extern void copyDataFromCUDADevice(Atom*);
 
 #define HLINE "-----------------------------------------------------------------------\n"
 
-double setup(Parameter* param, Eam* eam, Atom* atom, Neighbor* neighbor, Stats* stats, Comm* comm, Grid* grid) {
+double setup(Parameter* param,
+    Eam* eam,
+    Atom* atom,
+    Neighbor* neighbor,
+    Stats* stats,
+    Comm* comm,
+    Grid* grid)
+{
     if (param->force_field == FF_EAM) {
         initEam(param);
     }
@@ -66,7 +73,7 @@ double setup(Parameter* param, Eam* eam, Atom* atom, Neighbor* neighbor, Stats* 
         readAtom(atom, param);
     }
 
-    setupNeighbor(param);  
+    setupNeighbor(param);
 
 #ifdef _MPI
     setupGrid(grid, atom, param);
@@ -90,18 +97,18 @@ double setup(Parameter* param, Eam* eam, Atom* atom, Neighbor* neighbor, Stats* 
     setupPbc(atom, param);
     initDevice(param, atom, neighbor);
 
-#ifdef _MPI    
+#ifdef _MPI
     ghostNeighbor(comm, atom, param);
 #ifdef CUDA_TARGET
     copyDataToCUDADevice(atom);
 #endif
 #else
     updatePbc(atom, param, true);
-#endif 
+#endif
 
     buildNeighbor(atom, neighbor);
     initForce(param);
-    timeStop = getTimeStamp(); 
+    timeStop = getTimeStamp();
     return timeStop - timeStart;
 }
 
@@ -111,13 +118,6 @@ double reneighbour(int n, Parameter* param, Atom* atom, Neighbor* neighbor, Comm
     timeStart = getTimeStamp();
     LIKWID_MARKER_START("reneighbour");
     // updateAtomsPbc(atom, param, true); function called at updateAtoms
-#ifdef SORT_ATOMS
-    if ((n + 1) % param->resort_every == 0) {
-        DEBUG_MESSAGE("Resorting atoms");
-        atom->Nghost = 0;
-        sortAtom(atom);
-    }
-#endif
 #ifdef _MPI
     ghostNeighbor(comm, atom, param);
 #ifdef CUDA_TARGET
@@ -142,7 +142,7 @@ void printAtomState(Atom* atom)
         atom->Nmax);
 
     int nall = atom->Nlocal + atom->Nghost;
-    for (int i=0; i<nall; i++) {
+    for (int i = 0; i < nall; i++) {
         printf("%d  %f %f %f\n", i, atom_x(i), atom_y(i), atom_z(i));
     }
 }
@@ -157,7 +157,7 @@ double updateAtoms(Comm* comm, Atom* atom, Parameter* param)
     copyDataFromCUDADevice(atom);
 #endif
     exchangeComm(comm, atom);
-#else 
+#else
     updateAtomsPbc(atom, param, true);
 #endif
 
@@ -320,13 +320,15 @@ int main(int argc, char** argv)
     if (param.balance > 0 && param.method == 1) {
         if (comm.myproc == 0)
             fprintf(stderr, "Half Shell is not supported by load balance!\n");
-        fprintf_once(comm.myproc, stderr, "Half Shell is not supported by load balance!\n");
+        fprintf_once(comm.myproc,
+            stderr,
+            "Half Shell is not supported by load balance!\n");
         endComm(&comm);
         exit(0);
     }
 
     param.cutneigh = param.cutforce + param.skin;
-    timer[SETUP] = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
+    timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
 
     if (comm.myproc == 0) {
         printParameter(&param);
@@ -334,8 +336,16 @@ int main(int argc, char** argv)
 
     fprintf_once(comm.myproc, stdout, "\n");
     fprintf_once(comm.myproc, stdout, "SIMULATION PROGRESS\n");
-    fprintf_once(comm.myproc, stdout, "-------------------------------------------------------------------------------\n");
-    fprintf_once(comm.myproc, stdout, "  %-10s %15s %15s\n", "Step", "Temperature", "Pressure");
+    fprintf_once(comm.myproc,
+        stdout,
+        "-------------------------------------------------------------------------------"
+        "\n");
+    fprintf_once(comm.myproc,
+        stdout,
+        "  %-10s %15s %15s\n",
+        "Step",
+        "Temperature",
+        "Pressure");
     fflush(stdout);
     computeThermo(0, &param, &atom);
 #if defined(MEM_TRACER) || defined(INDEX_TRACER)
@@ -359,18 +369,32 @@ int main(int argc, char** argv)
         printvtk(param.vtk_file, &comm, &atom, &param, 0);
     }
     for (int n = 0; n < param.ntimes; n++) {
+#ifdef SORT_ATOMS
+        bool resort = (n + 1) % param.resort_every == 0;
+        if (resort) {
+            double sortStart = getTimeStamp();
+            DEBUG_MESSAGE("Resorting atoms\n");
+            atom.Nghost = 0;
+            sortAtom(&atom);
+            timer[NEIGH] += getTimeStamp() - sortStart;
+        }
+#endif
+
         bool reneigh = (n + 1) % param.reneigh_every == 0;
         initialIntegrate(reneigh, &param, &atom);
 
         if (reneigh) {
             timer[UPDATE] += updateAtoms(&comm, &atom, &param);
             if (param.balance && !((n + 1) % param.balance_every))
-                timer[BALANCE] += dynamicBalance(&comm, &grid, &atom, &param, timer[FORCE]);
+                timer[BALANCE] += dynamicBalance(&comm,
+                    &grid,
+                    &atom,
+                    &param,
+                    timer[FORCE]);
 
             timer[NEIGH] += reneighbour(n, &param, &atom, &neighbor, &comm);
         } else {
             timer[FORWARD] += forward(&comm, &atom, &param);
-            //updatePbc(&atom, &param, false);
         }
 
 #if defined(MEM_TRACER) || defined(INDEX_TRACER)
@@ -416,73 +440,92 @@ int main(int argc, char** argv)
 #endif
 
     if (comm.myproc == 0) {
-        int n = comm.numproc;
+        int n         = comm.numproc;
         double ns_day = (param.ntimes * param.dt * 1e-6 * 86400.0) / timer[TOTAL];
-        fprintf_once(comm.myproc, stdout, "-------------------------------------------------------------------------------\n");
+        fprintf_once(comm.myproc,
+            stdout,
+            "----------------------------------------------------------------------------"
+            "---\n");
         fprintf(stdout, "\n");
         fprintf(stdout, "PERFORMANCE REPORT\n");
-        fprintf(stdout, "-------------------------------------------------------------------------------\n");
+        fprintf(stdout,
+            "----------------------------------------------------------------------------"
+            "---\n");
         fprintf(stdout, "  Timing Breakdown\n");
-        fprintf(stdout, "                          Avg (s)    Min (s)    Max (s)    %% Time    Imbalance\n");
-        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout,
+            "                          Avg (s)    Min (s)    Max (s)    %% Time    "
+            "Imbalance\n");
+        fprintf(stdout,
+            "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Force",
             sumt[FORCE] / n,
             mint[FORCE],
             maxt[FORCE],
             100.0 * sumt[FORCE] / (n * timer[TOTAL]),
             100.0 * (maxt[FORCE] - mint[FORCE]) / (sumt[FORCE] / n));
-        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout,
+            "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Neighbor",
             sumt[NEIGH] / n,
             mint[NEIGH],
             maxt[NEIGH],
             100.0 * sumt[NEIGH] / (n * timer[TOTAL]),
             100.0 * (maxt[NEIGH] - mint[NEIGH]) / (sumt[NEIGH] / n));
-        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout,
+            "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Rest",
             sumt[REST] / n,
             mint[REST],
             maxt[REST],
             100.0 * sumt[REST] / (n * timer[TOTAL]),
             100.0 * (maxt[REST] - mint[REST]) / (sumt[REST] / n));
-        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout,
+            "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Integration",
             sumt[UPDATE] / n,
             mint[UPDATE],
             maxt[UPDATE],
             100.0 * sumt[UPDATE] / (n * timer[TOTAL]),
             100.0 * (maxt[UPDATE] - mint[UPDATE]) / (sumt[UPDATE] / n));
-        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout,
+            "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Setup",
             sumt[SETUP] / n,
             mint[SETUP],
             maxt[SETUP],
             100.0 * sumt[SETUP] / (n * timer[TOTAL]),
             100.0 * (maxt[SETUP] - mint[SETUP]) / (sumt[SETUP] / n));
-        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout,
+            "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Reverse comm",
             sumt[REVERSE] / n,
             mint[REVERSE],
             maxt[REVERSE],
             100.0 * sumt[REVERSE] / (n * timer[TOTAL]),
             100.0 * (maxt[REVERSE] - mint[REVERSE]) / (sumt[REVERSE] / n));
-        fprintf(stdout, "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        fprintf(stdout,
+            "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Forward comm",
             sumt[FORWARD] / n,
             mint[FORWARD],
             maxt[FORWARD],
             100.0 * sumt[FORWARD] / (n * timer[TOTAL]),
             100.0 * (maxt[FORWARD] - mint[FORWARD]) / (sumt[FORWARD] / n));
-        fprintf(stdout, "\n  System: %d atoms (%d ghost) | %d timesteps\n",
+        fprintf(stdout,
+            "\n  System: %d atoms (%d ghost) | %d timesteps\n",
             atom.Natoms,
             Nghost,
             param.ntimes);
-        fprintf(stdout, "  Performance: %.2fs total | %.2f atom updates/us | %.2f steps/s | %.2f ns/day\n",
+        fprintf(stdout,
+            "  Performance: %.2fs total | %.2f atom updates/us | %.2f steps/s | %.2f "
+            "ns/day\n",
             timer[TOTAL],
             (double)atom.Natoms * param.ntimes / (timer[TOTAL] * 1e6),
             param.ntimes / timer[TOTAL],
             ns_day);
-        fprintf(stdout, "-------------------------------------------------------------------------------\n");
+        fprintf(stdout,
+            "----------------------------------------------------------------------------"
+            "---\n");
     }
 
 #ifdef COMPUTE_STATS

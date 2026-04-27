@@ -14,11 +14,11 @@
 #define __NEIGHBOR_H_
 
 #ifdef NBLIST_AOS
-#define NBLIST_DATA_LAYOUT "AoS"
-#define neighs(nblist,i,j,M,N) nblist[(i) * N + (j)]
+#define NBLIST_DATA_LAYOUT         "AoS"
+#define neighs(nblist, i, j, M, N) nblist[(i) * N + (j)]
 #else
-#define NBLIST_DATA_LAYOUT "SoA"
-#define neighs(nblist,i,j,M,N) nblist[(j) * M + (i)]
+#define NBLIST_DATA_LAYOUT         "SoA"
+#define neighs(nblist, i, j, M, N) nblist[(j) * M + (i)]
 #endif
 
 typedef struct {
@@ -89,6 +89,7 @@ extern void buildNeighborCPU(Atom*, Neighbor*);
 #ifdef __cplusplus
 extern "C"
 #endif
-extern void buildNeighborCUDA(Atom*, Neighbor*);
+    extern void
+    buildNeighborCUDA(Atom*, Neighbor*);
 #endif
 #endif //__NEIGHBOR_H_

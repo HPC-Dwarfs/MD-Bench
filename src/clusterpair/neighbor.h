@@ -29,11 +29,11 @@
 #define NBNXN_INTERACTION_MASK_DIAG_J8_1 0x0080c0e0U
 
 #ifdef NBLIST_AOS
-#define NBLIST_DATA_LAYOUT "AoS"
-#define neighs(nblist,i,j,M,N) nblist[(i) * N + (j)]
+#define NBLIST_DATA_LAYOUT         "AoS"
+#define neighs(nblist, i, j, M, N) nblist[(i) * N + (j)]
 #else
-#define NBLIST_DATA_LAYOUT "SoA"
-#define neighs(nblist,i,j,M,N) nblist[(j) * M + (i)]
+#define NBLIST_DATA_LAYOUT         "SoA"
+#define neighs(nblist, i, j, M, N) nblist[(j) * M + (i)]
 #endif
 
 typedef struct {
@@ -77,7 +77,8 @@ extern void updateSingleAtoms(Parameter*, Atom*);
 #ifdef __cplusplus
 extern "C"
 #endif
-extern void growNeighborCUDA(Atom*, Neighbor*);
+    extern void
+    growNeighborCUDA(Atom*, Neighbor*);
 #endif
 
 #endif

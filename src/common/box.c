@@ -78,8 +78,7 @@ int overlapFullBox(
                 max[0] = MIN(mybox->hi[0], other->hi[0] + cutneigh[0] + i * xprd);
                 max[1] = MIN(mybox->hi[1], other->hi[1] + cutneigh[1] + j * yprd);
                 max[2] = MIN(mybox->hi[2], other->hi[2] + cutneigh[2] + k * zprd);
-                if ((min[0] < max[0]) && (min[1] < max[1]) && (min[2] < max[2]))
-                    return 1;
+                if ((min[0] < max[0]) && (min[1] < max[1]) && (min[2] < max[2])) return 1;
             }
         }
     }

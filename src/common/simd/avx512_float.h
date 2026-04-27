@@ -199,8 +199,7 @@ static inline MD_SIMD_FLOAT simd_real_gather(
     }
 }
 
-static inline MD_SIMD_INT simd_i32_gather(
-    MD_SIMD_INT vidx, int* base, const int scale)
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
     if (scale == 1) {
         return _mm512_i32gather_epi32(vidx, base, 1);
@@ -221,8 +220,7 @@ static inline void simd_real_masked_scatter_sub(
     simd_i32_store(idx, vidx);
     for (int i = 0; i < 16; i++) {
         if ((mask >> i) & 1) {
-            _Pragma("omp atomic")
-            base[idx[i]] -= vals[i];
+            _Pragma("omp atomic") base[idx[i]] -= vals[i];
         }
     }
 }
