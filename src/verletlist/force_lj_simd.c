@@ -27,8 +27,12 @@
 #include <simd.h>
 #endif
 
-// Compile-time guards for unsupported configurations
-#ifdef NBLIST_SOA
+// Compile-time guards for unsupported configurations.
+// Only error out when the SIMD kernel is actually selected for this build;
+// on CUDA/HIP builds, SIMD is forced to NONE and these functions are never
+// called (force.c dispatches to computeForceLJCUDA), so the file just needs
+// to compile to stubs.
+#if defined(NBLIST_SOA) && defined(__SIMD_KERNEL__)
 #error "SIMD kernel not implemented when NBLIST_DATA_LAYOUT is SOA"
 #endif
 
