@@ -89,7 +89,7 @@ static inline MD_FLOAT simd_real_h_dual_incr_reduced_sum(
     t0 = _mm256_add_pd(v0, _mm256_permute_pd(v0, 0x5));
     t1 = _mm256_add_pd(v1, _mm256_permute_pd(v1, 0x5));
     t2 = _mm256_add_pd(t0, t1);
-    t0 = _mm256_add_pd(t1, _mm256_permute_pd(t1, 0x55));
+    t0 = _mm256_add_pd(t1, _mm256_permute_pd(t1, 0x5));
 
     acc = _mm256_load_pd(m);
     acc = _mm256_add_pd(acc, t2);
