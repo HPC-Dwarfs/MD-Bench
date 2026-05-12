@@ -6,3 +6,4 @@
 * Implement compression of atoms that need to be computed, only execute
 arithmetic when register is full
 * Implement LJ case from https://ieeexplore.ieee.org/document/11370954 for ARM and x86
+* Implement stubbed case and gather benchmark for GPUs
