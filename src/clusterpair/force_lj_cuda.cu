@@ -55,6 +55,7 @@ MD_FLOAT* cuda_cl_x;
 MD_FLOAT* cuda_cl_v;
 MD_FLOAT* cuda_cl_f;
 int* cuda_neighbors;
+unsigned int* cuda_neighbors_imask;
 int* cuda_numneigh;
 int* cuda_numneigh_inner;
 int* cuda_natoms;
@@ -113,6 +114,8 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
     cuda_numneigh_inner = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
     cuda_neighbors      = (int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
+    cuda_neighbors_imask = (unsigned int*)allocateGPU(
+        atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
     natoms  = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     ngatoms = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 }
@@ -163,6 +166,9 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
     memcpyToGPU(cuda_neighbors,
         neighbor->neighbors,
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
+    memsetGPU(cuda_neighbors_imask,
+        0xff,
+        atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
 }
 
 extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
@@ -187,6 +193,7 @@ extern "C" void cudaDeviceFree(Parameter* param)
     GPUfree(cuda_numneigh);
     GPUfree(cuda_numneigh_inner);
     GPUfree(cuda_neighbors);
+    GPUfree(cuda_neighbors_imask);
     GPUfree(cuda_natoms);
     GPUfree(cuda_border_map);
     GPUfree(cuda_jclusters_natoms);
@@ -859,6 +866,8 @@ extern void growNeighborCUDA(Atom* atom, Neighbor* neighbor)
 {
     cuda_neighbors = (int*)reallocateGPU(cuda_neighbors,
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
+    cuda_neighbors_imask = (unsigned int*)reallocateGPU(cuda_neighbors_imask,
+        atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
 }
 
 /*
