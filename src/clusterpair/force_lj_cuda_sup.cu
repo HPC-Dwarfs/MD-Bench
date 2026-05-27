@@ -455,9 +455,15 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
         }
 
         if (cjj == 0) {
+#if GPU_J_SLICES == 1
+            sci_f[CL_X_INDEX_3D(ai)] = fix;
+            sci_f[CL_Y_INDEX_3D(ai)] = fiy;
+            sci_f[CL_Z_INDEX_3D(ai)] = fiz;
+#else
             atomicAdd(&sci_f[CL_X_INDEX_3D(ai)], fix);
             atomicAdd(&sci_f[CL_Y_INDEX_3D(ai)], fiy);
             atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fiz);
+#endif
         }
 #else
         fix += __shfl_down_sync(mask, fix, CLUSTER_M);
