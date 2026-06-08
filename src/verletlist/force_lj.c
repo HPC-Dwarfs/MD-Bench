@@ -25,6 +25,8 @@ double computeForceLJFullNeigh(
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
     const MD_FLOAT num1  = 1.0;
     const MD_FLOAT num48 = 48.0;
@@ -51,7 +53,10 @@ double computeForceLJFullNeigh(
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
+            const MD_FLOAT sigma3_i   = atom->sigma3[i];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
             const int type_i = atom->type[i];
 #endif
 
@@ -62,7 +67,10 @@ double computeForceLJFullNeigh(
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
+                const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -121,6 +129,8 @@ double computeForceLJHalfNeigh(
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
     const MD_FLOAT num1  = 1.0;
     const MD_FLOAT num48 = 48.0;
@@ -148,7 +158,10 @@ double computeForceLJHalfNeigh(
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
+            const MD_FLOAT sigma3_i   = atom->sigma3[i];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
             const int type_i = atom->type[i];
 #endif
 
@@ -161,7 +174,10 @@ double computeForceLJHalfNeigh(
                 MD_FLOAT delz = ztmp - atom_z(j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
+                const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -213,6 +229,8 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
     const MD_FLOAT num1  = 1.0;
     const MD_FLOAT num48 = 48.0;
@@ -228,7 +246,10 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
         MD_FLOAT fiy  = 0;
         MD_FLOAT fiz  = 0;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+        const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[iatom];
+        const MD_FLOAT sigma3_i   = atom->sigma3[iatom];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
         const int type_i = atom->type[iatom];
 #endif
 
@@ -239,7 +260,10 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
             MD_FLOAT delz = ztmp - atom_z(jatom);
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[jatom];
+            const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[jatom];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
             const int type_j          = atom->type[jatom];
             const int type_ij         = type_i * atom->ntypes + type_j;
             const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

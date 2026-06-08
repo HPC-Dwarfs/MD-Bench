@@ -48,6 +48,10 @@ extern MD_FLOAT* cuda_cutforcesq;
 extern MD_FLOAT* cuda_sigma6;
 extern MD_FLOAT* cuda_epsilon;
 #endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+extern MD_FLOAT* cuda_cl_sqrt_epsilon;
+extern MD_FLOAT* cuda_cl_sigma3;
+#endif
 }
 
 __global__ void cudaInitialIntegrateSup_warp(MD_FLOAT* cuda_cl_x,
@@ -143,6 +147,10 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq,
+    MD_FLOAT* cuda_cl_sqrt_epsilon,
+    MD_FLOAT* cuda_cl_sigma3
 #else
     int* cuda_cl_t,
     MD_FLOAT* atom_cutforcesq,
@@ -203,7 +211,11 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
         fcj_buf = float3 { 0.0f, 0.0f, 0.0f };
 #endif
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+        int cj_sca_base       = CJ_SCALAR_BASE_INDEX(cj);
+        MD_FLOAT sqrt_eps_j   = cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
+        MD_FLOAT sigma3_j     = cuda_cl_sigma3[cj_sca_base + cjj];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         int type_j      = cuda_cl_t[cj_sca_base + cjj];
 #endif
@@ -221,7 +233,14 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
                 MD_FLOAT delz = sh_sci_x[ai].z - zjtmp;
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_FLOAT sqrt_eps_i =
+                    cuda_cl_sqrt_epsilon[sci_sca_base + ci * CLUSTER_N + cii];
+                MD_FLOAT sigma3_i   =
+                    cuda_cl_sigma3[sci_sca_base + ci * CLUSTER_N + cii];
+                MD_FLOAT sigma6  = sigma3_i * sigma3_j;
+                MD_FLOAT epsilon = sqrt_eps_i * sqrt_eps_j;
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 int type_i          = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
@@ -338,6 +357,10 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq,
+    MD_FLOAT* cuda_cl_sqrt_epsilon,
+    MD_FLOAT* cuda_cl_sigma3
 #else
     int* cuda_cl_t,
     MD_FLOAT* atom_cutforcesq,
@@ -394,7 +417,11 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
         MD_FLOAT yjtmp = cj_x[CL_Y_INDEX(cjj)];
         MD_FLOAT zjtmp = cj_x[CL_Z_INDEX(cjj)];
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+        int cj_sca_base       = CJ_SCALAR_BASE_INDEX(cj);
+        MD_FLOAT sqrt_eps_j   = cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
+        MD_FLOAT sigma3_j     = cuda_cl_sigma3[cj_sca_base + cjj];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         int type_j      = cuda_cl_t[cj_sca_base + cjj];
 #endif
@@ -412,7 +439,14 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
                 MD_FLOAT delz = sh_sci_x[ai].z - zjtmp;
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_FLOAT sqrt_eps_i =
+                    cuda_cl_sqrt_epsilon[sci_sca_base + ci * CLUSTER_N + cii];
+                MD_FLOAT sigma3_i   =
+                    cuda_cl_sigma3[sci_sca_base + ci * CLUSTER_N + cii];
+                MD_FLOAT sigma6  = sigma3_i * sigma3_j;
+                MD_FLOAT epsilon = sqrt_eps_i * sqrt_eps_j;
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 int type_i          = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
@@ -535,6 +569,8 @@ extern "C" double computeForceLJCudaSup(
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
 
     memsetGPU(cuda_cl_f,
@@ -558,6 +594,10 @@ extern "C" double computeForceLJCudaSup(
             cutforcesq,
             sigma6,
             epsilon
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+            cutforcesq,
+            cuda_cl_sqrt_epsilon,
+            cuda_cl_sigma3
 #else
             cuda_cl_t,
             cuda_cutforcesq,
@@ -578,6 +618,10 @@ extern "C" double computeForceLJCudaSup(
             cutforcesq,
             sigma6,
             epsilon
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+            cutforcesq,
+            cuda_cl_sqrt_epsilon,
+            cuda_cl_sigma3
 #else
             cuda_cl_t,
             cuda_cutforcesq,

@@ -71,6 +71,10 @@ MD_FLOAT* cuda_cutforcesq;
 MD_FLOAT* cuda_sigma6;
 MD_FLOAT* cuda_epsilon;
 #endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+MD_FLOAT* cuda_cl_sqrt_epsilon;
+MD_FLOAT* cuda_cl_sigma3;
+#endif
 }
 
 extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
@@ -101,6 +105,12 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
     memcpyToGPU(cuda_epsilon,
         atom->epsilon,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
+#endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    cuda_cl_sqrt_epsilon = (MD_FLOAT*)allocateGPU(
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+    cuda_cl_sigma3 = (MD_FLOAT*)allocateGPU(
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 #endif
     cuda_natoms = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     cuda_jclusters_natoms = (int*)allocateGPU(
@@ -137,6 +147,16 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         atom->cl_t,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
             sizeof(int));
+#endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    memcpyToGPU(cuda_cl_sqrt_epsilon,
+        atom->cl_sqrt_epsilon,
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+            sizeof(MD_FLOAT));
+    memcpyToGPU(cuda_cl_sigma3,
+        atom->cl_sigma3,
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+            sizeof(MD_FLOAT));
 #endif
 
     for (int ci = 0; ci < atom->Nclusters_local * SCLUSTER_SIZE; ci++) {
@@ -190,6 +210,10 @@ extern "C" void cudaDeviceFree(Parameter* param)
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
     GPUfree(cuda_cl_t);
 #endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    GPUfree(cuda_cl_sqrt_epsilon);
+    GPUfree(cuda_cl_sigma3);
+#endif
     GPUfree(cuda_numneigh);
     GPUfree(cuda_numneigh_inner);
     GPUfree(cuda_neighbors);
@@ -210,6 +234,10 @@ __global__ void computeForceLJCudaFullNeigh(
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq,
+    MD_FLOAT* cuda_cl_sqrt_epsilon,
+    MD_FLOAT* cuda_cl_sigma3,
 #else
     int* cuda_cl_t,
     MD_FLOAT* atom_cutforcesq,
@@ -245,7 +273,11 @@ __global__ void computeForceLJCudaFullNeigh(
     MD_FLOAT fiy   = (MD_FLOAT)0.0;
     MD_FLOAT fiz   = (MD_FLOAT)0.0;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
+    MD_FLOAT sqrt_eps_i   = cuda_cl_sqrt_epsilon[ci_sca_base + cii];
+    MD_FLOAT sigma3_i     = cuda_cl_sigma3[ci_sca_base + cii];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
     int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
     int type_i      = cuda_cl_t[ci_sca_base + cii];
 #endif
@@ -267,7 +299,11 @@ __global__ void computeForceLJCudaFullNeigh(
             MD_FLOAT delz = ztmp - cj_x[CL_Z_INDEX(cjj)];
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            int cj_sca_base  = CJ_SCALAR_BASE_INDEX(cj);
+            MD_FLOAT sigma6  = sigma3_i * cuda_cl_sigma3[cj_sca_base + cjj];
+            MD_FLOAT epsilon = sqrt_eps_i * cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
             int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
             int type_j          = cuda_cl_t[cj_sca_base + cjj];
             int type_index      = type_i * ntypes + type_j;
@@ -346,6 +382,10 @@ __global__ void computeForceLJCudaHalfNeigh(
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq,
+    MD_FLOAT* cuda_cl_sqrt_epsilon,
+    MD_FLOAT* cuda_cl_sigma3,
 #else
     int* cuda_cl_t,
     MD_FLOAT* atom_cutforcesq,
@@ -380,7 +420,11 @@ __global__ void computeForceLJCudaHalfNeigh(
     MD_FLOAT fiy   = 0;
     MD_FLOAT fiz   = 0;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
+    MD_FLOAT sqrt_eps_i   = cuda_cl_sqrt_epsilon[ci_sca_base + cii];
+    MD_FLOAT sigma3_i     = cuda_cl_sigma3[ci_sca_base + cii];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
     int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
     int type_i      = cuda_cl_t[ci_sca_base + cii];
 #endif
@@ -402,7 +446,11 @@ __global__ void computeForceLJCudaHalfNeigh(
             MD_FLOAT delz = ztmp - cj_x[CL_Z_INDEX(cjj)];
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            int cj_sca_base  = CJ_SCALAR_BASE_INDEX(cj);
+            MD_FLOAT sigma6  = sigma3_i * cuda_cl_sigma3[cj_sca_base + cjj];
+            MD_FLOAT epsilon = sqrt_eps_i * cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
             int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
             int type_j          = cuda_cl_t[cj_sca_base + cjj];
             int type_index      = type_i * ntypes + type_j;
@@ -739,6 +787,8 @@ extern "C" double computeForceLJCuda(
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
 
     // memsetGPU(cuda_cl_f, 0, atom->Nclusters_local * CLUSTER_M * 3 * sizeof(MD_FLOAT));
@@ -757,6 +807,10 @@ extern "C" double computeForceLJCuda(
             cutforcesq,
             sigma6,
             epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+            cutforcesq,
+            cuda_cl_sqrt_epsilon,
+            cuda_cl_sigma3,
 #else
             cuda_cl_t,
             cuda_cutforcesq,
@@ -777,6 +831,10 @@ extern "C" double computeForceLJCuda(
             cutforcesq,
             sigma6,
             epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+            cutforcesq,
+            cuda_cl_sqrt_epsilon,
+            cuda_cl_sigma3,
 #else
             cuda_cl_t,
             cuda_cutforcesq,
@@ -858,6 +916,12 @@ extern "C" void growClustersCUDA(Atom* atom)
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,
             atom->Nclusters_max * CLUSTER_M * sizeof(int));
+#endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+        cuda_cl_sqrt_epsilon = (MD_FLOAT*)reallocateGPU(cuda_cl_sqrt_epsilon,
+            atom->Nclusters_max * CLUSTER_M * sizeof(MD_FLOAT));
+        cuda_cl_sigma3       = (MD_FLOAT*)reallocateGPU(cuda_cl_sigma3,
+            atom->Nclusters_max * CLUSTER_M * sizeof(MD_FLOAT));
 #endif
     }
 }
