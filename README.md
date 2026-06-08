@@ -19,12 +19,13 @@ git clone https://github.com/RRZE-HPC/MD-Bench.git
 Edit config.mk and configure the compiler toolchain
 
 ```makefile=
-# Compiler tool chain (GCC/CLANG/ICC/ICX/ONEAPI/NVCC)
-TOOLCHAIN ?= CLANG
+# Compiler tool chain (GCC/CLANG/ICC/ICX/ONEAPI/NVCC/HIPCC)
+TOOLCHAIN ?= GCC
 ```
 
 Best supported are ICC (deprecated legacy Intel compiler) and ICX (LLVM based
-Intel compiler). Choose NVCC to enable CUDA GPU kernels.
+Intel compiler). Choose NVCC to enable CUDA GPU kernels (Nvidia), or HIPCC to
+enable HIP GPU kernels (AMD).
 
 The toolchain settings are located in the `./make` directory. Review the
 settings for the configured toolchain. You can configure different settings in
@@ -86,33 +87,73 @@ specification in `.clang-format`.
 ### Build time options
 
 - `TOOLCHAIN`: Determines which toolchain makefile is included
+(`GCC`/`CLANG`/`ICC`/`ICX`/`ONEAPI`/`NVCC`/`HIPCC`)
 - `ISA`: No usage apart from tag strings
-- `SIMD`: Controls the generation of intrinsic kernels for clusterpair
-- `OPT_SCHEME`: Algorithmic variant (verletlist or clusterpair), different
+- `SIMD`: Controls the generation of intrinsic kernels for clusterpair.
+X86 options: `NONE`/`SSE`/`AVX`/`AVX_FMA`/`AVX2`/`AVX512`.
+ARM options: `NONE`/`NEON`/`SVE`/`SVE2`.
+- `OPT_SCHEME`: Algorithmic variant (`verletlist` or `clusterpair`), different
 source directories and main routines are used
 - `ENABLE_LIKWID`: Turn on LIKWID instrumentation, the LIKWID library has to be available
-- `DATA_TYPE`: Switch between single precision and double precision floating
+- `ENABLE_OPENMP`: Enable OpenMP thread-level parallelization (true or false)
+- `ENABLE_MPI`: Turn on the MPI parallel version of the code
+- `DATA_TYPE`: Switch between single precision (`SP`) and double precision (`DP`) floating
 point. This is controlled by defines.
-- `ATOM_DATA_LAYOUT`: Switch between array-of-structure (AOS) and structure-of-array
-(SOA) layout for atom positions and forces. Tradeoff between better cache
+- `ATOM_DATA_LAYOUT`: Switch between array-of-structure (`AOS`) and structure-of-array
+(`SOA`) layout for atom positions and forces. Tradeoff between better cache
 utilisation and easier SIMD vectorization.
+- `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (`auto`/`AOS`/`SOA`). `auto` defaults
+to `AOS` for CPU builds and `SOA` for GPU builds.
+- `LJ_COMB_RULE`: Lennard-Jones combination rule. `single` uses a single atom type
+with broadcast global parameters (fastest, no type lookup). `geometric` uses
+per-type parameters with geometric combination (default). `none` uses a full
+type-pair matrix lookup (not supported in SIMD kernels).
 - `DEBUG`: Enable additional debug output
 - `SORT_ATOMS`: Resort atoms to ensure that atoms that are nearby are also close
 to each other in the data structures
-- `ONE_ATOM_TYPE`: Simulate only one atom type and do not perform table lookup for parameters.
-- `USE_REFERENCE_VERSION`: Enforce usage of C implementation for clusterpair
-algorithm for validation
+- `USE_REFERENCE_KERNEL`: Enforce usage of the C reference implementation for
+validation (automatically set for GPU and `SIMD=NONE` builds)
+- `USE_SCALAR_KERNEL`: Use scalar version and rely on the compiler for
+auto-vectorization
+- `USE_SIMD_KERNEL`: Use hand-written SIMD intrinsic kernels for force computation
 - `USE_CUDA_HOST_MEMORY`: Enable pinned host memory for faster host-device transfers
-- `ENABLE_MPI:` Turn on the MPI parallel version of the code
+- `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds (e.g. `gfx90a`).
+Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
+`gfx942` (MI300X).
+- `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme
+(`auto`/`4xN`/`2xNN`/`gpusimple`)
+- `SUPERCLUSTER_DATA_LAYOUT`: Data layout for super-clustering kernels
+(`AOS3`/`AOS4`/`SOA`)
+- `SUPERCLUSTER_INVERSE_THREAD_MAPPING`: Map `threadIdx.y` to `cii` and
+`threadIdx.x` to `cjj` (true or false). If false, uses the same thread
+mapping and reduction as GROMACS.
+- `XTC_OUTPUT`: Enable XTC trajectory output (GROMACS file format)
+- `MEM_TRACER`: Trace memory addresses for cache simulation (true or false)
+- `INDEX_TRACER`: Trace indexes and distances for gather-MD analysis (true or false)
+- `COMPUTE_STATS`: Compute and print additional runtime statistics
 
 ### Build for GPU targets
 
-MD-Bench currently only supports Nvidia GPUs using CUDA kernels. To enable CUDA
-kernels you need to specify `NVCC` as toolchain. The CUDA source code is in the
-same source directories with Cuda suffix and `.cu` as file type ending. If
-`NVCC` is set as toolchain, all supported kernels are automatically set to their
-CUDA variants at build time. This means a binary either supports CPU kernels or
-GPU kernels.
+MD-Bench supports GPU kernels for both Nvidia (CUDA) and AMD (HIP) GPUs.
+A binary either supports CPU kernels or GPU kernels — not both at the same time.
+
+**Nvidia (CUDA):** Specify `NVCC` as toolchain. CUDA source files share the same
+directories as CPU sources, using a `Cuda` suffix and `.cu` file extension. All
+supported kernels are automatically switched to their CUDA variants at build time.
+
+```shell=
+make TOOLCHAIN=NVCC
+```
+
+**AMD (HIP/ROCm):** Specify `HIPCC` as toolchain and set `GPU_ARCH` to your
+target architecture. `GPU_ARCH` has no default and must always be provided:
+
+```shell=
+make TOOLCHAIN=HIPCC GPU_ARCH=gfx90a
+```
+
+Common `GPU_ARCH` values: `gfx90a` (MI250X), `gfx940` (MI300A APU),
+`gfx942` (MI300X).
 
 ## Command line arguments
 
@@ -173,18 +214,6 @@ Call MD-Bench as follows:
 ./MDBench-<TAG> -n 400  -i ./data/copper_melting/input_lj_cu_one_atomtype_20x20x20.dmp
 ```
 
-### Lennard-Jones potential for melted copper with explicit types
-
-Compile MD-Bench with `EXPLICIT_TYPES=true` in `config.mk`.
-
-Call MD-Bench as follows:
-
-```shell=bash
-./MDBench-<TAG> -n 400  -i ./data/copper_melting/input_lj_cu_one_atomtype_20x20x20.dmp
-```
-
-**This testcase currently segvaults!**
-
 ### EAM potential for melted copper
 
 Call MD-Bench as follows:
@@ -194,7 +223,7 @@ Call MD-Bench as follows:
 ```
 
 Two different EAM variants are available: `Cu_u3.eam` and `Cu_u6.eam`. The EAM
-potential is currently only available for verletlist.t.
+potential is currently only available for verletlist.
 
 ### Lennard-Jones potential for argon gas
 
