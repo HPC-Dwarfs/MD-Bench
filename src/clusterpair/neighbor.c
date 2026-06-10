@@ -278,8 +278,10 @@ static unsigned int get_imask_simd_j8(int rdiag, int ci, int cj)
 
 #if VECTOR_WIDTH == 2
 #define get_imask_simd_4xn get_imask_simd_j2
+#define get_imask_simd_2xn get_imask_simd_j4
 #elif VECTOR_WIDTH == 4
 #define get_imask_simd_4xn get_imask_simd_j4
+#define get_imask_simd_2xn get_imask_simd_j8
 #elif VECTOR_WIDTH == 8
 #define get_imask_simd_4xn  get_imask_simd_j8
 #define get_imask_simd_2xnn get_imask_simd_j4
@@ -381,6 +383,22 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             MD_SIMD_INT tbase3 = simd_i32_broadcast(ci_t[3] * atom->ntypes);
 #else
             MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutneighsq);
+#endif
+
+#elif defined(CLUSTERPAIR_KERNEL_2XN)
+            MD_SIMD_FLOAT xi0_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(0)]);
+            MD_SIMD_FLOAT xi1_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(1)]);
+            MD_SIMD_FLOAT yi0_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(0)]);
+            MD_SIMD_FLOAT yi1_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(1)]);
+            MD_SIMD_FLOAT zi0_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(0)]);
+            MD_SIMD_FLOAT zi1_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(1)]);
+
+#ifndef ONE_ATOM_TYPE
+            MD_SIMD_INT tbase0    = simd_i32_broadcast(ci_t[0] * atom->ntypes);
+            MD_SIMD_INT tbase1    = simd_i32_broadcast(ci_t[1] * atom->ntypes);
+#else
+            MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutneighsq);
+
 #endif
 
 #endif
@@ -584,6 +602,58 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                                         simd_test_any(cutoff_mask3)) {
                                         is_neighbor = 1;
                                     }
+
+#elif defined(CLUSTERPAIR_KERNEL_2XN)
+
+                                    MD_SIMD_FLOAT xj_tmp = simd_real_load(
+                                        &cj_x[CL_X_OFFSET]);
+                                    MD_SIMD_FLOAT yj_tmp = simd_real_load(
+                                        &cj_x[CL_Y_OFFSET]);
+                                    MD_SIMD_FLOAT zj_tmp = simd_real_load(
+                                        &cj_x[CL_Z_OFFSET]);
+#ifndef ONE_ATOM_TYPE
+                                    MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
+                                    MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
+                                    MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
+                                    MD_SIMD_FLOAT cutneighsq0 = simd_real_gather(tvec0,
+                                        atom->cutneighsq,
+                                        sizeof(MD_FLOAT));
+                                    MD_SIMD_FLOAT cutneighsq1 = simd_real_gather(tvec1,
+                                        atom->cutneighsq,
+                                        sizeof(MD_FLOAT));
+#else
+                                    MD_SIMD_FLOAT cutneighsq0 = cutneighsq_vec;
+                                    MD_SIMD_FLOAT cutneighsq1 = cutneighsq_vec;
+#endif
+
+                                    MD_SIMD_FLOAT delx0 = simd_real_sub(xi0_tmp, xj_tmp);
+                                    MD_SIMD_FLOAT dely0 = simd_real_sub(yi0_tmp, yj_tmp);
+                                    MD_SIMD_FLOAT delz0 = simd_real_sub(zi0_tmp, zj_tmp);
+                                    MD_SIMD_FLOAT delx1 = simd_real_sub(xi1_tmp, xj_tmp);
+                                    MD_SIMD_FLOAT dely1 = simd_real_sub(yi1_tmp, yj_tmp);
+                                    MD_SIMD_FLOAT delz1 = simd_real_sub(zi1_tmp, zj_tmp);
+
+                                    MD_SIMD_FLOAT rsq0 = simd_real_fma(delx0,
+                                        delx0,
+                                        simd_real_fma(dely0,
+                                            dely0,
+                                            simd_real_mul(delz0, delz0)));
+                                    MD_SIMD_FLOAT rsq1 = simd_real_fma(delx1,
+                                        delx1,
+                                        simd_real_fma(dely1,
+                                            dely1,
+                                            simd_real_mul(delz1, delz1)));
+
+                                    MD_SIMD_MASK cutoff_mask0 = simd_mask_cond_lt(rsq0,
+                                        cutneighsq0);
+                                    MD_SIMD_MASK cutoff_mask1 = simd_mask_cond_lt(rsq1,
+                                        cutneighsq1);
+
+
+                                    if (simd_test_any(cutoff_mask0) ||
+                                        simd_test_any(cutoff_mask1)) {
+                                        is_neighbor = 1;
+                                    }
 #else
                                     is_neighbor = 0;
                                     for (int cii = 0; cii < CLUSTER_M; cii++) {
@@ -602,6 +672,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                                         }
                                     }
 #endif
+
                                 }
 
                                 if (is_neighbor) {
@@ -611,8 +682,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                                     // for, which  makes the optimized version to not
                                     // work!
                                     unsigned int imask;
-#ifdef CLUSTERPAIR_KERNEL_2XNN
+#if defined(CLUSTERPAIR_KERNEL_2XNN)
                                     imask = get_imask_simd_2xnn(1, ci, cj);
+#elif defined(CLUSTERPAIR_KERNEL_2XN)
+                                    imask = get_imask_simd_2xn(1, ci, cj);
 #else
                                     imask = get_imask_simd_4xn(1, ci, cj);
 #endif
@@ -1168,6 +1241,15 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         MD_SIMD_FLOAT zi1_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(1)]);
         MD_SIMD_FLOAT zi2_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(2)]);
         MD_SIMD_FLOAT zi3_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
+#elif defined(CLUSTERPAIR_KERNEL_2XN)
+        MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutsq);
+        MD_SIMD_FLOAT xi0_tmp        = simd_real_broadcast(ci_x[CL_X_OFFSET + 0]);
+        MD_SIMD_FLOAT xi1_tmp        = simd_real_broadcast(ci_x[CL_X_OFFSET + 1]);
+        MD_SIMD_FLOAT yi0_tmp        = simd_real_broadcast(ci_x[CL_Y_OFFSET + 0]);
+        MD_SIMD_FLOAT yi1_tmp        = simd_real_broadcast(ci_x[CL_Y_OFFSET + 1]);
+        MD_SIMD_FLOAT zi0_tmp        = simd_real_broadcast(ci_x[CL_Z_OFFSET + 0]);
+        MD_SIMD_FLOAT zi1_tmp        = simd_real_broadcast(ci_x[CL_Z_OFFSET + 1]);
+
 #endif
 
         for (int k = 0; k < numneighs; k++) {
@@ -1233,6 +1315,33 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
                 simd_test_any(cutoff_mask2) || simd_test_any(cutoff_mask3)) {
                 atom_dist_in_range = 1;
             }
+
+#elif defined(CLUSTERPAIR_KERNEL_2XN)
+
+            MD_SIMD_FLOAT xj_tmp = simd_real_load(&cj_x[CL_X_OFFSET]);
+            MD_SIMD_FLOAT yj_tmp = simd_real_load(&cj_x[CL_Y_OFFSET]);
+            MD_SIMD_FLOAT zj_tmp = simd_real_load(&cj_x[CL_Z_OFFSET]);
+            MD_SIMD_FLOAT delx0  = simd_real_sub(xi0_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely0  = simd_real_sub(yi0_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz0  = simd_real_sub(zi0_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx1  = simd_real_sub(xi1_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely1  = simd_real_sub(yi1_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz1  = simd_real_sub(zi1_tmp, zj_tmp);
+
+            MD_SIMD_FLOAT rsq0 = simd_real_fma(delx0,
+                delx0,
+                simd_real_fma(dely0, dely0, simd_real_mul(delz0, delz0)));
+            MD_SIMD_FLOAT rsq1 = simd_real_fma(delx1,
+                delx1,
+                simd_real_fma(dely1, dely1, simd_real_mul(delz1, delz1)));
+
+            MD_SIMD_MASK cutoff_mask0 = simd_mask_cond_lt(rsq0, cutneighsq_vec);
+            MD_SIMD_MASK cutoff_mask1 = simd_mask_cond_lt(rsq1, cutneighsq_vec);
+
+            if (simd_test_any(cutoff_mask0) || simd_test_any(cutoff_mask1)) {
+                atom_dist_in_range = 1;
+            }
+
 #else
             for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
                 for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {

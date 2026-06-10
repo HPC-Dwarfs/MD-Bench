@@ -83,6 +83,8 @@ typedef struct {
     MD_FLOAT* diagonal_2xnn_j_minus_i;
     unsigned int masks_2xnn_hn[8];
     unsigned int masks_2xnn_fn[8];
+    unsigned int masks_2xn_hn[8];
+    unsigned int masks_2xn_fn[8];
     unsigned int masks_4xn_hn[16];
     unsigned int masks_4xn_fn[16];
     // Info Subdomain

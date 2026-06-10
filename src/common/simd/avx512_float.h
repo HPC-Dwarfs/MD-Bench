@@ -107,6 +107,16 @@ static inline MD_FLOAT simd_real_incr_reduced_sum(
     return 0.0;
 }
 
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    MD_FLOAT ret;
+    fprintf(stderr,
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX512 with float precision!");
+    exit(-1);
+    return ret;
+}
+
 static inline MD_SIMD_FLOAT simd_real_load_h_duplicate(const float* m)
 {
     return _mm512_castpd_ps(_mm512_broadcast_f64x4(_mm256_load_pd((const double*)(m))));

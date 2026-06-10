@@ -144,6 +144,16 @@ static inline MD_FLOAT simd_real_h_dual_incr_reduced_sum(
     return *((MD_FLOAT*)&t0);
 }
 
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    MD_FLOAT ret;
+    fprintf(stderr,
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX with float precision!");
+    exit(-1);
+    return ret;
+}
+
 inline void simd_h_decr(MD_FLOAT* m, MD_SIMD_FLOAT a)
 {
     __m128 asum = _mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 0x1));

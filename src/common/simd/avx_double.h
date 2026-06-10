@@ -123,6 +123,16 @@ static inline MD_FLOAT simd_real_incr_reduced_sum(
     return *((MD_FLOAT*)&a0);
 }
 
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    MD_FLOAT ret;
+    fprintf(stderr,
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX with double precision!");
+    exit(-1);
+    return ret;
+}
+
 static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MASK m)
 {
     return _mm256_and_pd(a, m);
