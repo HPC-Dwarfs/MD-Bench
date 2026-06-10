@@ -76,7 +76,7 @@ double computeForceLJFullNeigh_simd(
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
-            int numneighs             = neighbor->numneigh[i];
+            int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
             MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
@@ -216,7 +216,7 @@ double computeForceLJHalfNeigh_simd(
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
-            int numneighs             = neighbor->numneigh[i];
+            int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
             MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));

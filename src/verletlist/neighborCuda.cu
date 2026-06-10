@@ -26,7 +26,9 @@ extern int nbinx, nbiny, nbinz;
 extern int mbinx, mbiny, mbinz; // n bins in x, y, z
 extern int mbins;               // total number of bins
 extern int atoms_per_bin;       // max atoms per bin
-extern MD_FLOAT cutneighsq;     // neighbor cutoff squared
+extern MD_FLOAT cutneighsq;        // neighbor (outer) cutoff squared
+extern MD_FLOAT cutneigh_inner_sq; // inner cutoff squared (cutforce + skin)
+extern int dcut_enabled;           // double-cutoff pruning active for this run
 extern int nmax;
 extern int nstencil; // # of bins in stencil
 extern int* stencil; // stencil list of bin offsets
@@ -210,6 +212,79 @@ __global__ void compute_neighborhood(DeviceAtom a,
     }
 }
 
+/* Double-cutoff prune: partition each atom's neighbor list in place so the inner
+ * neighbors (within the force cutoff + skin) come first, and record their count in
+ * numneigh_inner. One thread per local atom; lists are independent so no atomics. */
+__global__ void prune_neighborhood(DeviceAtom a,
+    DeviceNeighbor neigh,
+    int nlocal,
+    int maxneighs,
+    MD_FLOAT cutsq)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nlocal) {
+        return;
+    }
+
+    DeviceAtom* atom         = &a;
+    DeviceNeighbor* neighbor = &neigh;
+    const int numneighs      = neighbor->numneigh[i];
+    const MD_FLOAT xtmp      = atom_x(i);
+    const MD_FLOAT ytmp      = atom_y(i);
+    const MD_FLOAT ztmp      = atom_z(i);
+
+    int lo = 0;
+    for (int hi = 0; hi < numneighs; hi++) {
+        int j         = neighs(neighbor->neighbors, i, hi, nlocal, maxneighs);
+        MD_FLOAT delx = xtmp - atom_x(j);
+        MD_FLOAT dely = ytmp - atom_y(j);
+        MD_FLOAT delz = ztmp - atom_z(j);
+        MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
+
+        if (rsq < cutsq) {
+            if (hi != lo) {
+                neighs(neighbor->neighbors, i, hi, nlocal, maxneighs) = neighs(
+                    neighbor->neighbors, i, lo, nlocal, maxneighs);
+                neighs(neighbor->neighbors, i, lo, nlocal, maxneighs) = j;
+            }
+            lo++;
+        }
+    }
+
+    neighbor->numneigh_inner[i] = lo;
+}
+
+/* Ensures numneigh_inner is valid: mirror outer counts when double-cutoff is
+ * disabled, otherwise partition each list around the inner cutoff on the device. */
+static void pruneNeighborDevice(Atom* atom, Neighbor* neighbor)
+{
+    DeviceNeighbor* d_neighbor = &(neighbor->d_neighbor);
+
+    if (!dcut_enabled) {
+        memcpyOnGPU(d_neighbor->numneigh_inner,
+            d_neighbor->numneigh,
+            atom->Nlocal * sizeof(int));
+        return;
+    }
+
+    const int num_threads_per_block = get_cuda_num_threads();
+    const int num_blocks = ceil((float)atom->Nlocal / (float)num_threads_per_block);
+    prune_neighborhood<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+        *d_neighbor,
+        atom->Nlocal,
+        neighbor->maxneighs,
+        cutneigh_inner_sq);
+    cuda_assert("prune_neighborhood", cudaPeekAtLastError());
+    cuda_assert("prune_neighborhood", cudaDeviceSynchronize());
+}
+
+extern "C" void pruneNeighborCUDA(Parameter* param, Atom* atom, Neighbor* neighbor)
+{
+    DEBUG_MESSAGE("pruneNeighborCUDA begin\n");
+    pruneNeighborDevice(atom, neighbor);
+    DEBUG_MESSAGE("pruneNeighborCUDA end\n");
+}
+
 void binatoms_cuda(Atom* atom,
     Binning* c_binning,
     int* c_resize_needed,
@@ -268,6 +343,8 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
         d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
             nmax * neighbor->maxneighs * sizeof(int*));
         d_neighbor->numneigh  = (int*)reallocateGPU(d_neighbor->numneigh,
+            nmax * sizeof(int));
+        d_neighbor->numneigh_inner = (int*)reallocateGPU(d_neighbor->numneigh_inner,
             nmax * sizeof(int));
     }
 
@@ -357,6 +434,10 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
         }
     }
+
+    // Initialize the inner-section counts (mirrors the outer list when the
+    // double-cutoff scheme is disabled) after a full rebuild.
+    pruneNeighborDevice(atom, neighbor);
 
     GPU_PROFILE_STOP();
     DEBUG_MESSAGE("buildNeighborCUDA end\n");

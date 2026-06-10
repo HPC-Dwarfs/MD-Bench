@@ -45,7 +45,7 @@ double computeForceLJFullNeigh(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < nlocal; i++) {
-            int numneighs = neighbor->numneigh[i];
+            int numneighs = neighbor->numneigh_inner[i];
             MD_FLOAT xtmp = atom_x(i);
             MD_FLOAT ytmp = atom_y(i);
             MD_FLOAT ztmp = atom_z(i);
@@ -150,7 +150,7 @@ double computeForceLJHalfNeigh(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < nlocal; i++) {
-            int numneighs = neighbor->numneigh[i];
+            int numneighs = neighbor->numneigh_inner[i];
             MD_FLOAT xtmp = atom_x(i);
             MD_FLOAT ytmp = atom_y(i);
             MD_FLOAT ztmp = atom_z(i);

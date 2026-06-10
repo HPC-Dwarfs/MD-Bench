@@ -26,6 +26,7 @@ BuildNeighborFunction buildNeighbor = buildNeighborCUDA;
 #else
 BuildNeighborFunction buildNeighbor = buildNeighborCPU;
 #endif
+PruneNeighborFunction pruneNeighbor = pruneNeighborCPU;
 
 MD_FLOAT xprd, yprd, zprd;
 MD_FLOAT bininvx, bininvy, bininvz;
@@ -37,7 +38,10 @@ int* bins;
 int mbins;         // total number of bins
 int atoms_per_bin; // max atoms per bin
 MD_FLOAT cutneigh;
-MD_FLOAT cutneighsq; // neighbor cutoff squared
+MD_FLOAT cutneighsq;        // neighbor (outer) cutoff squared
+MD_FLOAT cutneigh_inner_sq; // inner cutoff squared (cutforce + skin)
+int dcut_enabled;          // double-cutoff pruning active for this run
+int* is_inner_buf;         // reusable scratch for pruneNeighborCPU, sized by maxneighs
 int nmax;
 int nstencil; // # of bins in stencil
 int* stencil; // stencil list of bin offsets
@@ -73,9 +77,11 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     stencil             = NULL;
     bins                = NULL;
     bincount            = NULL;
-    neighbor->maxneighs = 100;
-    neighbor->numneigh  = NULL;
-    neighbor->neighbors = NULL;
+    neighbor->maxneighs      = 100;
+    neighbor->numneigh       = NULL;
+    neighbor->numneigh_inner = NULL;
+    neighbor->neighbors      = NULL;
+    is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
     //========== MPI =============
     method = param->method;
     if (method == halfShell || method == eightShell) {
@@ -119,7 +125,12 @@ void setupNeighbor(Parameter* param)
     MD_FLOAT zlo = 0.0;
     MD_FLOAT zhi = zprd;
 
-    cutneighsq = cutneigh * cutneigh;
+    cutneighsq               = cutneigh * cutneigh;
+    const MD_FLOAT cut_inner = param->cutforce + param->skin;
+    cutneigh_inner_sq        = cut_inner * cut_inner;
+    // Only prune when an outer skin actually widens the list beyond the inner
+    // cutoff; this also keeps EAM (which sets its own cutneigh) on the full list.
+    dcut_enabled = (param->outer_skin > 0.0) && (cutneigh_inner_sq < cutneighsq);
 
     if (param->input_file != NULL) {
         binsizex = cutneigh * 0.5;
@@ -267,8 +278,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
     if (nall > nmax) {
         nmax = nall;
         if (neighbor->numneigh) free(neighbor->numneigh);
+        if (neighbor->numneigh_inner) free(neighbor->numneigh_inner);
         if (neighbor->neighbors) free(neighbor->neighbors);
-        neighbor->numneigh  = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->numneigh       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
+        neighbor->numneigh_inner = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
         neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
     }
 
@@ -340,8 +353,11 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             printf("RESIZE %d, PROC %d\n", neighbor->maxneighs, me);
             neighbor->maxneighs = new_maxneighs * 1.2;
             free(neighbor->neighbors);
+            free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
+            is_inner_buf = (int*)allocate(ALIGNMENT,
+                neighbor->maxneighs * sizeof(int));
         }
     }
 
@@ -349,7 +365,83 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         neighborGhost(atom, neighbor);
     }
 
+    // Initialize the inner-section counts (mirrors the outer list when the
+    // double-cutoff scheme is disabled) after a full rebuild.
+    pruneNeighborCPU(NULL, atom, neighbor);
+
     DEBUG_MESSAGE("buildNeighborCPU end\n");
+}
+
+void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
+{
+    DEBUG_MESSAGE("pruneNeighborCPU begin\n");
+    const int nlocal = atom->Nlocal;
+    const int nbN    = neighbor->maxneighs;
+
+    if (!dcut_enabled) {
+        // Disabled: mirror outer counts so the force kernel reads the full list.
+        for (int i = 0; i < nlocal; i++) {
+            neighbor->numneigh_inner[i] = neighbor->numneigh[i];
+        }
+        DEBUG_MESSAGE("pruneNeighborCPU end\n");
+        return;
+    }
+
+    const MD_FLOAT cutsq = cutneigh_inner_sq;
+
+#pragma omp parallel
+    {
+        int* is_inner = is_inner_buf;
+#ifdef _OPENMP
+        // Each thread needs its own scratch for the in-place partition.
+        is_inner = (int*)allocate(ALIGNMENT, nbN * sizeof(int));
+#endif
+
+#pragma omp for schedule(runtime)
+        for (int i = 0; i < nlocal; i++) {
+            const int numneighs = neighbor->numneigh[i];
+            const MD_FLOAT xtmp = atom_x(i);
+            const MD_FLOAT ytmp = atom_y(i);
+            const MD_FLOAT ztmp = atom_z(i);
+
+            for (int k = 0; k < numneighs; k++) {
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, nbN);
+                MD_FLOAT delx = xtmp - atom_x(j);
+                MD_FLOAT dely = ytmp - atom_y(j);
+                MD_FLOAT delz = ztmp - atom_z(j);
+                MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
+                is_inner[k]   = (rsq < cutsq);
+            }
+
+            // Partition the list in place: inner neighbors first.
+            int lo = 0;
+            for (int hi = 0; hi < numneighs; hi++) {
+                if (is_inner[hi]) {
+                    if (hi != lo) {
+                        int t_j = neighs(neighbor->neighbors, i, lo, nlocal, nbN);
+                        neighs(neighbor->neighbors, i, lo, nlocal, nbN) = neighs(
+                            neighbor->neighbors,
+                            i,
+                            hi,
+                            nlocal,
+                            nbN);
+                        neighs(neighbor->neighbors, i, hi, nlocal, nbN) = t_j;
+                        is_inner[hi]                                    = is_inner[lo];
+                        is_inner[lo]                                    = 1;
+                    }
+                    lo++;
+                }
+            }
+
+            neighbor->numneigh_inner[i] = lo;
+        }
+
+#ifdef _OPENMP
+        free(is_inner);
+#endif
+    }
+
+    DEBUG_MESSAGE("pruneNeighborCPU end\n");
 }
 
 /* internal subroutines */

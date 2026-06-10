@@ -24,6 +24,7 @@
 typedef struct {
     int* neighbors;
     int* numneigh;
+    int* numneigh_inner;
 } DeviceNeighbor;
 
 typedef struct {
@@ -33,6 +34,7 @@ typedef struct {
     int half_neigh;
     int* neighbors;
     int* numneigh;
+    int* numneigh_inner;
 
     // Device data
     DeviceNeighbor d_neighbor;
@@ -78,18 +80,26 @@ typedef struct {
 } Binning;
 
 typedef void (*BuildNeighborFunction)(Atom*, Neighbor*);
+typedef void (*PruneNeighborFunction)(Parameter*, Atom*, Neighbor*);
 extern BuildNeighborFunction buildNeighbor;
+extern PruneNeighborFunction pruneNeighbor;
 
 extern void initNeighbor(Neighbor*, Parameter*);
 extern void setupNeighbor(Parameter*);
 extern void binatoms(Atom*);
 extern void sortAtom(Atom*);
 extern void buildNeighborCPU(Atom*, Neighbor*);
+extern void pruneNeighborCPU(Parameter*, Atom*, Neighbor*);
 #ifdef CUDA_TARGET
 #ifdef __cplusplus
 extern "C"
 #endif
     extern void
     buildNeighborCUDA(Atom*, Neighbor*);
+#ifdef __cplusplus
+extern "C"
+#endif
+    extern void
+    pruneNeighborCUDA(Parameter*, Atom*, Neighbor*);
 #endif
 #endif //__NEIGHBOR_H_

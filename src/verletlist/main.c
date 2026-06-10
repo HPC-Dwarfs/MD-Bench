@@ -327,7 +327,7 @@ int main(int argc, char** argv)
         exit(0);
     }
 
-    param.cutneigh = param.cutforce + param.skin;
+    param.cutneigh = param.cutforce + param.skin + param.outer_skin;
     timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
 
     if (comm.myproc == 0) {
@@ -398,6 +398,15 @@ int main(int argc, char** argv)
 #ifndef _MPI
             updatePbc(&atom, &param, false);
 #endif
+            if (param.outer_skin > 0.0 && !((n + 1) % param.prune_every)) {
+                double prune_start = getTimeStamp();
+#ifdef CUDA_TARGET
+                pruneNeighborCUDA(&param, &atom, &neighbor);
+#else
+                pruneNeighbor(&param, &atom, &neighbor);
+#endif
+                timer[NEIGH] += getTimeStamp() - prune_start;
+            }
         }
 
 #if defined(MEM_TRACER) || defined(INDEX_TRACER)
