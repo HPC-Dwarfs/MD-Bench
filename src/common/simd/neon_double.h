@@ -138,7 +138,7 @@ static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MA
 
 static inline MD_SIMD_INT simd_i32_load(const int* ptr)
 {
-    return vld1q_s64((int64_t*)ptr);
+    return vmovl_s32(vld1_s32(ptr));
 }
 static inline MD_SIMD_INT simd_i32_broadcast(int value) { return vdupq_n_s64(value); }
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
