@@ -238,11 +238,9 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 // Gather integers (for multi-atom-type)
 static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
-    // SVE gather for 32-bit integers with 64-bit indices
-    svint64_t offsets  = svmul_n_s64_x(svptrue_b64(), vidx, sizeof(int));
-    svint32_t gathered = svld1_gather_s64offset_s32(svptrue_b64(), base, offsets);
-    // Sign-extend 32-bit to 64-bit
-    return svunpklo_s64(gathered);
+    // SVE gather: load 32-bit ints with 64-bit byte offsets, sign-extend to 64-bit
+    svint64_t offsets = svmul_n_s64_x(svptrue_b64(), vidx, sizeof(int));
+    return svld1sw_gather_s64offset_s64(svptrue_b64(), (const int32_t*)base, offsets);
 }
 
 // Horizontal sum reduction
