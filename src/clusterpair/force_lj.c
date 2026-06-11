@@ -2068,10 +2068,12 @@ double computeForceLJ2xnFullNeigh(
     MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
     MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
 
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
     MD_SIMD_FLOAT sigma6_vec     = simd_real_broadcast(sigma6);
     MD_SIMD_FLOAT eps_vec        = simd_real_broadcast(epsilon);
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
 #endif
 
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
@@ -2116,11 +2118,21 @@ double computeForceLJ2xnFullNeigh(
             MD_SIMD_FLOAT fiy1    = simd_real_zero();
             MD_SIMD_FLOAT fiz1    = simd_real_zero();
 
-#ifndef ONE_ATOM_TYPE
-            int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
-            int* ci_t             = &atom->cl_t[ci_sca_base];
-            MD_SIMD_INT tbase0    = simd_i32_broadcast(ci_t[0] * atom->ntypes);
-            MD_SIMD_INT tbase1    = simd_i32_broadcast(ci_t[1] * atom->ntypes);
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            int ci_sca_base           = CI_SCALAR_BASE_INDEX(ci);
+            MD_SIMD_FLOAT sqrt_eps_i0 = simd_real_broadcast(
+                atom->cl_sqrt_epsilon[ci_sca_base + 0]);
+            MD_SIMD_FLOAT sqrt_eps_i1 = simd_real_broadcast(
+                atom->cl_sqrt_epsilon[ci_sca_base + 1]);
+            MD_SIMD_FLOAT sigma3_i0 = simd_real_broadcast(
+                atom->cl_sigma3[ci_sca_base + 0]);
+            MD_SIMD_FLOAT sigma3_i1 = simd_real_broadcast(
+                atom->cl_sigma3[ci_sca_base + 1]);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            int ci_sca_base    = CI_SCALAR_BASE_INDEX(ci);
+            int* ci_t          = &atom->cl_t[ci_sca_base];
+            MD_SIMD_INT tbase0 = simd_i32_broadcast(ci_t[0] * atom->ntypes);
+            MD_SIMD_INT tbase1 = simd_i32_broadcast(ci_t[1] * atom->ntypes);
 #endif
 
             for (int k = 0; k < numneighs_masked; k++) {
@@ -2128,7 +2140,9 @@ double computeForceLJ2xnFullNeigh(
                 int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2171,7 +2185,20 @@ double computeForceLJ2xnFullNeigh(
                     simd_real_fma(dely1, dely1, simd_real_mul(delz1, delz1)));
 
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_load(
+                    &atom->cl_sqrt_epsilon[cj_sca_base]);
+                MD_SIMD_FLOAT sigma3_j = simd_real_load(&atom->cl_sigma3[cj_sca_base]);
+
+                MD_SIMD_FLOAT cutforcesq0 = cutforcesq_vec;
+                MD_SIMD_FLOAT cutforcesq1 = cutforcesq_vec;
+
+                MD_SIMD_FLOAT sigma6_0 = simd_real_mul(sigma3_i0, sigma3_j);
+                MD_SIMD_FLOAT sigma6_1 = simd_real_mul(sigma3_i1, sigma3_j);
+
+                MD_SIMD_FLOAT eps0 = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
+                MD_SIMD_FLOAT eps1 = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
@@ -2260,7 +2287,9 @@ double computeForceLJ2xnFullNeigh(
                 int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2284,7 +2313,20 @@ double computeForceLJ2xnFullNeigh(
                     simd_real_fma(dely1, dely1, simd_real_mul(delz1, delz1)));
 
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_load(
+                    &atom->cl_sqrt_epsilon[cj_sca_base]);
+                MD_SIMD_FLOAT sigma3_j = simd_real_load(&atom->cl_sigma3[cj_sca_base]);
+
+                MD_SIMD_FLOAT cutforcesq0 = cutforcesq_vec;
+                MD_SIMD_FLOAT cutforcesq1 = cutforcesq_vec;
+
+                MD_SIMD_FLOAT sigma6_0 = simd_real_mul(sigma3_i0, sigma3_j);
+                MD_SIMD_FLOAT sigma6_1 = simd_real_mul(sigma3_i1, sigma3_j);
+
+                MD_SIMD_FLOAT eps0 = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
+                MD_SIMD_FLOAT eps1 = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
@@ -2396,10 +2438,12 @@ double computeForceLJ2xnHalfNeigh(
     MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
     MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
 
-#ifdef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
     MD_SIMD_FLOAT sigma6_vec     = simd_real_broadcast(sigma6);
     MD_SIMD_FLOAT eps_vec        = simd_real_broadcast(epsilon);
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
 #endif
 
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
@@ -2409,6 +2453,16 @@ double computeForceLJ2xnHalfNeigh(
             ci_f[CL_X_OFFSET + cii] = 0.0;
             ci_f[CL_Y_OFFSET + cii] = 0.0;
             ci_f[CL_Z_OFFSET + cii] = 0.0;
+        }
+    }
+
+    for (int cg = atom->ncj; cg < atom->ncj + atom->Nclusters_ghost; cg++) {
+        int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cg);
+        MD_FLOAT* cj_f  = &atom->cl_f[cj_vec_base];
+        for (int cjj = 0; cjj < atom->jclusters[cg].natoms; cjj++) {
+            cj_f[CL_X_INDEX_3D(cjj)] = 0.0;
+            cj_f[CL_Y_INDEX_3D(cjj)] = 0.0;
+            cj_f[CL_Z_INDEX_3D(cjj)] = 0.0;
         }
     }
 
@@ -2444,11 +2498,21 @@ double computeForceLJ2xnHalfNeigh(
             MD_SIMD_FLOAT fiy1    = simd_real_zero();
             MD_SIMD_FLOAT fiz1    = simd_real_zero();
 
-#ifndef ONE_ATOM_TYPE
-            int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
-            int* ci_t             = &atom->cl_t[ci_sca_base];
-            MD_SIMD_INT tbase0    = simd_i32_broadcast(ci_t[0] * atom->ntypes);
-            MD_SIMD_INT tbase1    = simd_i32_broadcast(ci_t[1] * atom->ntypes);
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            int ci_sca_base           = CI_SCALAR_BASE_INDEX(ci);
+            MD_SIMD_FLOAT sqrt_eps_i0 = simd_real_broadcast(
+                atom->cl_sqrt_epsilon[ci_sca_base + 0]);
+            MD_SIMD_FLOAT sqrt_eps_i1 = simd_real_broadcast(
+                atom->cl_sqrt_epsilon[ci_sca_base + 1]);
+            MD_SIMD_FLOAT sigma3_i0 = simd_real_broadcast(
+                atom->cl_sigma3[ci_sca_base + 0]);
+            MD_SIMD_FLOAT sigma3_i1 = simd_real_broadcast(
+                atom->cl_sigma3[ci_sca_base + 1]);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            int ci_sca_base    = CI_SCALAR_BASE_INDEX(ci);
+            int* ci_t          = &atom->cl_t[ci_sca_base];
+            MD_SIMD_INT tbase0 = simd_i32_broadcast(ci_t[0] * atom->ntypes);
+            MD_SIMD_INT tbase1 = simd_i32_broadcast(ci_t[1] * atom->ntypes);
 #endif
 
             for (int k = 0; k < numneighs_masked; k++) {
@@ -2457,7 +2521,9 @@ double computeForceLJ2xnHalfNeigh(
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
                 MD_FLOAT* cj_f  = &atom->cl_f[cj_vec_base];
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2499,7 +2565,17 @@ double computeForceLJ2xnHalfNeigh(
                     delx1,
                     simd_real_fma(dely1, dely1, simd_real_mul(delz1, delz1)));
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_load(
+                    &atom->cl_sqrt_epsilon[cj_sca_base]);
+                MD_SIMD_FLOAT sigma3_j    = simd_real_load(&atom->cl_sigma3[cj_sca_base]);
+                MD_SIMD_FLOAT cutforcesq0 = cutforcesq_vec;
+                MD_SIMD_FLOAT cutforcesq1 = cutforcesq_vec;
+                MD_SIMD_FLOAT sigma6_0    = simd_real_mul(sigma3_i0, sigma3_j);
+                MD_SIMD_FLOAT sigma6_1    = simd_real_mul(sigma3_i1, sigma3_j);
+                MD_SIMD_FLOAT eps0        = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
+                MD_SIMD_FLOAT eps1        = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
@@ -2597,7 +2673,9 @@ double computeForceLJ2xnHalfNeigh(
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
                 MD_FLOAT* cj_f  = &atom->cl_f[cj_vec_base];
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2619,7 +2697,17 @@ double computeForceLJ2xnHalfNeigh(
                     delx1,
                     simd_real_fma(dely1, dely1, simd_real_mul(delz1, delz1)));
 
-#ifndef ONE_ATOM_TYPE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_load(
+                    &atom->cl_sqrt_epsilon[cj_sca_base]);
+                MD_SIMD_FLOAT sigma3_j    = simd_real_load(&atom->cl_sigma3[cj_sca_base]);
+                MD_SIMD_FLOAT cutforcesq0 = cutforcesq_vec;
+                MD_SIMD_FLOAT cutforcesq1 = cutforcesq_vec;
+                MD_SIMD_FLOAT sigma6_0    = simd_real_mul(sigma3_i0, sigma3_j);
+                MD_SIMD_FLOAT sigma6_1    = simd_real_mul(sigma3_i1, sigma3_j);
+                MD_SIMD_FLOAT eps0        = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
+                MD_SIMD_FLOAT eps1        = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);

@@ -91,7 +91,6 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 // Auto selection based on VECTOR_WIDTH and architecture
 #ifdef CLUSTERPAIR_KERNEL_AUTO
     #if defined(__ISA_NEON__) || defined(__ISA_SVE__) || defined(__ISA_SVE2__)
-        #define CLUSTER_M 2
         #define CLUSTERPAIR_KERNEL_2XN
     #else
         #define CLUSTER_M 4
@@ -107,6 +106,7 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #ifdef CLUSTERPAIR_KERNEL_4XN
 #define KERNEL_NAME "Simd4xN"
 #define CLUSTER_N   VECTOR_WIDTH
+#define CLUSTER_M   4
 #define UNROLL_I    4
 #define UNROLL_J    1
 #endif
@@ -114,15 +114,17 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #ifdef CLUSTERPAIR_KERNEL_2XNN
 #define KERNEL_NAME "Simd2xNN"
 #define CLUSTER_N   (VECTOR_WIDTH / 2)
+#define CLUSTER_M   4
 #define UNROLL_I    4
 #define UNROLL_J    2
 #endif
 
 #ifdef CLUSTERPAIR_KERNEL_2XN
-    #define KERNEL_NAME "Simd2xN"
-    #define CLUSTER_N   VECTOR_WIDTH
-    #define UNROLL_I    2
-    #define UNROLL_J    2
+#define KERNEL_NAME "Simd2xN"
+#define CLUSTER_N   VECTOR_WIDTH
+#define CLUSTER_M   2
+#define UNROLL_I    2
+#define UNROLL_J    2
 #endif
 
 // Verify that one of the kernel variants is selected
