@@ -2052,8 +2052,6 @@ double computeForceLJ4xnFullNeigh(
     DEBUG_MESSAGE("computeForceLJ_4xn end\n");
     return E - S;
 }
-#endif
-
 
 double computeForceLJ2xnFullNeigh(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats){
@@ -2814,6 +2812,7 @@ double computeForceLJ2xnHalfNeigh(
     DEBUG_MESSAGE("computeForceLJ_2xn_Half end\n");
     return E - S;
 }
+#endif
 
 // Routine for eight shell method + MPI
 void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
