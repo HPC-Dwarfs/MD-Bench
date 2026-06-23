@@ -55,4 +55,8 @@ typedef struct {
 extern LJTable ljtable;
 
 void initLJTable(Parameter* param);
+
+#ifdef CUDA_TARGET
+void freeLJTableGPU(void);
+#endif
 #endif // __LJTABLE_H_

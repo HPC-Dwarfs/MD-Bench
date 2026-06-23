@@ -82,10 +82,10 @@ void initLJTable(Parameter* param)
     }
 
     // Per-knot value and eps-scaled derivative for both shapes.
-    MD_FLOAT* rv = (MD_FLOAT*)malloc(nknots * sizeof(MD_FLOAT));
-    MD_FLOAT* rd = (MD_FLOAT*)malloc(nknots * sizeof(MD_FLOAT));
-    MD_FLOAT* dv = (MD_FLOAT*)malloc(nknots * sizeof(MD_FLOAT));
-    MD_FLOAT* dd = (MD_FLOAT*)malloc(nknots * sizeof(MD_FLOAT));
+    MD_FLOAT* rv = (MD_FLOAT*)allocate(ALIGNMENT, nknots * sizeof(MD_FLOAT));
+    MD_FLOAT* rd = (MD_FLOAT*)allocate(ALIGNMENT, nknots * sizeof(MD_FLOAT));
+    MD_FLOAT* dv = (MD_FLOAT*)allocate(ALIGNMENT, nknots * sizeof(MD_FLOAT));
+    MD_FLOAT* dd = (MD_FLOAT*)allocate(ALIGNMENT, nknots * sizeof(MD_FLOAT));
 
     for (int i = 0; i < nknots; i++) {
         MD_FLOAT x = i * h;

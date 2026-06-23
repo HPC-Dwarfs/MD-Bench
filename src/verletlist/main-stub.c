@@ -60,8 +60,11 @@ void init(Parameter* param)
 void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, int nreps)
 {
     const int maxneighs = nneighs * nreps;
-    neighbor->numneigh  = (int*)malloc(atom->Nmax * sizeof(int));
-    neighbor->neighbors = (int*)malloc(atom->Nmax * maxneighs * sizeof(int));
+    // Match the production path (neighbor.c): the force kernels read these
+    // lists, so they must use the aligned allocator for fair benchmarking.
+    neighbor->numneigh  = (int*)allocate(ALIGNMENT, atom->Nmax * sizeof(int));
+    neighbor->neighbors = (int*)allocate(ALIGNMENT,
+        atom->Nmax * maxneighs * sizeof(int));
 
     if (pattern == P_RAND && atom->Nlocal <= nneighs) {
         fprintf(stderr,

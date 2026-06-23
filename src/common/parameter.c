@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <allocate.h>
 #include <atom.h>
 #include <force.h>
 #include <parameter.h>
@@ -161,8 +162,8 @@ void readTypesFile(Parameter* param)
     }
 
     param->ntypes           = count;
-    param->epsilon_per_type = (MD_FLOAT*)malloc(count * sizeof(MD_FLOAT));
-    param->sigma_per_type   = (MD_FLOAT*)malloc(count * sizeof(MD_FLOAT));
+    param->epsilon_per_type = (MD_FLOAT*)allocate(ALIGNMENT, count * sizeof(MD_FLOAT));
+    param->sigma_per_type   = (MD_FLOAT*)allocate(ALIGNMENT, count * sizeof(MD_FLOAT));
 
     // Second pass: read values
     rewind(fp);
@@ -212,8 +213,7 @@ void readParameter(Parameter* param, const char* filename)
         char* tok = strtok(line, " \t\n\r");
         char* val = strtok(NULL, " \t\n\r");
 
-#define PARAM_NAME_LEN(p)   (sizeof(#p) / sizeof(#p[0]) - 1)
-#define PARAM_MATCH(tok, p) (strlen(tok) == PARAM_NAME_LEN(p) && strncmp(tok, #p, PARAM_NAME_LEN(p)) == 0)
+#define PARAM_MATCH(tok, p) STR_EQ((tok), #p)
 #define PARSE_PARAM(p, f)                                                                \
     if (PARAM_MATCH(tok, p)) {                                                           \
         param->p = f(val);                                                               \

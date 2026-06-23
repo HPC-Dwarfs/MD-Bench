@@ -548,6 +548,12 @@ int main(int argc, char** argv)
     displayStatistics(&atom, &param, &stats, timer);
 #endif
 
+#ifdef CUDA_TARGET
+    if (param.force_field == FF_LJ_TABLE) {
+        freeLJTableGPU();
+    }
+#endif
+
     endComm(&comm);
     LIKWID_MARKER_CLOSE;
     return EXIT_SUCCESS;

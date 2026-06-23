@@ -64,12 +64,19 @@ void createNeighbors(
     const int maxneighs       = nneighs * nreps;
     const int ncj             = get_ncj_from_nci(atom->Nclusters_local);
     const unsigned int imask  = NBNXN_INTERACTION_MASK_ALL;
-    neighbor->numneigh              = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->numneigh_masked       = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->numneigh_inner        = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->numneigh_inner_masked = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->neighbors = (int*)malloc(atom->Nclusters_max * maxneighs * sizeof(int));
-    neighbor->neighbors_imask = (unsigned int*)malloc(
+    // Match the production path (neighbor.c): the force kernels read these
+    // lists, so they must use the aligned allocator for fair benchmarking.
+    neighbor->numneigh              = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_masked       = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_inner        = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_inner_masked = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * sizeof(int));
+    neighbor->neighbors = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * maxneighs * sizeof(int));
+    neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
         atom->Nclusters_max * maxneighs * sizeof(unsigned int));
 
     if (pattern == P_RAND && ncj <= nneighs) {

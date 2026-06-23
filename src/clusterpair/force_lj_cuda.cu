@@ -126,8 +126,8 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
     cuda_neighbors_imask = (unsigned int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
-    natoms  = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    ngatoms = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    natoms  = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    ngatoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 }
 
 extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* neighbor)

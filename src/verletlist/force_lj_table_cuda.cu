@@ -199,6 +199,15 @@ static void ensureLJTableOnGPU(void)
     memcpyToGPU(ljtable.d_coeff, ljtable.coeff, bytes);
 }
 
+// Release the device-resident table (counterpart to the lazy upload above).
+void freeLJTableGPU(void)
+{
+    if (ljtable.d_coeff != NULL) {
+        GPUfree(ljtable.d_coeff);
+        ljtable.d_coeff = NULL;
+    }
+}
+
 double computeForceLJTableCUDA(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
