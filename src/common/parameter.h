@@ -112,6 +112,7 @@ typedef struct {
     double proc_freq;
     int super_clustering;
     char* eam_file;
+    int lj_table_points;
     // MPI implementation
     int balance;
     int method;

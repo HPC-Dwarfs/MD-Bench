@@ -1,6 +1,10 @@
 #include "test_runner.h"
 
 #include <math.h>
+#include <string.h>
+
+#include <ljtable.h>
+#include <parameter.h>
 
 /* Mirror the Lennard-Jones force calculation used in computeForceLJRef. */
 static void lj_force(double epsilon,
@@ -149,6 +153,130 @@ static int test_lj_geom_combination_formula(void)
     return 0;
 }
 
+/* ----------------------------------------------------------------------------
+ * Tabulated/spline-interpolated LJ forces (src/common/ljtable.{h,c}).
+ * These build the real coefficient table via initLJTable and check that the
+ * cubic-spline lookup reproduces the analytic LJ force-over-distance.
+ * -------------------------------------------------------------------------- */
+
+/* Analytic LJ force-over-distance (fpair), matching the kernels:
+ * force = 48*sr6*(sr6-0.5)*sr2*epsilon, with sr2=1/r^2, sr6=sigma6/r^6. */
+static double analytic_fpair(double r, double epsilon, double sigma6)
+{
+    double rsq = r * r;
+    double sr2 = 1.0 / rsq;
+    double sr6 = sr2 * sr2 * sr2 * sigma6;
+    return 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
+}
+
+/* Replicate the kernel table lookup. Works for both index modes: the kernels
+ * use LJ_TABLE_COORD(rsq), i.e. sqrt(rsq)=r for r-indexed and rsq for rsq. */
+static double table_fpair(double r, double epsilon, double sigma6)
+{
+    double coord;
+#ifdef LJ_TABLE_RSQ
+    coord = r * r;
+#else
+    coord = r;
+#endif
+    double u = coord * (double)ljtable.inv_h;
+    int m    = (int)u;
+    int nm1  = ljtable.n - 1;
+    if (m > nm1) m = nm1;
+    double eps         = u - (double)m;
+    const MD_FLOAT* cc = &ljtable.coeff[m * LJ_TABLE_STRIDE];
+    double hrep        = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
+    double gdisp       = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
+    return epsilon * sigma6 * (sigma6 * hrep + gdisp);
+}
+
+static void build_test_table(double cut, int points)
+{
+    Parameter param;
+    memset(&param, 0, sizeof(param));
+    param.cutforce        = (MD_FLOAT)cut;
+    param.lj_table_points = points;
+    initLJTable(&param);
+}
+
+/* At knot positions the spline value equals the tabulated function exactly
+ * (A0 coefficient), so the table must reproduce the analytic force to rounding. */
+static int test_lj_table_knot_exactness(void)
+{
+    const double cut = 2.5;
+    build_test_table(cut, 1000);
+
+    const double epsilon = 1.0;
+    const double sigma6  = 1.0;
+
+    for (int m = 400; m <= 960; m += 40) {
+#ifdef LJ_TABLE_RSQ
+        double r = sqrt(m * (double)ljtable.h);
+#else
+        double r = m * (double)ljtable.h;
+#endif
+        if (r < 0.9) continue; /* skip the steep, physically-unreached inner region */
+        double ftab = table_fpair(r, epsilon, sigma6);
+        double fana = analytic_fpair(r, epsilon, sigma6);
+        double rel  = fabs(ftab - fana) / (fabs(fana) + 1e-300);
+        ASSERT_TRUE(rel < 1e-4, "tabulated LJ matches analytic at knot");
+    }
+    return 0;
+}
+
+/* Between knots the cubic interpolation must stay close to analytic. */
+static int test_lj_table_interp_accuracy(void)
+{
+    const double cut = 2.5;
+    build_test_table(cut, 1000);
+
+    const double epsilon = 1.0;
+    const double sigma6  = 1.0;
+
+    double max_rel = 0.0;
+    for (double r = 0.95; r < cut - 1e-6; r += 0.013) {
+        double ftab = table_fpair(r, epsilon, sigma6);
+        double fana = analytic_fpair(r, epsilon, sigma6);
+        double rel  = fabs(ftab - fana) / (fabs(fana) + 1e-12);
+        if (rel > max_rel) max_rel = rel;
+    }
+    ASSERT_TRUE(max_rel < 1e-3, "tabulated LJ interpolation error within 1e-3");
+    return 0;
+}
+
+/* The decomposition (eps*sigma^12)*Hrep + (eps*sigma^6)*Gdisp must reproduce
+ * the analytic force for non-trivial per-pair epsilon/sigma too. */
+static int test_lj_table_prefactor_decomposition(void)
+{
+    const double cut = 3.0;
+    build_test_table(cut, 2000);
+
+    /* Type pair with eps=2.0, sigma=1.2 -> sigma6 = 1.2^6. */
+    const double epsilon = 2.0;
+    const double sigma   = 1.2;
+    const double sigma6  = pow(sigma, 6.0);
+
+    for (double r = 1.0; r < cut - 1e-6; r += 0.05) {
+        double ftab = table_fpair(r, epsilon, sigma6);
+        double fana = analytic_fpair(r, epsilon, sigma6);
+        double rel  = fabs(ftab - fana) / (fabs(fana) + 1e-12);
+        ASSERT_TRUE(rel < 2e-3, "tabulated LJ prefactor decomposition matches analytic");
+    }
+    return 0;
+}
+
+/* Near the LJ minimum r = 2^(1/6) the force-over-distance crosses zero. */
+static int test_lj_table_force_at_minimum(void)
+{
+    const double cut = 2.5;
+    build_test_table(cut, 1000);
+
+    const double r    = pow(2.0, 1.0 / 6.0);
+    double ftab       = table_fpair(r, 1.0, 1.0);
+    ASSERT_NEAR(ftab, 0.0, 1e-3, "tabulated LJ force near zero at minimum");
+    return 0;
+}
+
 int run_force_tests(void)
 {
     int rc = 0;
@@ -167,6 +295,22 @@ int run_force_tests(void)
 
     tr_log("  force: geometric combination formula");
     rc = test_lj_geom_combination_formula();
+    if (rc) return rc;
+
+    tr_log("  force: tabulated LJ knot exactness");
+    rc = test_lj_table_knot_exactness();
+    if (rc) return rc;
+
+    tr_log("  force: tabulated LJ interpolation accuracy");
+    rc = test_lj_table_interp_accuracy();
+    if (rc) return rc;
+
+    tr_log("  force: tabulated LJ prefactor decomposition");
+    rc = test_lj_table_prefactor_decomposition();
+    if (rc) return rc;
+
+    tr_log("  force: tabulated LJ force at minimum");
+    rc = test_lj_table_force_at_minimum();
     if (rc) return rc;
 
     return 0;

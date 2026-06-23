@@ -41,7 +41,7 @@ void setupThermo(Parameter* param, int natoms)
     engarr  = (MD_FLOAT*)malloc(maxstat * sizeof(MD_FLOAT));
     prsarr  = (MD_FLOAT*)malloc(maxstat * sizeof(MD_FLOAT));
 
-    if (param->force_field == FF_LJ) {
+    if (param->force_field == FF_LJ || param->force_field == FF_LJ_TABLE) {
         mvv2e     = 1.0;
         dof_boltz = (natoms * 3 - 3);
         t_scale   = mvv2e / dof_boltz;

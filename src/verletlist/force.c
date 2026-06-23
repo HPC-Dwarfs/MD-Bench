@@ -16,6 +16,17 @@ void initForce(Parameter* param)
     case FF_EAM:
         computeForce = computeForceEam;
         break;
+    case FF_LJ_TABLE:
+#ifdef CUDA_TARGET
+        computeForce = computeForceLJTableCUDA;
+#else
+        if (param->half_neigh || param->method) {
+            computeForce = computeForceLJTableHalfNeigh;
+        } else {
+            computeForce = computeForceLJTableFullNeigh;
+        }
+#endif
+        break;
     case FF_LJ:
 #ifdef CUDA_TARGET
         computeForce = computeForceLJCUDA;

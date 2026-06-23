@@ -16,7 +16,7 @@
 typedef double (*ComputeForceFunction)(Parameter*, Atom*, Neighbor*, Stats*);
 extern ComputeForceFunction computeForce;
 
-enum forcetype { FF_LJ = 0, FF_EAM };
+enum forcetype { FF_LJ = 0, FF_EAM, FF_LJ_TABLE };
 
 extern void initForce(Parameter*);
 extern double computeForceLJRef(Parameter*, Atom*, Neighbor*, Stats*);

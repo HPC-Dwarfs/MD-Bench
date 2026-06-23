@@ -6,6 +6,7 @@
  */
 #include <force.h>
 #include <parameter.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 ComputeForceFunction computeForce;
@@ -38,5 +39,9 @@ void initForce(Parameter* param)
             computeForce = computeForceLJCuda;
         }
 #endif
+        break;
+    default:
+        fprintf(stderr, "Error: Unknown force field!\n");
+        exit(EXIT_FAILURE);
     }
 }

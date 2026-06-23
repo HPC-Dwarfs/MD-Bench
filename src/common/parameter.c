@@ -112,6 +112,7 @@ void initParameter(Parameter* param)
     param->v_out_every      = 5;
     param->half_neigh       = 0;
     param->proc_freq        = 2.4;
+    param->lj_table_points  = 1000;
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
     param->super_clustering = 1;
 #else
@@ -258,6 +259,7 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(x_out_every);
             PARSE_INT(v_out_every);
             PARSE_INT(half_neigh);
+            PARSE_INT(lj_table_points);
             PARSE_INT(method);
             PARSE_INT(balance);
             PARSE_INT(balance_every);

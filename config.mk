@@ -27,6 +27,10 @@ DEBUG ?= false
 
 # Sort atoms at a separate frequency (true or false)
 SORT_ATOMS ?= false
+# Index variable for tabulated LJ forces (r/rsq)
+# r:   uniform grid in distance (matches GROMACS), needs a sqrt per pair
+# rsq: uniform grid in squared distance, avoids the sqrt (load-bound variant)
+LJ_TABLE_INDEX ?= r
 # LJ combination rule (single/geometric/none)
 # single: single atom type, broadcast global params (fastest, no type lookup)
 # geometric: per-type params with geometric combination (default)
@@ -179,6 +183,12 @@ else ifeq ($(strip $(LJ_COMB_RULE)),none)
     DEFINES += -DLJ_COMB_RULE=2
 else
     $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, none)
+endif
+
+ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
+    DEFINES += -DLJ_TABLE_RSQ
+else ifneq ($(strip $(LJ_TABLE_INDEX)),r)
+    $(error Invalid LJ_TABLE_INDEX, must be one of: r, rsq)
 endif
 
 ifeq ($(strip $(MEM_TRACER)),true)
