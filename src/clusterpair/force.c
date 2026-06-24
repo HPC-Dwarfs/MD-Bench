@@ -41,8 +41,9 @@ void initForce(Parameter* param)
 #endif
         break;
     case FF_LJ_TABLE:
-#if defined(CLUSTERPAIR_KERNEL_REF)
+//#if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJTableRef;
+/*
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJTable4xnHalfNeigh;
@@ -62,6 +63,7 @@ void initForce(Parameter* param)
             computeForce = computeForceLJTableCuda;
         }
 #endif
+*/
         break;
     default:
         fprintf(stderr, "Error: Unknown force field!\n");
