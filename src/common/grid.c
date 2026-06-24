@@ -290,7 +290,7 @@ void nextBisectionLevel(Grid* grid,
         if (grid->buf_send) free(grid->buf_send);
         grid->buf_send = (MD_FLOAT*)allocate(ALIGNMENT,
             atom->Nlocal * values_per_atom * sizeof(MD_FLOAT));
-        grid->maxsend = atom->Nlocal;
+        grid->maxsend  = atom->Nlocal;
     }
 
     // buffer particles to send
@@ -320,7 +320,7 @@ void nextBisectionLevel(Grid* grid,
         if (grid->buf_recv) free(grid->buf_recv);
         grid->buf_recv = (MD_FLOAT*)allocate(ALIGNMENT,
             (nrecv + nrecv2) * values_per_atom * sizeof(MD_FLOAT));
-        grid->maxrecv = nrecv + nrecv2;
+        grid->maxrecv  = nrecv + nrecv2;
     }
 
     // communicate elements in the buffer

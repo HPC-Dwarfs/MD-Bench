@@ -44,7 +44,7 @@ static int nmax;
 static int nstencil; // # of bins in stencil
 static int* stencil; // stencil list of bin offsets
 static MD_FLOAT binsizex, binsizey;
-static int* is_inner_buf;  // reusable scratch for pruneNeighbor*, sized by maxneighs
+static int* is_inner_buf; // reusable scratch for pruneNeighbor*, sized by maxneighs
 
 static int coord2bin(MD_FLOAT, MD_FLOAT);
 static MD_FLOAT bindist(int, int);
@@ -79,8 +79,8 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     } else {
         neighbor->maxneighs = 200;
     }
-    is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
-    neighbor->numneigh              = NULL;
+    is_inner_buf       = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
+    neighbor->numneigh = NULL;
     neighbor->numneigh_masked       = NULL;
     neighbor->numneigh_inner        = NULL;
     neighbor->numneigh_inner_masked = NULL;
@@ -143,12 +143,12 @@ void setupNeighbor(Parameter* param, Atom* atom)
         targetsizey *= (MD_FLOAT)SCLUSTER_SIZE_Y;
     }
 
-    nbinx      = MAX(1, (int)ceil((xhi - xlo) / targetsizex));
-    nbiny      = MAX(1, (int)ceil((yhi - ylo) / targetsizey));
-    binsizex   = (xhi - xlo) / nbinx;
-    binsizey   = (yhi - ylo) / nbiny;
-    bininvx    = 1.0 / binsizex;
-    bininvy    = 1.0 / binsizey;
+    nbinx                    = MAX(1, (int)ceil((xhi - xlo) / targetsizex));
+    nbiny                    = MAX(1, (int)ceil((yhi - ylo) / targetsizey));
+    binsizex                 = (xhi - xlo) / nbinx;
+    binsizey                 = (yhi - ylo) / nbiny;
+    bininvx                  = 1.0 / binsizex;
+    bininvy                  = 1.0 / binsizey;
     cutneighsq               = cutneigh * cutneigh;
     const MD_FLOAT cut_inner = param->cutforce + param->skin;
     cutneigh_inner_sq        = cut_inner * cut_inner;
@@ -306,8 +306,9 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         neighbor->numneigh_masked       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
         neighbor->numneigh_inner        = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
         neighbor->numneigh_inner_masked = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
-        neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
-        neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
+        neighbor->neighbors             = (int*)allocate(ALIGNMENT,
+            nmax * neighbor->maxneighs * sizeof(int));
+        neighbor->neighbors_imask       = (unsigned int*)allocate(ALIGNMENT,
             nmax * neighbor->maxneighs * sizeof(unsigned int));
     }
 
@@ -324,8 +325,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
-    reduction(| : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max                                 \
+                                                     : new_maxneighs)                    \
+    reduction(|                                                                          \
+              : resize_local)
         for (int ci = 0; ci < atom->Nclusters_local; ci++) {
             int ci_cj0 = CJ0_FROM_CI(ci);
             int n = 0, nmasked = 0;
@@ -375,10 +378,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             MD_SIMD_FLOAT zi3_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-            MD_SIMD_INT tbase0 = simd_i32_broadcast(ci_t[0] * atom->ntypes);
-            MD_SIMD_INT tbase1 = simd_i32_broadcast(ci_t[1] * atom->ntypes);
-            MD_SIMD_INT tbase2 = simd_i32_broadcast(ci_t[2] * atom->ntypes);
-            MD_SIMD_INT tbase3 = simd_i32_broadcast(ci_t[3] * atom->ntypes);
+            MD_SIMD_INT tbase0    = simd_i32_broadcast(ci_t[0] * atom->ntypes);
+            MD_SIMD_INT tbase1    = simd_i32_broadcast(ci_t[1] * atom->ntypes);
+            MD_SIMD_INT tbase2    = simd_i32_broadcast(ci_t[2] * atom->ntypes);
+            MD_SIMD_INT tbase3    = simd_i32_broadcast(ci_t[3] * atom->ntypes);
 #else
             MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutneighsq);
 #endif
@@ -712,11 +715,11 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             free(neighbor->neighbors);
             free(neighbor->neighbors_imask);
             free(is_inner_buf);
-            neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
+            neighbor->neighbors       = (int*)allocate(ALIGNMENT,
+                nmax * neighbor->maxneighs * sizeof(int));
             neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
                 nmax * neighbor->maxneighs * sizeof(unsigned int));
-            is_inner_buf = (int*)allocate(ALIGNMENT,
-                neighbor->maxneighs * sizeof(int));
+            is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
 #ifdef CUDA_TARGET
             growNeighborCUDA(atom, neighbor);
 #endif
@@ -796,7 +799,8 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
         if (neighbor->neighbors) free(neighbor->neighbors);
         neighbor->numneigh       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
         neighbor->numneigh_inner = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
-        neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
+        neighbor->neighbors      = (int*)allocate(ALIGNMENT,
+            nmax * neighbor->maxneighs * sizeof(int));
     }
 
     MD_FLOAT bbx    = 0.5 * (binsizex + binsizex);
@@ -881,8 +885,8 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                                 int is_neighbor = (d_bb_sq < rbb_sq) ? 1 : 0;
                                 if (!is_neighbor) {
                                     for (int sci_ci = 0;
-                                        sci_ci < atom->siclusters[sci].nclusters;
-                                        sci_ci++) {
+                                         sci_ci < atom->siclusters[sci].nclusters;
+                                         sci_ci++) {
                                         const int ci    = sci * SCLUSTER_SIZE + sci_ci;
                                         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
 #ifdef SOA_SUP
@@ -896,11 +900,11 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                                         MD_FLOAT* cj_x = &atom->cl_x[cj_vec_base];
 
                                         for (int cii = 0;
-                                            cii < atom->iclusters[ci].natoms;
-                                            cii++) {
+                                             cii < atom->iclusters[ci].natoms;
+                                             cii++) {
                                             for (int cjj = 0;
-                                                cjj < atom->jclusters[cj].natoms;
-                                                cjj++) {
+                                                 cjj < atom->jclusters[cj].natoms;
+                                                 cjj++) {
                                                 MD_FLOAT delx = ci_x[CL_X_INDEX(cii)] -
                                                                 cj_x[CL_X_INDEX(cjj)];
                                                 MD_FLOAT dely = ci_x[CL_Y_INDEX(cii)] -
@@ -967,8 +971,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
-            is_inner_buf = (int*)allocate(ALIGNMENT,
-                neighbor->maxneighs * sizeof(int));
+            is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
         }
     }
     // if (atom->Nclusters_local > 0) debug_check_supercluster_neighbors(atom, neighbor,
@@ -1156,18 +1159,18 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         MD_SIMD_FLOAT zi2_tmp        = simd_real_load_h_dual(&ci_x[CL_Z_INDEX_3D(2)]);
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         MD_SIMD_FLOAT cutneighsq_vec = simd_real_broadcast(cutsq);
-        MD_SIMD_FLOAT xi0_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(0)]);
-        MD_SIMD_FLOAT xi1_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(1)]);
-        MD_SIMD_FLOAT xi2_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(2)]);
-        MD_SIMD_FLOAT xi3_tmp        = simd_real_broadcast(ci_x[CL_X_INDEX_3D(3)]);
-        MD_SIMD_FLOAT yi0_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(0)]);
-        MD_SIMD_FLOAT yi1_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(1)]);
-        MD_SIMD_FLOAT yi2_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(2)]);
-        MD_SIMD_FLOAT yi3_tmp        = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(3)]);
-        MD_SIMD_FLOAT zi0_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(0)]);
-        MD_SIMD_FLOAT zi1_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(1)]);
-        MD_SIMD_FLOAT zi2_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(2)]);
-        MD_SIMD_FLOAT zi3_tmp        = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
+        MD_SIMD_FLOAT xi0_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(0)]);
+        MD_SIMD_FLOAT xi1_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(1)]);
+        MD_SIMD_FLOAT xi2_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(2)]);
+        MD_SIMD_FLOAT xi3_tmp = simd_real_broadcast(ci_x[CL_X_INDEX_3D(3)]);
+        MD_SIMD_FLOAT yi0_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(0)]);
+        MD_SIMD_FLOAT yi1_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(1)]);
+        MD_SIMD_FLOAT yi2_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(2)]);
+        MD_SIMD_FLOAT yi3_tmp = simd_real_broadcast(ci_x[CL_Y_INDEX_3D(3)]);
+        MD_SIMD_FLOAT zi0_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(0)]);
+        MD_SIMD_FLOAT zi1_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(1)]);
+        MD_SIMD_FLOAT zi2_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(2)]);
+        MD_SIMD_FLOAT zi3_tmp = simd_real_broadcast(ci_x[CL_Z_INDEX_3D(3)]);
 #endif
 
         for (int k = 0; k < numneighs; k++) {
@@ -1201,18 +1204,18 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
             MD_SIMD_FLOAT xj_tmp = simd_real_load(&cj_x[CL_X_INDEX_3D(0)]);
             MD_SIMD_FLOAT yj_tmp = simd_real_load(&cj_x[CL_Y_INDEX_3D(0)]);
             MD_SIMD_FLOAT zj_tmp = simd_real_load(&cj_x[CL_Z_INDEX_3D(0)]);
-            MD_SIMD_FLOAT delx0  = simd_real_sub(xi0_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely0  = simd_real_sub(yi0_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz0  = simd_real_sub(zi0_tmp, zj_tmp);
-            MD_SIMD_FLOAT delx1  = simd_real_sub(xi1_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely1  = simd_real_sub(yi1_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz1  = simd_real_sub(zi1_tmp, zj_tmp);
-            MD_SIMD_FLOAT delx2  = simd_real_sub(xi2_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely2  = simd_real_sub(yi2_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz2  = simd_real_sub(zi2_tmp, zj_tmp);
-            MD_SIMD_FLOAT delx3  = simd_real_sub(xi3_tmp, xj_tmp);
-            MD_SIMD_FLOAT dely3  = simd_real_sub(yi3_tmp, yj_tmp);
-            MD_SIMD_FLOAT delz3  = simd_real_sub(zi3_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx0 = simd_real_sub(xi0_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely0 = simd_real_sub(yi0_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz0 = simd_real_sub(zi0_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx1 = simd_real_sub(xi1_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely1 = simd_real_sub(yi1_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz1 = simd_real_sub(zi1_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx2 = simd_real_sub(xi2_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely2 = simd_real_sub(yi2_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz2 = simd_real_sub(zi2_tmp, zj_tmp);
+            MD_SIMD_FLOAT delx3 = simd_real_sub(xi3_tmp, xj_tmp);
+            MD_SIMD_FLOAT dely3 = simd_real_sub(yi3_tmp, yj_tmp);
+            MD_SIMD_FLOAT delz3 = simd_real_sub(zi3_tmp, zj_tmp);
             MD_SIMD_FLOAT rsq0 = simd_real_fma(delx0,
                 delx0,
                 simd_real_fma(dely0, dely0, simd_real_mul(delz0, delz0)));
@@ -1267,20 +1270,16 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
                         ci,
                         lo,
                         nbM,
-                        nbN) = neighs(neighbor->neighbors, ci, hi, nbM, nbN);
+                        nbN)          = neighs(neighbor->neighbors, ci, hi, nbM, nbN);
                     neighs(neighbor->neighbors_imask,
                         ci,
                         lo,
                         nbM,
-                        nbN) = neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN);
-                    is_inner[lo]                                  = is_inner[hi];
-                    neighs(neighbor->neighbors, ci, hi, nbM, nbN) = t_cj;
-                    neighs(neighbor->neighbors_imask,
-                        ci,
-                        hi,
-                        nbM,
-                        nbN) = t_im;
-                    is_inner[hi] = t_in;
+                        nbN)     = neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN);
+                    is_inner[lo] = is_inner[hi];
+                    neighs(neighbor->neighbors, ci, hi, nbM, nbN)       = t_cj;
+                    neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN) = t_im;
+                    is_inner[hi]                                        = t_in;
                 }
                 lo++;
             }
@@ -1302,20 +1301,16 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
                         ci,
                         lo,
                         nbM,
-                        nbN) = neighs(neighbor->neighbors, ci, hi, nbM, nbN);
+                        nbN)          = neighs(neighbor->neighbors, ci, hi, nbM, nbN);
                     neighs(neighbor->neighbors_imask,
                         ci,
                         lo,
                         nbM,
-                        nbN) = neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN);
-                    is_inner[lo]                                  = is_inner[hi];
-                    neighs(neighbor->neighbors, ci, hi, nbM, nbN) = t_cj;
-                    neighs(neighbor->neighbors_imask,
-                        ci,
-                        hi,
-                        nbM,
-                        nbN) = t_im;
-                    is_inner[hi] = t_in;
+                        nbN)     = neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN);
+                    is_inner[lo] = is_inner[hi];
+                    neighs(neighbor->neighbors, ci, hi, nbM, nbN)       = t_cj;
+                    neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN) = t_im;
+                    is_inner[hi]                                        = t_in;
                 }
                 lo++;
             }
@@ -1379,14 +1374,14 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
         for (int hi = 0; hi < numneighs; hi++) {
             if (is_inner[hi]) {
                 if (hi != lo) {
-                    int t_cj = neighs(neighbor->neighbors, sci, lo, nbM, nbN);
-                    int t_in = is_inner[lo];
+                    int t_cj     = neighs(neighbor->neighbors, sci, lo, nbM, nbN);
+                    int t_in     = is_inner[lo];
                     neighs(neighbor->neighbors,
                         sci,
                         lo,
                         nbM,
-                        nbN) = neighs(neighbor->neighbors, sci, hi, nbM, nbN);
-                    is_inner[lo]                                   = is_inner[hi];
+                        nbN)     = neighs(neighbor->neighbors, sci, hi, nbM, nbN);
+                    is_inner[lo] = is_inner[hi];
                     neighs(neighbor->neighbors, sci, hi, nbM, nbN) = t_cj;
                     is_inner[hi]                                   = t_in;
                 }
@@ -2140,7 +2135,8 @@ void binJClusters(Parameter* param, Atom* atom)
         if (resize) {
             free(bin_clusters);
             clusters_per_bin *= 2;
-            bin_clusters = (int*)allocate(ALIGNMENT, mbins * clusters_per_bin * sizeof(int));
+            bin_clusters = (int*)allocate(ALIGNMENT,
+                mbins * clusters_per_bin * sizeof(int));
         }
     }
 
@@ -2323,7 +2319,8 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
     neighbor->Nshell = Nshell;
     if (neighbor->numNeighShell) free(neighbor->numNeighShell);
     if (neighbor->neighshell) free(neighbor->neighshell);
-    neighbor->neighshell    = (int*)allocate(ALIGNMENT, Nshell * neighbor->maxneighs * sizeof(int));
+    neighbor->neighshell    = (int*)allocate(ALIGNMENT,
+        Nshell * neighbor->maxneighs * sizeof(int));
     neighbor->numNeighShell = (int*)allocate(ALIGNMENT, Nshell * sizeof(int));
 
     int resize = 1;

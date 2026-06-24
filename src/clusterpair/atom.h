@@ -122,9 +122,9 @@ extern "C"
 
 #ifdef ATOM_POSITION_AOS
 #define POS_DATA_LAYOUT "AoS"
-#define atom_x(i)       atom->x[(i) * 3 + 0]
-#define atom_y(i)       atom->x[(i) * 3 + 1]
-#define atom_z(i)       atom->x[(i) * 3 + 2]
+#define atom_x(i)       atom->x[(i)*3 + 0]
+#define atom_y(i)       atom->x[(i)*3 + 1]
+#define atom_z(i)       atom->x[(i)*3 + 2]
 /*
 #   define atom_vx(i)          atom->vx[(i) * 3 + 0]
 #   define atom_vy(i)          atom->vx[(i) * 3 + 1]

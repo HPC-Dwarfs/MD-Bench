@@ -19,10 +19,10 @@
 #include <comm.h>
 #include <device.h>
 #include <eam.h>
-#include <ljtable.h>
 #include <force.h>
 #include <grid.h>
 #include <integrate.h>
+#include <ljtable.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <pbc.h>
@@ -277,9 +277,12 @@ int main(int argc, char** argv)
             printf("-nx/-ny/-nz <int>:    set linear dimension of systembox in x/y/z "
                    "direction\n");
             printf("-r / --radius <real>: set cutoff radius\n");
-            printf("-s / --skin <real>:   set skin (Verlet buffer for the force-evaluation list)\n");
-            printf("--outer-skin <real>:  additive outer skin (outer cutoff = cutforce + skin + outer_skin; >0 enables double-cutoff)\n");
-            printf("--prune-every <int>:  pruning frequency (steps between inner-list refresh)\n");
+            printf("-s / --skin <real>:   set skin (Verlet buffer for the "
+                   "force-evaluation list)\n");
+            printf("--outer-skin <real>:  additive outer skin (outer cutoff = cutforce + "
+                   "skin + outer_skin; >0 enables double-cutoff)\n");
+            printf("--prune-every <int>:  pruning frequency (steps between inner-list "
+                   "refresh)\n");
             printf("--reneigh-every <int>: neighbor-list rebuild frequency (steps)\n");
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
@@ -298,8 +301,8 @@ int main(int argc, char** argv)
     }
 
     param.outer_skin = MAX(param.outer_skin, 0.0);
-    param.cutneigh = param.cutforce + param.skin + param.outer_skin;
-    timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
+    param.cutneigh   = param.cutforce + param.skin + param.outer_skin;
+    timer[SETUP]     = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
 
     if (comm.myproc == 0) {
         printParameter(&param);

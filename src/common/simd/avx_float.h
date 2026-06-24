@@ -259,7 +259,7 @@ static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
 static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     __m128i lo = _mm_min_epi32(_mm256_castsi256_si128(a), _mm256_castsi256_si128(b));
-    __m128i hi = _mm_min_epi32(
-        _mm256_extractf128_si256(a, 1), _mm256_extractf128_si256(b, 1));
+    __m128i hi = _mm_min_epi32(_mm256_extractf128_si256(a, 1),
+        _mm256_extractf128_si256(b, 1));
     return _mm256_set_m128i(hi, lo);
 }

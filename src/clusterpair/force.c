@@ -45,30 +45,31 @@ void initForce(Parameter* param)
 #if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJTableRef;
 #else
-        fprintf(stderr, "Error: Tabulated force fields for SIMD/GPU cases not yet implemented!\n");
+        fprintf(stderr,
+            "Error: Tabulated force fields for SIMD/GPU cases not yet implemented!\n");
         exit(EXIT_FAILURE);
 #endif
-/*
-#elif defined(CLUSTERPAIR_KERNEL_4XN)
-        if (param->half_neigh || param->method) {
-            computeForce = computeForceLJTable4xnHalfNeigh;
-        } else {
-            computeForce = computeForceLJTable4xnFullNeigh;
-        }
-#elif defined(CLUSTERPAIR_KERNEL_2XNN)
-        if (param->half_neigh || param->method) {
-            computeForce = computeForceLJTable2xnnHalfNeigh;
-        } else {
-            computeForce = computeForceLJTable2xnnFullNeigh;
-        }
-#elif defined(CLUSTERPAIR_KERNEL_GPU)
-        if (param->super_clustering) {
-            computeForce = computeForceLJTableCudaSup;
-        } else {
-            computeForce = computeForceLJTableCuda;
-        }
-#endif
-*/
+        /*
+        #elif defined(CLUSTERPAIR_KERNEL_4XN)
+                if (param->half_neigh || param->method) {
+                    computeForce = computeForceLJTable4xnHalfNeigh;
+                } else {
+                    computeForce = computeForceLJTable4xnFullNeigh;
+                }
+        #elif defined(CLUSTERPAIR_KERNEL_2XNN)
+                if (param->half_neigh || param->method) {
+                    computeForce = computeForceLJTable2xnnHalfNeigh;
+                } else {
+                    computeForce = computeForceLJTable2xnnFullNeigh;
+                }
+        #elif defined(CLUSTERPAIR_KERNEL_GPU)
+                if (param->super_clustering) {
+                    computeForce = computeForceLJTableCudaSup;
+                } else {
+                    computeForce = computeForceLJTableCuda;
+                }
+        #endif
+        */
         break;
     default:
         fprintf(stderr, "Error: Unknown force field!\n");

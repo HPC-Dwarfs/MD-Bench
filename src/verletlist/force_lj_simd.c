@@ -66,8 +66,8 @@ double computeForceLJFullNeigh_simd(
     // Cutoff is uniform for all types, broadcast it
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec = simd_real_broadcast(0.5);
+    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
 
 #pragma omp parallel
     {
@@ -125,18 +125,18 @@ double computeForceLJFullNeigh_simd(
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx = xtmp - simd_real_gather(j3,
+                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
                                                 &(atom->x[0]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
                                                 &(atom->x[1]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
                                                 &(atom->x[2]),
                                                 sizeof(MD_FLOAT));
 #else
-                MD_SIMD_FLOAT delx = xtmp -
+                MD_SIMD_FLOAT delx       = xtmp -
                                      simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
                 MD_SIMD_FLOAT dely = ytmp -
                                      simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
@@ -205,9 +205,9 @@ double computeForceLJHalfNeigh_simd(
     // Cutoff is uniform for all types, broadcast it
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec  = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec  = simd_real_broadcast(0.5);
-    MD_SIMD_INT nlocal_vec = simd_i32_broadcast(Nlocal);
+    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
+    MD_SIMD_INT nlocal_vec       = simd_i32_broadcast(Nlocal);
 
 #pragma omp parallel
     {
@@ -264,18 +264,18 @@ double computeForceLJHalfNeigh_simd(
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx = xtmp - simd_real_gather(j3,
+                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
                                                 &(atom->x[0]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
                                                 &(atom->x[1]),
                                                 sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
                                                 &(atom->x[2]),
                                                 sizeof(MD_FLOAT));
 #else
-                MD_SIMD_FLOAT delx = xtmp -
+                MD_SIMD_FLOAT delx       = xtmp -
                                      simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
                 MD_SIMD_FLOAT dely = ytmp -
                                      simd_real_gather(j, atom->y, sizeof(MD_FLOAT));

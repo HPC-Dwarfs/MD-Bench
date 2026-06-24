@@ -30,10 +30,10 @@
 
 #ifdef NBLIST_AOS
 #define NBLIST_DATA_LAYOUT         "AoS"
-#define neighs(nblist, i, j, M, N) nblist[(i) * N + (j)]
+#define neighs(nblist, i, j, M, N) nblist[(i)*N + (j)]
 #else
 #define NBLIST_DATA_LAYOUT         "SoA"
-#define neighs(nblist, i, j, M, N) nblist[(j) * M + (i)]
+#define neighs(nblist, i, j, M, N) nblist[(j)*M + (i)]
 #endif
 
 typedef struct {

@@ -63,8 +63,7 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
     // Match the production path (neighbor.c): the force kernels read these
     // lists, so they must use the aligned allocator for fair benchmarking.
     neighbor->numneigh  = (int*)allocate(ALIGNMENT, atom->Nmax * sizeof(int));
-    neighbor->neighbors = (int*)allocate(ALIGNMENT,
-        atom->Nmax * maxneighs * sizeof(int));
+    neighbor->neighbors = (int*)allocate(ALIGNMENT, atom->Nmax * maxneighs * sizeof(int));
 
     if (pattern == P_RAND && atom->Nlocal <= nneighs) {
         fprintf(stderr,
@@ -237,9 +236,9 @@ int main(int argc, const char* argv[])
         }
 
         atom->type[atom->Nlocal] = rand() % atom->ntypes;
-        atom_x(atom->Nlocal)     = (MD_FLOAT)(i) * 0.00001;
-        atom_y(atom->Nlocal)     = (MD_FLOAT)(i) * 0.00001;
-        atom_z(atom->Nlocal)     = (MD_FLOAT)(i) * 0.00001;
+        atom_x(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
+        atom_y(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
+        atom_z(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
         atom_vx(atom->Nlocal)    = 0.0;
         atom_vy(atom->Nlocal)    = 0.0;
         atom_vz(atom->Nlocal)    = 0.0;

@@ -86,7 +86,7 @@ void initParameter(Parameter* param)
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     param->ntypes = 1;
 #else
-    param->ntypes = 4;
+    param->ntypes           = 4;
 #endif
     param->epsilon_per_type = NULL;
     param->sigma_per_type   = NULL;
@@ -98,10 +98,10 @@ void initParameter(Parameter* param)
     param->pbc_x            = 1;
     param->pbc_y            = 1;
     param->pbc_z            = 1;
-    param->cutforce            = 2.5;
-    param->skin                = 0.3;
-    param->outer_skin          = 0.0;
-    param->cutneigh            = param->cutforce + param->skin + param->outer_skin;
+    param->cutforce         = 2.5;
+    param->skin             = 0.3;
+    param->outer_skin       = 0.0;
+    param->cutneigh         = param->cutforce + param->skin + param->outer_skin;
     param->temp             = 1.44;
     param->nstat            = 100;
     param->mass             = 1.0;
@@ -264,11 +264,11 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(balance);
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
-
         }
     }
 
-    if (param->types_file != NULL && (explicit_epsilon || explicit_sigma || explicit_ntypes)) {
+    if (param->types_file != NULL &&
+        (explicit_epsilon || explicit_sigma || explicit_ntypes)) {
         fprintf(stderr,
             "Error: 'types_file' cannot be combined with 'epsilon', 'sigma', or 'ntypes'."
             " Per-type parameters must be specified exclusively in the types file.\n");
@@ -397,9 +397,7 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Timestep (dt):                     %.6e\n", param->dt);
     fprintf(stdout, "    Cutoff radius:                     %.6e\n", param->cutforce);
     fprintf(stdout, "    Skin distance:                     %.6e\n", param->skin);
-    fprintf(stdout,
-        "    Outer skin (additive):             %.6e\n",
-        param->outer_skin);
+    fprintf(stdout, "    Outer skin (additive):             %.6e\n", param->outer_skin);
     fprintf(stdout,
         "    Half neighbor-lists:               %s\n",
         param->half_neigh ? "yes" : "no");

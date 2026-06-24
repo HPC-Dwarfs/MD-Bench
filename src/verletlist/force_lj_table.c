@@ -35,9 +35,9 @@ double computeForceLJTableFullNeigh(
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
-    const int nm1            = ljtable.n - 1;
-    const MD_FLOAT inv_h     = ljtable.inv_h;
-    const MD_FLOAT* coeff    = ljtable.coeff;
+    const int nm1         = ljtable.n - 1;
+    const MD_FLOAT inv_h  = ljtable.inv_h;
+    const MD_FLOAT* coeff = ljtable.coeff;
 
     for (int i = 0; i < nlocal; i++) {
         atom_fx(i) = 0.0;
@@ -86,10 +86,10 @@ double computeForceLJTableFullNeigh(
 #endif
 
                 if (rsq < cutforcesq) {
-                    MD_FLOAT u   = LJ_TABLE_COORD(rsq) * inv_h;
-                    int m        = (int)u;
+                    MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
+                    int m      = (int)u;
                     if (m > nm1) m = nm1;
-                    MD_FLOAT eps = u - (MD_FLOAT)m;
+                    MD_FLOAT eps       = u - (MD_FLOAT)m;
                     const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
                     MD_FLOAT hrep  = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
                     MD_FLOAT gdisp = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
@@ -184,10 +184,10 @@ double computeForceLJTableHalfNeigh(
 #endif
 
                 if (rsq < cutforcesq) {
-                    MD_FLOAT u   = LJ_TABLE_COORD(rsq) * inv_h;
-                    int m        = (int)u;
+                    MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
+                    int m      = (int)u;
                     if (m > nm1) m = nm1;
-                    MD_FLOAT eps = u - (MD_FLOAT)m;
+                    MD_FLOAT eps       = u - (MD_FLOAT)m;
                     const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
                     MD_FLOAT hrep  = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
                     MD_FLOAT gdisp = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));

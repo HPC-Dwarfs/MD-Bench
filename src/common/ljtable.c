@@ -18,11 +18,8 @@ LJTable ljtable;
 // index coordinate x. For r-indexed tables x is the distance r, for rsq tables
 // x is r^2. Returns force-over-distance shapes so that
 //   fpair = (eps*sigma^12)*rep + (eps*sigma^6)*disp.
-static void ljShape(MD_FLOAT x,
-    MD_FLOAT* rep,
-    MD_FLOAT* drep,
-    MD_FLOAT* disp,
-    MD_FLOAT* ddisp)
+static void ljShape(
+    MD_FLOAT x, MD_FLOAT* rep, MD_FLOAT* drep, MD_FLOAT* disp, MD_FLOAT* ddisp)
 {
 #ifdef LJ_TABLE_RSQ
     // x = r^2 :  Hrep = 48 x^-7,  Gdisp = -24 x^-4
@@ -30,19 +27,19 @@ static void ljShape(MD_FLOAT x,
     MD_FLOAT xi4 = xi * xi * xi * xi;
     MD_FLOAT xi7 = xi4 * xi * xi * xi;
     *rep         = 48.0 * xi7;
-    *drep        = -7.0 * 48.0 * xi7 * xi;  // d/dx (48 x^-7) = -336 x^-8
+    *drep        = -7.0 * 48.0 * xi7 * xi; // d/dx (48 x^-7) = -336 x^-8
     *disp        = -24.0 * xi4;
-    *ddisp       = 4.0 * 24.0 * xi4 * xi;   // d/dx (-24 x^-4) = 96 x^-5
+    *ddisp       = 4.0 * 24.0 * xi4 * xi; // d/dx (-24 x^-4) = 96 x^-5
 #else
     // x = r :  Hrep = 48 r^-14,  Gdisp = -24 r^-8
-    MD_FLOAT ri  = 1.0 / x;
-    MD_FLOAT ri2 = ri * ri;
-    MD_FLOAT ri8 = ri2 * ri2 * ri2 * ri2;
+    MD_FLOAT ri   = 1.0 / x;
+    MD_FLOAT ri2  = ri * ri;
+    MD_FLOAT ri8  = ri2 * ri2 * ri2 * ri2;
     MD_FLOAT ri14 = ri8 * ri2 * ri2 * ri2;
-    *rep         = 48.0 * ri14;
-    *drep        = -14.0 * 48.0 * ri14 * ri; // d/dr (48 r^-14) = -672 r^-15
-    *disp        = -24.0 * ri8;
-    *ddisp       = 8.0 * 24.0 * ri8 * ri;    // d/dr (-24 r^-8) = 192 r^-9
+    *rep          = 48.0 * ri14;
+    *drep         = -14.0 * 48.0 * ri14 * ri; // d/dr (48 r^-14) = -672 r^-15
+    *disp         = -24.0 * ri8;
+    *ddisp        = 8.0 * 24.0 * ri8 * ri; // d/dr (-24 r^-8) = 192 r^-9
 #endif
 }
 
@@ -106,10 +103,10 @@ void initLJTable(Parameter* param)
     for (int m = 0; m < n; m++) {
         MD_FLOAT* ci = &c[m * LJ_TABLE_STRIDE];
         MD_FLOAT rf0 = rv[m], rf1 = rv[m + 1], rd0 = rd[m], rd1 = rd[m + 1];
-        ci[0] = rf0;
-        ci[1] = rd0;
-        ci[2] = 3.0 * (rf1 - rf0) - 2.0 * rd0 - rd1;
-        ci[3] = 2.0 * (rf0 - rf1) + rd0 + rd1;
+        ci[0]        = rf0;
+        ci[1]        = rd0;
+        ci[2]        = 3.0 * (rf1 - rf0) - 2.0 * rd0 - rd1;
+        ci[3]        = 2.0 * (rf0 - rf1) + rd0 + rd1;
         MD_FLOAT df0 = dv[m], df1 = dv[m + 1], dd0 = dd[m], dd1 = dd[m + 1];
         ci[4] = df0;
         ci[5] = dd0;

@@ -31,7 +31,7 @@ void defineReverseList(Comm* comm)
         int invswap = comm->swap[dim][(dir + 1) % 2];
 
         for (int ineigh = comm->sendfrom[invswap]; ineigh < comm->sendtill[invswap];
-            ineigh++) {
+             ineigh++) {
             comm->nrecv[index++] = comm->nsend[ineigh];
         }
 
@@ -255,7 +255,7 @@ void forwardComm(Comm* comm, Atom* atom, int iswap)
     // Receives elements
     if (comm->othersend[iswap]) {
         for (int ineigh = comm->recvfrom[iswap]; ineigh < comm->recvtill[iswap];
-            ineigh++) {
+             ineigh++) {
             offset = comm->off_atom_recv[ineigh] * size;
             nrecv  = comm->atom_recv[ineigh] * size;
             MPI_Irecv(&comm->buf_recv[offset],
@@ -271,7 +271,7 @@ void forwardComm(Comm* comm, Atom* atom, int iswap)
     // Send elements
     if (comm->othersend[iswap]) {
         for (int ineigh = comm->sendfrom[iswap]; ineigh < comm->sendtill[iswap];
-            ineigh++) {
+             ineigh++) {
             offset = comm->off_atom_send[ineigh] * size;
             nsend  = comm->atom_send[ineigh] * size;
             MPI_Send(&comm->buf_send[offset],
@@ -323,7 +323,7 @@ void reverseComm(Comm* comm, Atom* atom, int iswap)
     // Receives elements
     if (comm->othersend[iswap]) {
         for (int ineigh = comm->sendfrom[iswap]; ineigh < comm->sendtill[iswap];
-            ineigh++) {
+             ineigh++) {
             offset = comm->off_atom_send[ineigh] * size;
             nrecv  = comm->atom_send[ineigh] * size;
             MPI_Irecv(&comm->buf_recv[offset],
@@ -339,7 +339,7 @@ void reverseComm(Comm* comm, Atom* atom, int iswap)
     // Send elements
     if (comm->othersend[iswap]) {
         for (int ineigh = comm->recvfrom[iswap]; ineigh < comm->recvtill[iswap];
-            ineigh++) {
+             ineigh++) {
             offset = comm->off_atom_recv[ineigh] * size;
             nsend  = comm->atom_recv[ineigh] * size;
             MPI_Send(&comm->buf_send[offset],
@@ -427,7 +427,7 @@ void ghostComm(Comm* comm, Parameter* param, Atom* atom, int iswap)
     // Receives an int of how many atoms will  be received.
     if (comm->othersend[iswap]) {
         for (nrqst = 0, ineigh = comm->recvfrom[iswap]; ineigh < comm->recvtill[iswap];
-            ineigh++) {
+             ineigh++) {
             MPI_Irecv(&comm->atom_recv[ineigh],
                 1,
                 MPI_INT,
@@ -445,7 +445,7 @@ void ghostComm(Comm* comm, Parameter* param, Atom* atom, int iswap)
     // Communicate how many atoms to be sent.
     if (comm->othersend[iswap]) {
         for (int ineigh = comm->sendfrom[iswap]; ineigh < comm->sendtill[iswap];
-            ineigh++) {
+             ineigh++) {
             MPI_Send(&comm->atom_send[ineigh], 1, MPI_INT, comm->nsend[ineigh], 0, world);
         }
     }
@@ -467,7 +467,7 @@ void ghostComm(Comm* comm, Parameter* param, Atom* atom, int iswap)
     // Receives elements
     if (comm->othersend[iswap]) {
         for (nrqst = 0, ineigh = comm->recvfrom[iswap]; ineigh < comm->recvtill[iswap];
-            ineigh++) {
+             ineigh++) {
             offset = comm->off_atom_recv[ineigh] * size;
             nrecv  = comm->atom_recv[ineigh] * size;
             MPI_Irecv(&comm->buf_recv[offset],
@@ -483,7 +483,7 @@ void ghostComm(Comm* comm, Parameter* param, Atom* atom, int iswap)
     // Send elements
     if (comm->othersend[iswap]) {
         for (int ineigh = comm->sendfrom[iswap]; ineigh < comm->sendtill[iswap];
-            ineigh++) {
+             ineigh++) {
             offset = comm->off_atom_send[ineigh] * size;
             nsend  = comm->atom_send[ineigh] * size;
             MPI_Send(&comm->buf_send[offset],

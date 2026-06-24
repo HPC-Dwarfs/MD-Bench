@@ -36,13 +36,13 @@
 #define LJ_TABLE_STRIDE 8 // cubic coeffs per knot (4 repulsion + 4 dispersion)
 
 #ifdef LJ_TABLE_RSQ
-#define LJ_TABLE_COORD(rsq)           (rsq)
-#define LJ_TABLE_COORD_SIMD(rsq_vec)  (rsq_vec)
-#define LJ_TABLE_INDEX_NAME           "rsq"
+#define LJ_TABLE_COORD(rsq)          (rsq)
+#define LJ_TABLE_COORD_SIMD(rsq_vec) (rsq_vec)
+#define LJ_TABLE_INDEX_NAME          "rsq"
 #else
-#define LJ_TABLE_COORD(rsq)           (sqrt(rsq))
-#define LJ_TABLE_COORD_SIMD(rsq_vec)  simd_real_sqrt(rsq_vec)
-#define LJ_TABLE_INDEX_NAME           "r"
+#define LJ_TABLE_COORD(rsq)          (sqrt(rsq))
+#define LJ_TABLE_COORD_SIMD(rsq_vec) simd_real_sqrt(rsq_vec)
+#define LJ_TABLE_INDEX_NAME          "r"
 #endif
 
 typedef struct {

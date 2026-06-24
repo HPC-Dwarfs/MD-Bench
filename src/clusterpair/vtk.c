@@ -188,8 +188,8 @@ int write_ghost_atoms_to_vtk_file(const char* filename, Atom* atom, int timestep
     fprintf(fp, "POINTS %d double\n", atom->Nghost);
 
     for (int ci = atom->Nclusters_local;
-        ci < atom->Nclusters_local + atom->Nclusters_ghost;
-        ++ci) {
+         ci < atom->Nclusters_local + atom->Nclusters_ghost;
+         ++ci) {
         int ciVecBase = CI_VECTOR_BASE_INDEX(ci);
         MD_FLOAT* ciX = &atom->cl_x[ciVecBase];
         for (int cii = 0; cii < atom->iclusters[ci].natoms; ++cii) {

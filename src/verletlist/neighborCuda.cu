@@ -23,9 +23,9 @@ extern MD_FLOAT xprd, yprd, zprd;
 extern MD_FLOAT bininvx, bininvy, bininvz;
 extern int mbinxlo, mbinylo, mbinzlo;
 extern int nbinx, nbiny, nbinz;
-extern int mbinx, mbiny, mbinz; // n bins in x, y, z
-extern int mbins;               // total number of bins
-extern int atoms_per_bin;       // max atoms per bin
+extern int mbinx, mbiny, mbinz;    // n bins in x, y, z
+extern int mbins;                  // total number of bins
+extern int atoms_per_bin;          // max atoms per bin
 extern MD_FLOAT cutneighsq;        // neighbor (outer) cutoff squared
 extern MD_FLOAT cutneigh_inner_sq; // inner cutoff squared (cutforce + skin)
 extern int dcut_enabled;           // double-cutoff pruning active for this run
@@ -215,11 +215,8 @@ __global__ void compute_neighborhood(DeviceAtom a,
 /* Double-cutoff prune: partition each atom's neighbor list in place so the inner
  * neighbors (within the force cutoff + skin) come first, and record their count in
  * numneigh_inner. One thread per local atom; lists are independent so no atomics. */
-__global__ void prune_neighborhood(DeviceAtom a,
-    DeviceNeighbor neigh,
-    int nlocal,
-    int maxneighs,
-    MD_FLOAT cutsq)
+__global__ void prune_neighborhood(
+    DeviceAtom a, DeviceNeighbor neigh, int nlocal, int maxneighs, MD_FLOAT cutsq)
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nlocal) {
@@ -243,8 +240,11 @@ __global__ void prune_neighborhood(DeviceAtom a,
 
         if (rsq < cutsq) {
             if (hi != lo) {
-                neighs(neighbor->neighbors, i, hi, nlocal, maxneighs) = neighs(
-                    neighbor->neighbors, i, lo, nlocal, maxneighs);
+                neighs(neighbor->neighbors,
+                    i,
+                    hi,
+                    nlocal,
+                    maxneighs) = neighs(neighbor->neighbors, i, lo, nlocal, maxneighs);
                 neighs(neighbor->neighbors, i, lo, nlocal, maxneighs) = j;
             }
             lo++;
@@ -339,10 +339,10 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
 
     int nall = atom->Nlocal + atom->Nghost;
     if (nall > nmax) {
-        nmax                  = nall;
-        d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
+        nmax                       = nall;
+        d_neighbor->neighbors      = (int*)reallocateGPU(d_neighbor->neighbors,
             nmax * neighbor->maxneighs * sizeof(int*));
-        d_neighbor->numneigh  = (int*)reallocateGPU(d_neighbor->numneigh,
+        d_neighbor->numneigh       = (int*)reallocateGPU(d_neighbor->numneigh,
             nmax * sizeof(int));
         d_neighbor->numneigh_inner = (int*)reallocateGPU(d_neighbor->numneigh_inner,
             nmax * sizeof(int));

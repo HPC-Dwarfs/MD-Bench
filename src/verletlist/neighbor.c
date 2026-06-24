@@ -40,8 +40,8 @@ int atoms_per_bin; // max atoms per bin
 MD_FLOAT cutneigh;
 MD_FLOAT cutneighsq;        // neighbor (outer) cutoff squared
 MD_FLOAT cutneigh_inner_sq; // inner cutoff squared (cutforce + skin)
-int dcut_enabled;          // double-cutoff pruning active for this run
-int* is_inner_buf;         // reusable scratch for pruneNeighborCPU, sized by maxneighs
+int dcut_enabled;           // double-cutoff pruning active for this run
+int* is_inner_buf;          // reusable scratch for pruneNeighborCPU, sized by maxneighs
 int nmax;
 int nstencil; // # of bins in stencil
 int* stencil; // stencil list of bin offsets
@@ -64,19 +64,19 @@ static inline int skipNeigh(Atom* atom, int i, int j);
 /* exported subroutines */
 void initNeighbor(Neighbor* neighbor, Parameter* param)
 {
-    MD_FLOAT neighscale = 5.0 / 6.0;
-    xprd                = param->nx * param->lattice;
-    yprd                = param->ny * param->lattice;
-    zprd                = param->nz * param->lattice;
-    cutneigh            = param->cutneigh;
-    nbinx               = MAX(1, neighscale * param->nx);
-    nbiny               = MAX(1, neighscale * param->ny);
-    nbinz               = MAX(1, neighscale * param->nz);
-    nmax                = 0;
-    atoms_per_bin       = 8;
-    stencil             = NULL;
-    bins                = NULL;
-    bincount            = NULL;
+    MD_FLOAT neighscale      = 5.0 / 6.0;
+    xprd                     = param->nx * param->lattice;
+    yprd                     = param->ny * param->lattice;
+    zprd                     = param->nz * param->lattice;
+    cutneigh                 = param->cutneigh;
+    nbinx                    = MAX(1, neighscale * param->nx);
+    nbiny                    = MAX(1, neighscale * param->ny);
+    nbinz                    = MAX(1, neighscale * param->nz);
+    nmax                     = 0;
+    atoms_per_bin            = 8;
+    stencil                  = NULL;
+    bins                     = NULL;
+    bincount                 = NULL;
     neighbor->maxneighs      = 100;
     neighbor->numneigh       = NULL;
     neighbor->numneigh_inner = NULL;
@@ -240,7 +240,7 @@ void setupNeighbor(Parameter* param)
     if (stencil) {
         free(stencil);
     }
-    stencil = (int*)allocate(ALIGNMENT,
+    stencil    = (int*)allocate(ALIGNMENT,
         (2 * nextz + 1) * (2 * nexty + 1) * (2 * nextx + 1) * sizeof(int));
     nstencil   = 0;
     int kstart = -nextz;
@@ -282,7 +282,8 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         if (neighbor->neighbors) free(neighbor->neighbors);
         neighbor->numneigh       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
         neighbor->numneigh_inner = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
-        neighbor->neighbors = (int*)allocate(ALIGNMENT, nmax * neighbor->maxneighs * sizeof(int));
+        neighbor->neighbors      = (int*)allocate(ALIGNMENT,
+            nmax * neighbor->maxneighs * sizeof(int));
     }
 
     /* bin local & ghost atoms */
@@ -294,8 +295,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
-    reduction(| : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max                                 \
+                                                     : new_maxneighs)                    \
+    reduction(|                                                                          \
+              : resize_local)
         for (int i = 0; i < atom->Nlocal; i++) {
             int n         = 0;
             MD_FLOAT xtmp = atom_x(i);
@@ -356,8 +359,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
-            is_inner_buf = (int*)allocate(ALIGNMENT,
-                neighbor->maxneighs * sizeof(int));
+            is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
         }
     }
 
@@ -418,13 +420,12 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
             for (int hi = 0; hi < numneighs; hi++) {
                 if (is_inner[hi]) {
                     if (hi != lo) {
-                        int t_j = neighs(neighbor->neighbors, i, lo, nlocal, nbN);
-                        neighs(neighbor->neighbors, i, lo, nlocal, nbN) = neighs(
-                            neighbor->neighbors,
+                        int t_j  = neighs(neighbor->neighbors, i, lo, nlocal, nbN);
+                        neighs(neighbor->neighbors,
                             i,
-                            hi,
+                            lo,
                             nlocal,
-                            nbN);
+                            nbN) = neighs(neighbor->neighbors, i, hi, nlocal, nbN);
                         neighs(neighbor->neighbors, i, hi, nlocal, nbN) = t_j;
                         is_inner[hi]                                    = is_inner[lo];
                         is_inner[lo]                                    = 1;
@@ -710,7 +711,8 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
     neighbor->Nshell = Nshell;
     if (neighbor->numNeighShell) free(neighbor->numNeighShell);
     if (neighbor->neighshell) free(neighbor->neighshell);
-    neighbor->neighshell    = (int*)allocate(ALIGNMENT, Nshell * neighbor->maxneighs * sizeof(int));
+    neighbor->neighshell    = (int*)allocate(ALIGNMENT,
+        Nshell * neighbor->maxneighs * sizeof(int));
     neighbor->numNeighShell = (int*)allocate(ALIGNMENT, Nshell * sizeof(int));
     int resize              = 1;
 

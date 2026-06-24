@@ -116,8 +116,8 @@ double computeForceLJTableRef(
                                                     : (ci_cj0 != cj || cii != cjj);
 #elif CLUSTER_M < CLUSTER_N
                         cond = neighbor->half_neigh
-                                   ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
-                                   : (ci_cj0 != cj ||
+                                               ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
+                                               : (ci_cj0 != cj ||
                                          cii + CLUSTER_M * (ci & 0x1) != cjj);
 #else
                         cond = neighbor->half_neigh
@@ -144,14 +144,20 @@ double computeForceLJTableRef(
 #endif
 
                             if (rsq < cutforcesq) {
-                                MD_FLOAT u   = LJ_TABLE_COORD(rsq) * inv_h;
-                                int m        = (int)u;
+                                MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
+                                int m      = (int)u;
                                 if (m > nm1) m = nm1;
-                                MD_FLOAT frac        = u - (MD_FLOAT)m;
-                                const MD_FLOAT* cc   = &coeff[m * LJ_TABLE_STRIDE];
-                                MD_FLOAT hrep  = cc[0] + frac * (cc[1] + frac * (cc[2] + frac * cc[3]));
-                                MD_FLOAT gdisp = cc[4] + frac * (cc[5] + frac * (cc[6] + frac * cc[7]));
-                                MD_FLOAT force = epsilon * sigma6 * (sigma6 * hrep + gdisp);
+                                MD_FLOAT frac      = u - (MD_FLOAT)m;
+                                const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
+                                MD_FLOAT hrep      = cc[0] +
+                                                frac * (cc[1] +
+                                                           frac * (cc[2] + frac * cc[3]));
+                                MD_FLOAT gdisp = cc[4] +
+                                                 frac *
+                                                     (cc[5] +
+                                                         frac * (cc[6] + frac * cc[7]));
+                                MD_FLOAT force = epsilon * sigma6 *
+                                                 (sigma6 * hrep + gdisp);
 
                                 if (neighbor->half_neigh || param->method) {
                                     cj_f[CL_X_INDEX_3D(cjj)] -= delx * force;

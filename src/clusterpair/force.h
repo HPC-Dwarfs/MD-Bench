@@ -147,7 +147,7 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define SCLUSTER_SIZE_Y      2
 #define SCLUSTER_SIZE_Z      2
 #define SCLUSTER_SIZE        (SCLUSTER_SIZE_X * SCLUSTER_SIZE_Y * SCLUSTER_SIZE_Z)
-#define SCI_BASE_INDEX(a, b) ((a) * CLUSTER_N * SCLUSTER_SIZE * (b))
+#define SCI_BASE_INDEX(a, b) ((a)*CLUSTER_N * SCLUSTER_SIZE * (b))
 #define SCI_FROM_CJ(a)       ((a) / SCLUSTER_SIZE)
 #ifdef POSITION_AOS4_SUP
 #define ATOM_DIM 4
@@ -159,7 +159,7 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define SCLUSTER_SIZE_Y      1
 #define SCLUSTER_SIZE_Z      1
 #define SCLUSTER_SIZE        1
-#define SCI_BASE_INDEX(a, b) ((a) * CLUSTER_M * (b))
+#define SCI_BASE_INDEX(a, b) ((a)*CLUSTER_M * (b))
 #define SCI_FROM_CJ(a)       (a)
 #define ATOM_DIM             3
 #endif
@@ -171,32 +171,30 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #if defined(CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS)
 #define CJ0_FROM_CI(a)      (a)
 #define CJ1_FROM_CI(a)      (a)
-#define CI_BASE_INDEX(a, b) ((a) * CLUSTER_N * (b))
+#define CI_BASE_INDEX(a, b) ((a)*CLUSTER_N * (b))
 #ifdef SOA_SUP
 #define CJ_BASE_INDEX(a, b)                                                              \
     ((((a) / SCLUSTER_SIZE) * SCLUSTER_SIZE * CLUSTER_N * (b)) +                         \
         (((a) % SCLUSTER_SIZE) * CLUSTER_N))
 #else
-#define CJ_BASE_INDEX(a, b) ((a) * CLUSTER_N * (b))
+#define CJ_BASE_INDEX(a, b) ((a)*CLUSTER_N * (b))
 #endif
 #else
 #if CLUSTER_M == CLUSTER_N
 #define CJ0_FROM_CI(a)      (a)
 #define CJ1_FROM_CI(a)      (a)
-#define CI_BASE_INDEX(a, b) ((a) * CLUSTER_N * (b))
-#define CJ_BASE_INDEX(a, b) ((a) * CLUSTER_N * (b))
+#define CI_BASE_INDEX(a, b) ((a)*CLUSTER_N * (b))
+#define CJ_BASE_INDEX(a, b) ((a)*CLUSTER_N * (b))
 #elif CLUSTER_M == CLUSTER_N * 2 // M > N
 #define CJ0_FROM_CI(a)      ((a) << 1)
 #define CJ1_FROM_CI(a)      (((a) << 1) | 0x1)
-#define CI_BASE_INDEX(a, b) ((a) * CLUSTER_M * (b))
-#define CJ_BASE_INDEX(a, b)                                                              \
-    (((a) >> 1) * CLUSTER_M * (b) + ((a) & 0x1) * (CLUSTER_M >> 1))
+#define CI_BASE_INDEX(a, b) ((a)*CLUSTER_M * (b))
+#define CJ_BASE_INDEX(a, b) (((a) >> 1) * CLUSTER_M * (b) + ((a)&0x1) * (CLUSTER_M >> 1))
 #elif CLUSTER_M == CLUSTER_N / 2 // M < N
-#define CJ0_FROM_CI(a) ((a) >> 1)
-#define CJ1_FROM_CI(a) ((a) >> 1)
-#define CI_BASE_INDEX(a, b)                                                              \
-    (((a) >> 1) * CLUSTER_N * (b) + ((a) & 0x1) * (CLUSTER_N >> 1))
-#define CJ_BASE_INDEX(a, b) ((a) * CLUSTER_N * (b))
+#define CJ0_FROM_CI(a)      ((a) >> 1)
+#define CJ1_FROM_CI(a)      ((a) >> 1)
+#define CI_BASE_INDEX(a, b) (((a) >> 1) * CLUSTER_N * (b) + ((a)&0x1) * (CLUSTER_N >> 1))
+#define CJ_BASE_INDEX(a, b) ((a)*CLUSTER_N * (b))
 #else
 #error "Invalid cluster configuration!"
 #endif
@@ -244,9 +242,9 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define CL_Y_INDEX(i)    CL_Y_INDEX_3D(i)
 #define CL_Z_INDEX(i)    CL_Z_INDEX_3D(i)
 #else
-#define CL_X_INDEX_3D(i) ((i) * 3 + 0)
-#define CL_Y_INDEX_3D(i) ((i) * 3 + 1)
-#define CL_Z_INDEX_3D(i) ((i) * 3 + 2)
+#define CL_X_INDEX_3D(i) ((i)*3 + 0)
+#define CL_Y_INDEX_3D(i) ((i)*3 + 1)
+#define CL_Z_INDEX_3D(i) ((i)*3 + 2)
 #define CL_X_INDEX(i)    CL_X_INDEX_3D(i)
 #define CL_Y_INDEX(i)    CL_Y_INDEX_3D(i)
 #define CL_Z_INDEX(i)    CL_Z_INDEX_3D(i)
@@ -268,12 +266,12 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define CL_Y_INDEX(i)    CL_Y_INDEX_3D(i)
 #define CL_Z_INDEX(i)    CL_Z_INDEX_3D(i)
 #else
-#define CL_X_INDEX_3D(i) ((i) * 3 + 0)
-#define CL_Y_INDEX_3D(i) ((i) * 3 + 1)
-#define CL_Z_INDEX_3D(i) ((i) * 3 + 2)
-#define CL_X_INDEX(i)    ((i) * ATOM_DIM + 0)
-#define CL_Y_INDEX(i)    ((i) * ATOM_DIM + 1)
-#define CL_Z_INDEX(i)    ((i) * ATOM_DIM + 2)
+#define CL_X_INDEX_3D(i) ((i)*3 + 0)
+#define CL_Y_INDEX_3D(i) ((i)*3 + 1)
+#define CL_Z_INDEX_3D(i) ((i)*3 + 2)
+#define CL_X_INDEX(i)    ((i)*ATOM_DIM + 0)
+#define CL_Y_INDEX(i)    ((i)*ATOM_DIM + 1)
+#define CL_Z_INDEX(i)    ((i)*ATOM_DIM + 2)
 #endif
 #endif
 

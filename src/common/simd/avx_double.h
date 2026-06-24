@@ -252,8 +252,8 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
     __m128i t1  = _mm_set1_epi32(m[1] * scale);
     __m128i ret = _mm256_inserti128_si256(_mm256_castsi128_si256(t0), t1, 1);
 #else
-    int i1      = m[0] * scale;
-    int i2      = m[1] * scale;
+    int i1 = m[0] * scale;
+    int i2 = m[1] * scale;
     __m128i ret = _mm_set_epi32(i2, i2, i1, i1);
 #endif
     return ret;

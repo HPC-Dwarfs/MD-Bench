@@ -26,7 +26,7 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     d_neighbor->neighbors = (int*)allocateGPU(
         sizeof(int) * atom->Nmax * neighbor->maxneighs);
-    d_neighbor->numneigh = (int*)allocateGPU(sizeof(int) * atom->Nmax);
+    d_neighbor->numneigh       = (int*)allocateGPU(sizeof(int) * atom->Nmax);
     d_neighbor->numneigh_inner = (int*)allocateGPU(sizeof(int) * atom->Nmax);
 
     memcpyToGPU(d_atom->x, atom->x, sizeof(MD_FLOAT) * atom->Nmax * 3);

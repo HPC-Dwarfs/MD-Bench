@@ -85,14 +85,14 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
 #endif
 
         if (rsq < cutforcesq) {
-            MD_FLOAT u   = LJ_TABLE_COORD(rsq) * inv_h;
-            int m        = (int)u;
+            MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
+            int m      = (int)u;
             if (m > nm1) m = nm1;
-            MD_FLOAT eps = u - (MD_FLOAT)m;
+            MD_FLOAT eps       = u - (MD_FLOAT)m;
             const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
-            MD_FLOAT hrep  = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
-            MD_FLOAT gdisp = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
-            MD_FLOAT force = epsilon * sigma6 * (sigma6 * hrep + gdisp);
+            MD_FLOAT hrep      = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
+            MD_FLOAT gdisp     = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
+            MD_FLOAT force     = epsilon * sigma6 * (sigma6 * hrep + gdisp);
             fix += delx * force;
             fiy += dely * force;
             fiz += delz * force;
@@ -159,14 +159,14 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
 #endif
 
         if (rsq < cutforcesq) {
-            MD_FLOAT u   = LJ_TABLE_COORD(rsq) * inv_h;
-            int m        = (int)u;
+            MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
+            int m      = (int)u;
             if (m > nm1) m = nm1;
-            MD_FLOAT eps = u - (MD_FLOAT)m;
+            MD_FLOAT eps       = u - (MD_FLOAT)m;
             const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
-            MD_FLOAT hrep  = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
-            MD_FLOAT gdisp = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
-            MD_FLOAT force = epsilon * sigma6 * (sigma6 * hrep + gdisp);
+            MD_FLOAT hrep      = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
+            MD_FLOAT gdisp     = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
+            MD_FLOAT force     = epsilon * sigma6 * (sigma6 * hrep + gdisp);
             MD_FLOAT partial_force_x = delx * force;
             MD_FLOAT partial_force_y = dely * force;
             MD_FLOAT partial_force_z = delz * force;
@@ -194,7 +194,7 @@ static void ensureLJTableOnGPU(void)
     if (ljtable.d_coeff != NULL) {
         return;
     }
-    size_t bytes  = (size_t)(ljtable.n + 1) * LJ_TABLE_STRIDE * sizeof(MD_FLOAT);
+    size_t bytes    = (size_t)(ljtable.n + 1) * LJ_TABLE_STRIDE * sizeof(MD_FLOAT);
     ljtable.d_coeff = (MD_FLOAT*)allocateGPU(bytes);
     memcpyToGPU(ljtable.d_coeff, ljtable.coeff, bytes);
 }
