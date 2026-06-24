@@ -19,6 +19,7 @@
 #include <comm.h>
 #include <device.h>
 #include <eam.h>
+#include <ljtable.h>
 #include <force.h>
 #include <grid.h>
 #include <integrate.h>
@@ -52,6 +53,9 @@ double setup(Parameter* param,
 {
     if (param->force_field == FF_EAM) {
         initEam(param);
+    }
+    if (param->force_field == FF_LJ_TABLE) {
+        initLJTable(param);
     }
 
     double timeStart, timeStop;

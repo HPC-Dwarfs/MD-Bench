@@ -248,3 +248,16 @@ static inline void simd_real_masked_scatter_sub(
         }
     }
 }
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return _mm512_sqrt_pd(v); }
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v)
+{
+    return _mm512_cvttpd_epi32(v);
+}
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
+{
+    return _mm512_cvtepi32_pd(v);
+}
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_min_epi32(a, b);
+}

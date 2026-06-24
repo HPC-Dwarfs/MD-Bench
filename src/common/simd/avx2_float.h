@@ -244,3 +244,16 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
     __m256i imask = _mm256_cmpgt_epi32(b, a);
     return _mm256_castsi256_ps(imask);
 }
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return _mm256_sqrt_ps(v); }
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v)
+{
+    return _mm256_cvttps_epi32(v);
+}
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
+{
+    return _mm256_cvtepi32_ps(v);
+}
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_min_epi32(a, b);
+}

@@ -353,3 +353,35 @@ static inline MD_SIMD_FLOAT simd_real_gather(
 
     return result;
 }
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v)
+{
+    MD_SIMD_FLOAT result;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        result.val[i] = sqrt(v.val[i]);
+    }
+    return result;
+}
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v)
+{
+    MD_SIMD_INT result;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        result.val[i] = (int)v.val[i];
+    }
+    return result;
+}
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
+{
+    MD_SIMD_FLOAT result;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        result.val[i] = (MD_FLOAT)v.val[i];
+    }
+    return result;
+}
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    MD_SIMD_INT result;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        result.val[i] = a.val[i] < b.val[i] ? a.val[i] : b.val[i];
+    }
+    return result;
+}

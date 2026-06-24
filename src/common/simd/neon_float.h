@@ -176,3 +176,10 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
     exit(-1);
     return ret;
 }
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return vsqrtq_f32(v); }
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v) { return vcvtq_s32_f32(v); }
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v) { return vcvtq_f32_s32(v); }
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return vminq_s32(a, b);
+}
