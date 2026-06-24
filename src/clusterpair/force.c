@@ -42,7 +42,12 @@ void initForce(Parameter* param)
         break;
     case FF_LJ_TABLE:
 //#if defined(CLUSTERPAIR_KERNEL_REF)
+#if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJTableRef;
+#else
+        fprintf(stderr, "Error: Tabulated force fields for SIMD/GPU cases not yet implemented!\n");
+        exit(EXIT_FAILURE);
+#endif
 /*
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         if (param->half_neigh || param->method) {
