@@ -1428,7 +1428,7 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
                         sci,
                         lo,
                         nbM,
-                        nbN)     = neighs(neighbor->neighbors, sci, hi, nbM, neighbor);
+                        neighbor) = neighs(neighbor->neighbors, sci, hi, nbM, neighbor);
                     is_inner[lo] = is_inner[hi];
                     neighs(neighbor->neighbors, sci, hi, nbM, neighbor) = t_cj;
                     is_inner[hi]                                   = t_in;

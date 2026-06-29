@@ -18,8 +18,8 @@ ENABLE_MPI ?= false
 DATA_TYPE ?= SP
 # AOS or SOA
 ATOM_DATA_LAYOUT ?= AOS
-# Neighbor-lists data layout (auto/AOS/SOA)
-# AOS="atom"-major, SOA="neighbor"-major
+# Neighbor-lists data layout (auto/AOS/SOA/CSR)
+# AOS="atom"-major, SOA="neighbor"-major, CSR=compact (no padding)
 # For CPU, auto=AOS; For GPU, auto=SOA
 NBLIST_DATA_LAYOUT ?= auto
 # Debug
@@ -154,8 +154,12 @@ ifeq ($(strip $(NBLIST_DATA_LAYOUT)),auto)
 endif
 ifeq ($(strip $(NBLIST_DATA_LAYOUT)),AOS)
     DEFINES +=  -DNBLIST_AOS
-else
+else ifeq ($(strip $(NBLIST_DATA_LAYOUT)),CSR)
+    DEFINES +=  -DNBLIST_CSR
+else ifeq ($(strip $(NBLIST_DATA_LAYOUT)),SOA)
     DEFINES +=  -DNBLIST_SOA
+else
+    $(error Invalid NBLIST_DATA_LAYOUT: $(NBLIST_DATA_LAYOUT). Must be one of: auto, AOS, SOA, CSR)
 endif
 ifeq ($(strip $(SUPERCLUSTER_DATA_LAYOUT)),AOS3)
     DEFINES +=  -DPOSITION_AOS3_SUP
