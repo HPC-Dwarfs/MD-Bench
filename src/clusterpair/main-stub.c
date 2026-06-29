@@ -15,6 +15,9 @@
 #include <eam.h>
 #include <force.h>
 #include <neighbor.h>
+#ifdef NBLIST_CSR
+#error "main-stub is not supported with NBLIST_DATA_LAYOUT=CSR (neighbor list initialization requires two-pass build)"
+#endif
 #include <parameter.h>
 #include <pbc.h>
 #include <stats.h>

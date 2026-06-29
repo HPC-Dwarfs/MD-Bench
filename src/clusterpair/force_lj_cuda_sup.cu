@@ -1,3 +1,7 @@
+#ifdef NBLIST_CSR
+#error "Super-clustering CUDA kernels are not supported with NBLIST_DATA_LAYOUT=CSR"
+#endif
+
 #ifdef __HIP_PLATFORM_AMD__
 #define FULL_WARP_MASK 0xffffffffffffffffULL
 #else

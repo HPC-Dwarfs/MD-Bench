@@ -85,6 +85,7 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     neighbor->numneigh_inner        = NULL;
     neighbor->numneigh_inner_masked = NULL;
     neighbor->neighbors             = NULL;
+    neighbor->neigh_start           = NULL;
     neighbor->neighbors_imask       = NULL;
     // MPI Implementation
     method      = param->method;
@@ -310,6 +311,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             nmax * neighbor->maxneighs * sizeof(int));
         neighbor->neighbors_imask       = (unsigned int*)allocate(ALIGNMENT,
             nmax * neighbor->maxneighs * sizeof(unsigned int));
+#ifdef NBLIST_CSR
+        if (neighbor->neigh_start) free(neighbor->neigh_start);
+        neighbor->neigh_start = (int*)allocate(ALIGNMENT, (nmax + 1) * sizeof(int));
+#endif
     }
 
     MD_FLOAT bbx    = 0.5 * (binsizex + binsizex);
@@ -622,41 +627,42 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 
                                     if (n < neighbor->maxneighs) {
                                         if (imask == NBNXN_INTERACTION_MASK_ALL) {
-                                            neighs(neighbor->neighbors,
+                                            neighs_padded(neighbor->neighbors,
                                                 ci,
                                                 n,
                                                 nbM,
                                                 nbN) = cj;
-                                            neighs(neighbor->neighbors_imask,
+                                            neighs_padded(neighbor->neighbors_imask,
                                                 ci,
                                                 n,
                                                 nbM,
                                                 nbN) = imask;
                                         } else {
-                                            neighs(neighbor->neighbors,
+                                            neighs_padded(neighbor->neighbors,
                                                 ci,
                                                 n,
                                                 nbM,
-                                                nbN) = neighs(neighbor->neighbors,
+                                                nbN) = neighs_padded(neighbor->neighbors,
                                                 ci,
                                                 nmasked,
                                                 nbM,
                                                 nbN);
-                                            neighs(neighbor->neighbors_imask,
+                                            neighs_padded(neighbor->neighbors_imask,
                                                 ci,
                                                 n,
                                                 nbM,
-                                                nbN) = neighs(neighbor->neighbors_imask,
+                                                nbN) = neighs_padded(
+                                                neighbor->neighbors_imask,
                                                 ci,
                                                 nmasked,
                                                 nbM,
                                                 nbN);
-                                            neighs(neighbor->neighbors,
+                                            neighs_padded(neighbor->neighbors,
                                                 ci,
                                                 nmasked,
                                                 nbM,
                                                 nbN) = cj;
-                                            neighs(neighbor->neighbors_imask,
+                                            neighs_padded(neighbor->neighbors_imask,
                                                 ci,
                                                 nmasked,
                                                 nbM,
@@ -689,8 +695,8 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             if (CLUSTER_N < VECTOR_WIDTH) {
                 while (n % (VECTOR_WIDTH / CLUSTER_N)) {
                     // Last cluster is always a dummy cluster
-                    neighs(neighbor->neighbors, ci, n, nbM, nbN) = atom->dummy_cj;
-                    neighs(neighbor->neighbors_imask, ci, n, nbM, nbN) = 0;
+                    neighs_padded(neighbor->neighbors, ci, n, nbM, nbN) = atom->dummy_cj;
+                    neighs_padded(neighbor->neighbors_imask, ci, n, nbM, nbN) = 0;
                     n++;
                 }
             }
@@ -726,6 +732,47 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         }
     }
 
+#ifdef NBLIST_CSR
+    /* Compact padded build buffer into CSR layout */
+    {
+        const int padded_nbN = neighbor->maxneighs;
+        const int nbM        = atom->Nclusters_local;
+        neighbor->neigh_start[0] = 0;
+        for (int ci = 0; ci < nbM; ci++) {
+            neighbor->neigh_start[ci + 1] =
+                neighbor->neigh_start[ci] + neighbor->numneigh[ci];
+        }
+        int total               = neighbor->neigh_start[nbM];
+        int* csr_neighbors      = (int*)allocate(ALIGNMENT, MAX(1, total) * sizeof(int));
+        unsigned int* csr_imask = (unsigned int*)allocate(
+            ALIGNMENT, MAX(1, total) * sizeof(unsigned int));
+        for (int ci = 0; ci < nbM; ci++) {
+            int nn = neighbor->numneigh[ci];
+            for (int k = 0; k < nn; k++) {
+                int dst            = neighbor->neigh_start[ci] + k;
+                csr_neighbors[dst] = neighs_padded(
+                    neighbor->neighbors, ci, k, nbM, padded_nbN);
+                csr_imask[dst] = neighs_padded(
+                    neighbor->neighbors_imask, ci, k, nbM, padded_nbN);
+            }
+        }
+        free(neighbor->neighbors);
+        free(neighbor->neighbors_imask);
+        neighbor->neighbors       = csr_neighbors;
+        neighbor->neighbors_imask = (unsigned int*)csr_imask;
+        int new_max               = 0;
+        for (int ci = 0; ci < nbM; ci++) {
+            if (neighbor->numneigh[ci] > new_max) new_max = neighbor->numneigh[ci];
+        }
+        if (new_max != neighbor->maxneighs) {
+            neighbor->maxneighs = new_max;
+            free(is_inner_buf);
+            is_inner_buf =
+                (int*)allocate(ALIGNMENT, MAX(1, neighbor->maxneighs) * sizeof(int));
+        }
+    }
+#endif
+
     if (method == eightShell) {
         neighborGhost(atom, neighbor);
     }
@@ -735,7 +782,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
     //     for(int k = 0; k < neighbor->numneigh[ci]; k++) {
     //     const int nbM     = atom->Nclusters_local;
     //     const int nbN     = neighbor->maxneighs;
-    //     int cj = neighs(neighbor->neighbors, ci, k, nbM, nbN);
+    //     int cj = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
     //     printf("cj=%d\n", cj);
     //     }
     // }
@@ -762,7 +809,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 
         DEBUG_MESSAGE("Neighbors:\n");
         for(int k = 0; k < neighbor->numneigh[ci]; k++) {
-            int cj = neighs(neighbor->neighbors, ci, k, nbM, nbN);
+            int cj = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
             int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
             MD_FLOAT *cj_x = &atom->cl_x[cj_vec_base];
 
@@ -790,6 +837,9 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("buildNeighborSuperclusters start\n");
+#if defined(NBLIST_CSR) && defined(CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS)
+#error "NBLIST_CSR is not supported for super-clustering neighbor lists"
+#endif
 
     /* extend atom arrays if necessary */
     if (atom->Nclusters_local > nmax) {
@@ -925,7 +975,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
 
                             distance_check_out:
                                 if (is_neighbor) {
-                                    neighs(neighbor->neighbors, sci, n, nbM, nbN) = cj;
+                                    neighs_padded(neighbor->neighbors, sci, n, nbM, nbN) = cj;
                                     n++;
                                 }
                             }
@@ -949,7 +999,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             if (CLUSTER_N < VECTOR_WIDTH) {
                 while (n % (VECTOR_WIDTH / CLUSTER_N)) {
                     // Last cluster is always a dummy cluster
-                    neighs(neighbor->neighbors, sci, n, nbM, nbN) = atom->dummy_cj;
+                    neighs_padded(neighbor->neighbors, sci, n, nbM, nbN) = atom->dummy_cj;
                     n++;
                 }
             }
@@ -985,7 +1035,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
     //     for(int k = 0; k < neighbor->numneigh[sci]; k++) {
     //         const int nbM     = atom->Nclusters_local;
     //         const int nbN     = neighbor->maxneighs;
-    //         int cj = neighs(neighbor->neighbors, sci, k, nbM, nbN);
+    //         int cj = neighs(neighbor->neighbors, sci, k, nbM, neighbor);
     //         if(cj >= (atom->Nclusters_local * SCLUSTER_SIZE)){
     //             ghost_neighs++;
     //         }else{
@@ -1007,7 +1057,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
     //     for(int k = 0; k < neighbor->numneigh[sci]; k++) {
     //         const int nbM     = atom->Nclusters_local;
     //         const int nbN     = neighbor->maxneighs;
-    //         int cj = neighs(neighbor->neighbors, sci, k, nbM, nbN);
+    //         int cj = neighs(neighbor->neighbors, sci, k, nbM, neighbor);
 
     //         // printf("cj=%d\n", cj);
 
@@ -1062,7 +1112,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
     // for(int k = 0; k < neighbor->numneigh[sci]; k++) {
     //     const int nbM     = atom->Nclusters_local;
     //     const int nbN     = neighbor->maxneighs;
-    //     int cj = neighs(neighbor->neighbors, sci, k, nbM, nbN);
+    //     int cj = neighs(neighbor->neighbors, sci, k, nbM, neighbor);
     //     // int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
     //     // MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
     //     if(cj==1440){
@@ -1101,7 +1151,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
 
         DEBUG_MESSAGE("Neighbors:\n");
         for(int k = 0; k < neighbor->numneigh[ci]; k++) {
-            int cj = neighs(neighbor->neighbors, ci, k, nbM, nbN);
+            int cj = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
             int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
             MD_FLOAT *cj_x = &atom->cl_x[cj_vec_base];
 
@@ -1139,7 +1189,6 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
 
     const MD_FLOAT cutsq = cutneigh_inner_sq;
     const int nbM        = atom->Nclusters_local;
-    const int nbN        = neighbor->maxneighs;
 
     int* is_inner = is_inner_buf;
 
@@ -1174,7 +1223,7 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
 #endif
 
         for (int k = 0; k < numneighs; k++) {
-            int cj                 = neighs(neighbor->neighbors, ci, k, nbM, nbN);
+            int cj                 = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
             int cj_vec_base        = CJ_VECTOR3_BASE_INDEX(cj);
             MD_FLOAT* cj_x         = &atom->cl_x[cj_vec_base];
             int atom_dist_in_range = 0;
@@ -1259,27 +1308,27 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         for (int hi = 0; hi < numneighs_masked; hi++) {
             if (is_inner[hi]) {
                 if (hi != lo) {
-                    int t_cj          = neighs(neighbor->neighbors, ci, lo, nbM, nbN);
+                    int t_cj          = neighs(neighbor->neighbors, ci, lo, nbM, neighbor);
                     unsigned int t_im = neighs(neighbor->neighbors_imask,
                         ci,
                         lo,
                         nbM,
-                        nbN);
+                        neighbor);
                     int t_in          = is_inner[lo];
                     neighs(neighbor->neighbors,
                         ci,
                         lo,
                         nbM,
-                        nbN)          = neighs(neighbor->neighbors, ci, hi, nbM, nbN);
+                        neighbor) = neighs(neighbor->neighbors, ci, hi, nbM, neighbor);
                     neighs(neighbor->neighbors_imask,
                         ci,
                         lo,
                         nbM,
-                        nbN)     = neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN);
+                        neighbor) = neighs(neighbor->neighbors_imask, ci, hi, nbM, neighbor);
                     is_inner[lo] = is_inner[hi];
-                    neighs(neighbor->neighbors, ci, hi, nbM, nbN)       = t_cj;
-                    neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN) = t_im;
-                    is_inner[hi]                                        = t_in;
+                    neighs(neighbor->neighbors, ci, hi, nbM, neighbor)       = t_cj;
+                    neighs(neighbor->neighbors_imask, ci, hi, nbM, neighbor) = t_im;
+                    is_inner[hi]                                             = t_in;
                 }
                 lo++;
             }
@@ -1290,27 +1339,27 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         for (int hi = numneighs_masked; hi < numneighs; hi++) {
             if (is_inner[hi]) {
                 if (hi != lo) {
-                    int t_cj          = neighs(neighbor->neighbors, ci, lo, nbM, nbN);
+                    int t_cj          = neighs(neighbor->neighbors, ci, lo, nbM, neighbor);
                     unsigned int t_im = neighs(neighbor->neighbors_imask,
                         ci,
                         lo,
                         nbM,
-                        nbN);
+                        neighbor);
                     int t_in          = is_inner[lo];
                     neighs(neighbor->neighbors,
                         ci,
                         lo,
                         nbM,
-                        nbN)          = neighs(neighbor->neighbors, ci, hi, nbM, nbN);
+                        neighbor) = neighs(neighbor->neighbors, ci, hi, nbM, neighbor);
                     neighs(neighbor->neighbors_imask,
                         ci,
                         lo,
                         nbM,
-                        nbN)     = neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN);
+                        neighbor) = neighs(neighbor->neighbors_imask, ci, hi, nbM, neighbor);
                     is_inner[lo] = is_inner[hi];
-                    neighs(neighbor->neighbors, ci, hi, nbM, nbN)       = t_cj;
-                    neighs(neighbor->neighbors_imask, ci, hi, nbM, nbN) = t_im;
-                    is_inner[hi]                                        = t_in;
+                    neighs(neighbor->neighbors, ci, hi, nbM, neighbor)       = t_cj;
+                    neighs(neighbor->neighbors_imask, ci, hi, nbM, neighbor) = t_im;
+                    is_inner[hi]                                             = t_in;
                 }
                 lo++;
             }
@@ -1335,7 +1384,6 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
 
     const MD_FLOAT cutsq = cutneigh_inner_sq;
     const int nbM        = atom->Nclusters_local;
-    const int nbN        = neighbor->maxneighs;
 
     int* is_inner = is_inner_buf;
 
@@ -1343,7 +1391,7 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
         const int numneighs = neighbor->numneigh[sci];
 
         for (int k = 0; k < numneighs; k++) {
-            int cj          = neighs(neighbor->neighbors, sci, k, nbM, nbN);
+            int cj          = neighs(neighbor->neighbors, sci, k, nbM, neighbor);
             int is_neighbor = 0;
 
             for (int sci_ci = 0; sci_ci < atom->siclusters[sci].nclusters; sci_ci++) {
@@ -1374,15 +1422,15 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
         for (int hi = 0; hi < numneighs; hi++) {
             if (is_inner[hi]) {
                 if (hi != lo) {
-                    int t_cj     = neighs(neighbor->neighbors, sci, lo, nbM, nbN);
+                    int t_cj     = neighs(neighbor->neighbors, sci, lo, nbM, neighbor);
                     int t_in     = is_inner[lo];
                     neighs(neighbor->neighbors,
                         sci,
                         lo,
                         nbM,
-                        nbN)     = neighs(neighbor->neighbors, sci, hi, nbM, nbN);
+                        nbN)     = neighs(neighbor->neighbors, sci, hi, nbM, neighbor);
                     is_inner[lo] = is_inner[hi];
-                    neighs(neighbor->neighbors, sci, hi, nbM, nbN) = t_cj;
+                    neighs(neighbor->neighbors, sci, hi, nbM, neighbor) = t_cj;
                     is_inner[hi]                                   = t_in;
                 }
                 lo++;

@@ -9,6 +9,10 @@
 //---
 #include <likwid-marker.h>
 //---
+#ifdef NBLIST_CSR
+#error "main-stub is not supported with NBLIST_DATA_LAYOUT=CSR (neighbor list initialization requires two-pass build)"
+#endif
+//---
 #include <allocate.h>
 #include <atom.h>
 #include <eam.h>
@@ -72,7 +76,9 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
         exit(-1);
     }
 
+    neighbor->maxneighs = maxneighs;
     for (int i = 0; i < atom->Nlocal; i++) {
+        int neighptr[nneighs];
         int j = (pattern == P_SEQ) ? (i + 1) : 0;
         int m = (pattern == P_SEQ) ? atom->Nlocal : nneighs;
 
@@ -90,7 +96,7 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
                     }
                 } while (found == 1);
             } else {
-                neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor->maxneighs) = j;
+                neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor) = j;
                 j = (j + 1) % m;
             }
         }
@@ -101,11 +107,11 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
                     i,
                     r * nneighs + k,
                     atom->Nlocal,
-                    neighbor->maxneighs) = neighs(neighbor->neighbors,
+                    neighbor) = neighs(neighbor->neighbors,
                     i,
                     k,
                     atom->Nlocal,
-                    neighbor->maxneighs);
+                    neighbor);
             }
         }
 

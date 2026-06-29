@@ -14,17 +14,25 @@
 #define __NEIGHBOR_H_
 
 #ifdef NBLIST_AOS
-#define NBLIST_DATA_LAYOUT         "AoS"
-#define neighs(nblist, i, j, M, N) nblist[(i)*N + (j)]
+#define NBLIST_DATA_LAYOUT          "AoS"
+#define neighs(l, i, j, M, nbr)    (l)[(i) * (nbr)->maxneighs + (j)]
+#elif defined(NBLIST_CSR)
+#define NBLIST_DATA_LAYOUT          "CSR"
+#define neighs(l, i, j, M, nbr)    (l)[(nbr)->neigh_start[(i)] + (j)]
 #else
-#define NBLIST_DATA_LAYOUT         "SoA"
-#define neighs(nblist, i, j, M, N) nblist[(j)*M + (i)]
+#define NBLIST_DATA_LAYOUT          "SoA"
+#define neighs(l, i, j, M, nbr)    (l)[(j) * (M) + (i)]
 #endif
+/* Shell list and build-phase scratch always use padded AOS layout */
+#define neighshell(nblist, i, j, N)       nblist[(i) * (N) + (j)]
+#define neighs_padded(nblist, i, j, M, N) nblist[(i) * (N) + (j)]
 
 typedef struct {
     int* neighbors;
     int* numneigh;
     int* numneigh_inner;
+    int* neigh_start;
+    int maxneighs;
 } DeviceNeighbor;
 
 typedef struct {
@@ -33,6 +41,7 @@ typedef struct {
     int maxneighs;
     int half_neigh;
     int* neighbors;
+    int* neigh_start;
     int* numneigh;
     int* numneigh_inner;
 

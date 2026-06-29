@@ -26,7 +26,6 @@ double computeForceLJTableRef(
 {
     DEBUG_MESSAGE("computeForceLJTable begin\n");
     const int nbM = atom->Nclusters_local;
-    const int nbN = neighbor->maxneighs;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
@@ -83,7 +82,7 @@ double computeForceLJTableRef(
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                const int cj    = neighs(neighbor->neighbors, ci, k, nbM, nbN);
+                const int cj    = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 int any         = 0;
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];

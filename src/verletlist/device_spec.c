@@ -24,10 +24,17 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     d_atom->cutforcesq = (MD_FLOAT*)allocateGPU(
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
-    d_neighbor->neighbors = (int*)allocateGPU(
+#ifdef NBLIST_CSR
+    d_neighbor->neighbors   = NULL;
+    d_neighbor->neigh_start = (int*)allocateGPU(sizeof(int) * (atom->Nmax + 1));
+#else
+    d_neighbor->neighbors   = (int*)allocateGPU(
         sizeof(int) * atom->Nmax * neighbor->maxneighs);
+    d_neighbor->neigh_start = NULL;
+#endif
     d_neighbor->numneigh       = (int*)allocateGPU(sizeof(int) * atom->Nmax);
     d_neighbor->numneigh_inner = (int*)allocateGPU(sizeof(int) * atom->Nmax);
+    d_neighbor->maxneighs      = neighbor->maxneighs;
 
     memcpyToGPU(d_atom->x, atom->x, sizeof(MD_FLOAT) * atom->Nmax * 3);
     memcpyToGPU(d_atom->vx, atom->vx, sizeof(MD_FLOAT) * atom->Nmax * 3);

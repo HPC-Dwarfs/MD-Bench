@@ -56,7 +56,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 #endif
 #pragma ivdep
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, Nlocal, neighbor->maxneighs);
+                int j = neighs(neighbor->neighbors, i, k, Nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -136,7 +136,7 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 
 #pragma ivdep
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, Nlocal, neighbor->maxneighs);
+                int j = neighs(neighbor->neighbors, i, k, Nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);

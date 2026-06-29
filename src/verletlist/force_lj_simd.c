@@ -35,6 +35,9 @@
 #if defined(NBLIST_SOA) && defined(__SIMD_KERNEL__)
 #error "SIMD kernel not implemented when NBLIST_DATA_LAYOUT is SOA"
 #endif
+#if defined(NBLIST_CSR) && defined(__SIMD_KERNEL__)
+#error "SIMD kernel not implemented when NBLIST_DATA_LAYOUT is CSR"
+#endif
 
 double computeForceLJFullNeigh_simd(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
@@ -75,7 +78,11 @@ double computeForceLJFullNeigh_simd(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
+#ifdef NBLIST_CSR
+            int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
+#else
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
+#endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
@@ -215,7 +222,11 @@ double computeForceLJHalfNeigh_simd(
 
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
+#ifdef NBLIST_CSR
+            int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
+#else
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
+#endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));

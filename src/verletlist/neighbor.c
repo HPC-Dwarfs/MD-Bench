@@ -81,8 +81,8 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     neighbor->numneigh       = NULL;
     neighbor->numneigh_inner = NULL;
     neighbor->neighbors      = NULL;
+    neighbor->neigh_start    = NULL;
     is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
-    //========== MPI =============
     method = param->method;
     if (method == halfShell || method == eightShell) {
         param->half_neigh = 1;
@@ -279,18 +279,138 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         nmax = nall;
         if (neighbor->numneigh) free(neighbor->numneigh);
         if (neighbor->numneigh_inner) free(neighbor->numneigh_inner);
-        if (neighbor->neighbors) free(neighbor->neighbors);
         neighbor->numneigh       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
         neighbor->numneigh_inner = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
-        neighbor->neighbors      = (int*)allocate(ALIGNMENT,
+#ifdef NBLIST_CSR
+        if (neighbor->neigh_start) free(neighbor->neigh_start);
+        neighbor->neigh_start = (int*)allocate(ALIGNMENT, (nmax + 1) * sizeof(int));
+#else
+        if (neighbor->neighbors) free(neighbor->neighbors);
+        neighbor->neighbors = (int*)allocate(ALIGNMENT,
             nmax * neighbor->maxneighs * sizeof(int));
+#endif
     }
 
     /* bin local & ghost atoms */
     binatoms(atom);
+
+#ifdef NBLIST_CSR
+    /* CSR one-pass build: each thread fills its own buffer, then a prefix sum
+     * over per-thread totals produces global offsets and buffers are merged. */
+    {
+        int Nlocal = atom->Nlocal;
+        int actual_nthreads = 1;
+#ifdef _OPENMP
+        int max_threads = omp_get_max_threads();
+#else
+        int max_threads = 1;
+#endif
+        int** t_buf    = (int**)malloc(max_threads * sizeof(int*));
+        int*  t_cap    = (int*)malloc(max_threads * sizeof(int));
+        int*  t_pos    = (int*)malloc(max_threads * sizeof(int));
+        int*  t_owner  = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
+        int   init_cap = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
+        for (int t = 0; t < max_threads; t++) {
+            t_cap[t] = init_cap;
+            t_pos[t] = 0;
+            t_buf[t] = (int*)malloc(init_cap * sizeof(int));
+        }
+
+#pragma omp parallel
+        {
+#ifdef _OPENMP
+            int tid = omp_get_thread_num();
+#pragma omp single
+            actual_nthreads = omp_get_num_threads();
+#else
+            int tid = 0;
+#endif
+
+#pragma omp for schedule(static)
+            for (int i = 0; i < Nlocal; i++) {
+                t_owner[i]               = tid;
+                neighbor->neigh_start[i] = t_pos[tid]; /* local offset */
+
+                int n         = 0;
+                MD_FLOAT xtmp = atom_x(i);
+                MD_FLOAT ytmp = atom_y(i);
+                MD_FLOAT ztmp = atom_z(i);
+                int ibin      = coord2bin(xtmp, ytmp, ztmp);
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
+                int type_i = atom->type[i];
+#endif
+                for (int k = 0; k < nstencil; k++) {
+                    int jbin     = ibin + stencil[k];
+                    int* loc_bin = &bins[jbin * atoms_per_bin];
+                    for (int m = 0; m < bincount[jbin]; m++) {
+                        int j = loc_bin[m];
+                        if (i == j) continue;
+                        if (neighbor->half_neigh && j < i) continue;
+                        if (half_stencil && ibin == jbin && skipNeigh(atom, i, j)) continue;
+                        MD_FLOAT delx = xtmp - atom_x(j);
+                        MD_FLOAT dely = ytmp - atom_y(j);
+                        MD_FLOAT delz = ztmp - atom_z(j);
+                        MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
+                        int type_j        = atom->type[j];
+                        const MD_FLOAT cutoff =
+                            atom->cutneighsq[type_i * atom->ntypes + type_j];
+#else
+                        const MD_FLOAT cutoff = cutneighsq;
+#endif
+                        if (rsq <= cutoff) {
+                            if (t_pos[tid] + n >= t_cap[tid]) {
+                                t_cap[tid] *= 2;
+                                t_buf[tid]  = (int*)realloc(t_buf[tid],
+                                    t_cap[tid] * sizeof(int));
+                            }
+                            t_buf[tid][t_pos[tid] + n] = j;
+                            n++;
+                        }
+                    }
+                }
+                neighbor->numneigh[i] = n;
+                t_pos[tid] += n;
+            }
+        }
+
+        int* t_offsets = (int*)allocate(ALIGNMENT, (actual_nthreads + 1) * sizeof(int));
+        t_offsets[0] = 0;
+        for (int t = 0; t < actual_nthreads; t++)
+            t_offsets[t + 1] = t_offsets[t] + t_pos[t];
+        int total = t_offsets[actual_nthreads];
+
+        if (neighbor->neighbors) free(neighbor->neighbors);
+        neighbor->neighbors = (int*)allocate(ALIGNMENT, MAX(1, total) * sizeof(int));
+
+        for (int i = 0; i < Nlocal; i++)
+            neighbor->neigh_start[i] += t_offsets[t_owner[i]];
+        neighbor->neigh_start[Nlocal] = total;
+        for (int t = 0; t < actual_nthreads; t++) {
+            memcpy(neighbor->neighbors + t_offsets[t], t_buf[t], t_pos[t] * sizeof(int));
+            free(t_buf[t]);
+        }
+
+        int new_max = 0;
+        for (int i = 0; i < Nlocal; i++)
+            if (neighbor->numneigh[i] > new_max) new_max = neighbor->numneigh[i];
+        if (new_max != neighbor->maxneighs) {
+            neighbor->maxneighs = new_max;
+            free(is_inner_buf);
+            is_inner_buf =
+                (int*)allocate(ALIGNMENT, MAX(1, neighbor->maxneighs) * sizeof(int));
+        }
+
+        free(t_owner);
+        free(t_buf);
+        free(t_cap);
+        free(t_pos);
+        free(t_offsets);
+    }
+#else
+    /* AOS/SOA: single-pass with padded buffer and resize loop */
     int resize = 1;
 
-    /* loop over each atom, storing neighbors */
     while (resize) {
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
@@ -335,7 +455,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                             i,
                             n,
                             atom->Nlocal,
-                            neighbor->maxneighs) = j;
+                            neighbor) = j;
                         n++;
                     }
                 }
@@ -362,6 +482,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
         }
     }
+#endif
 
     if (method == eightShell) {
         neighborGhost(atom, neighbor);
@@ -378,7 +499,6 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("pruneNeighborCPU begin\n");
     const int nlocal = atom->Nlocal;
-    const int nbN    = neighbor->maxneighs;
 
     if (!dcut_enabled) {
         // Disabled: mirror outer counts so the force kernel reads the full list.
@@ -396,7 +516,7 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         int* is_inner = is_inner_buf;
 #ifdef _OPENMP
         // Each thread needs its own scratch for the in-place partition.
-        is_inner = (int*)allocate(ALIGNMENT, nbN * sizeof(int));
+        is_inner = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
 #endif
 
 #pragma omp for schedule(runtime)
@@ -407,7 +527,7 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
             const MD_FLOAT ztmp = atom_z(i);
 
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs(neighbor->neighbors, i, k, nlocal, nbN);
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -420,15 +540,15 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
             for (int hi = 0; hi < numneighs; hi++) {
                 if (is_inner[hi]) {
                     if (hi != lo) {
-                        int t_j  = neighs(neighbor->neighbors, i, lo, nlocal, nbN);
+                        int t_j  = neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
                         neighs(neighbor->neighbors,
                             i,
                             lo,
                             nlocal,
-                            nbN) = neighs(neighbor->neighbors, i, hi, nlocal, nbN);
-                        neighs(neighbor->neighbors, i, hi, nlocal, nbN) = t_j;
-                        is_inner[hi]                                    = is_inner[lo];
-                        is_inner[lo]                                    = 1;
+                            neighbor) = neighs(neighbor->neighbors, i, hi, nlocal, neighbor);
+                        neighs(neighbor->neighbors, i, hi, nlocal, neighbor) = t_j;
+                        is_inner[hi]                                         = is_inner[lo];
+                        is_inner[lo]                                         = 1;
                     }
                     lo++;
                 }
@@ -757,10 +877,9 @@ static void neighborGhost(Atom* atom, Neighbor* neighbor)
                     const MD_FLOAT cutoff = cutneighsq;
 #endif
                     if (rsq <= cutoff) {
-                        neighs(neighbor->neighshell,
+                        neighshell(neighbor->neighshell,
                             i,
                             n,
-                            Nshell,
                             neighbor->maxneighs) = jatom;
                         n++;
                     }

@@ -35,7 +35,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
     int Nlocal,
-    int neigh_maxneighs,
+    DeviceNeighbor neigh,
     int* neigh_neighbors,
     int* neigh_numneigh,
     int ntypes,
@@ -48,8 +48,9 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
         return;
     }
 
-    DeviceAtom* atom    = &a;
-    const int numneighs = neigh_numneigh[i];
+    DeviceAtom* atom         = &a;
+    DeviceNeighbor* neighbor = &neigh;
+    const int numneighs      = neigh_numneigh[i];
 
     MD_FLOAT xtmp = atom_x(i);
     MD_FLOAT ytmp = atom_y(i);
@@ -67,7 +68,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
 #endif
 
     for (int k = 0; k < numneighs; k++) {
-        int j         = neighs(neigh_neighbors, i, k, Nlocal, neigh_maxneighs);
+        int j         = neighs(neigh_neighbors, i, k, Nlocal, neighbor);
         MD_FLOAT delx = xtmp - atom_x(j);
         MD_FLOAT dely = ytmp - atom_y(j);
         MD_FLOAT delz = ztmp - atom_z(j);
@@ -109,7 +110,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
     int Nlocal,
-    int neigh_maxneighs,
+    DeviceNeighbor neigh,
     int* neigh_neighbors,
     int* neigh_numneigh,
     int ntypes,
@@ -122,8 +123,9 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
         return;
     }
 
-    DeviceAtom* atom    = &a;
-    const int numneighs = neigh_numneigh[i];
+    DeviceAtom* atom         = &a;
+    DeviceNeighbor* neighbor = &neigh;
+    const int numneighs      = neigh_numneigh[i];
 
     MD_FLOAT xtmp = atom_x(i);
     MD_FLOAT ytmp = atom_y(i);
@@ -141,7 +143,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
 #endif
 
     for (int k = 0; k < numneighs; k++) {
-        int j         = neighs(neigh_neighbors, i, k, Nlocal, neigh_maxneighs);
+        int j         = neighs(neigh_neighbors, i, k, Nlocal, neighbor);
         MD_FLOAT delx = xtmp - atom_x(j);
         MD_FLOAT dely = ytmp - atom_y(j);
         MD_FLOAT delz = ztmp - atom_z(j);
@@ -244,7 +246,7 @@ double computeForceLJTableCUDA(
             sigma6,
             epsilon,
             Nlocal,
-            neighbor->maxneighs,
+            neighbor->d_neighbor,
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
             atom->ntypes,
@@ -258,7 +260,7 @@ double computeForceLJTableCUDA(
             sigma6,
             epsilon,
             Nlocal,
-            neighbor->maxneighs,
+            neighbor->d_neighbor,
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
             atom->ntypes,
