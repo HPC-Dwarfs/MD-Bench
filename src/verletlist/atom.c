@@ -5,6 +5,7 @@
  * license that can be found in the LICENSE file.
  */
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,6 +56,9 @@ void initAtom(Atom* atom)
     atom->x                     = NULL;
     atom->y                     = NULL;
     atom->z                     = NULL;
+    atom->x_ref                 = NULL;
+    atom->y_ref                 = NULL;
+    atom->z_ref                 = NULL;
     atom->vx                    = NULL;
     atom->vy                    = NULL;
     atom->vz                    = NULL;
@@ -799,12 +803,28 @@ void growAtom(Atom* atom)
 
 #ifdef ATOM_POSITION_AOS
     REALLOC(x, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);
+    atom->x_ref = (MD_FLOAT*)reallocate(atom->x_ref,
+        ALIGNMENT,
+        atom->Nmax * sizeof(MD_FLOAT) * 3,
+        nold * sizeof(MD_FLOAT) * 3);
     REALLOC(vx, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);
     REALLOC(fx, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);
 #else
     REALLOC(x, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
     REALLOC(y, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
     REALLOC(z, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
+    atom->x_ref = (MD_FLOAT*)reallocate(atom->x_ref,
+        ALIGNMENT,
+        atom->Nmax * sizeof(MD_FLOAT),
+        nold * sizeof(MD_FLOAT));
+    atom->y_ref = (MD_FLOAT*)reallocate(atom->y_ref,
+        ALIGNMENT,
+        atom->Nmax * sizeof(MD_FLOAT),
+        nold * sizeof(MD_FLOAT));
+    atom->z_ref = (MD_FLOAT*)reallocate(atom->z_ref,
+        ALIGNMENT,
+        atom->Nmax * sizeof(MD_FLOAT),
+        nold * sizeof(MD_FLOAT));
     REALLOC(vx, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
     REALLOC(vy, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
     REALLOC(vz, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
@@ -1023,4 +1043,30 @@ void copy(Atom* atom, int i, int j)
     atom->type[i]         = atom->type[j];
     atom->sqrt_epsilon[i] = atom->sqrt_epsilon[j];
     atom->sigma3[i]       = atom->sigma3[j];
+}
+
+bool needsReneigh(Atom* atom, Parameter* param)
+{
+    MD_FLOAT threshold = (MD_FLOAT)0.25 * param->skin * param->skin;
+    MD_FLOAT max_sq    = (MD_FLOAT)0.0;
+    for (int i = 0; i < atom->Nlocal; i++) {
+        MD_FLOAT dx = atom_x(i) - atom_x_ref(i);
+        MD_FLOAT dy = atom_y(i) - atom_y_ref(i);
+        MD_FLOAT dz = atom_z(i) - atom_z_ref(i);
+        MD_FLOAT d  = dx * dx + dy * dy + dz * dz;
+        if (d > max_sq) max_sq = d;
+    }
+#ifdef _MPI
+    MPI_Allreduce(MPI_IN_PLACE, &max_sq, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+#endif
+    return max_sq > threshold;
+}
+
+void storeReferencePositions(Atom* atom)
+{
+    for (int i = 0; i < atom->Nlocal; i++) {
+        atom_x_ref(i) = atom_x(i);
+        atom_y_ref(i) = atom_y(i);
+        atom_z_ref(i) = atom_z(i);
+    }
 }

@@ -240,6 +240,10 @@ int main(int argc, char** argv)
             param.reneigh_every = atoi(argv[++i]);
             continue;
         }
+        if (strcmp(argv[i], "--displacement-reneigh") == 0) {
+            param.displacement_reneigh = 1;
+            continue;
+        }
         if ((strcmp(argv[i], "--freq") == 0)) {
             param.proc_freq = atof(argv[++i]);
             continue;
@@ -284,6 +288,9 @@ int main(int argc, char** argv)
             printf("--prune-every <int>:  pruning frequency (steps between inner-list "
                    "refresh)\n");
             printf("--reneigh-every <int>: neighbor-list rebuild frequency (steps)\n");
+            printf("--displacement-reneigh: rebuild neighbor list based on atom displacement "
+                   "(skin/2 threshold); use --reneigh-every 0 to disable fixed-interval "
+                   "rebuild\n");
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
             printf("--xtc <string>:       XTC file for visualization\n");
@@ -303,6 +310,9 @@ int main(int argc, char** argv)
     param.outer_skin = MAX(param.outer_skin, 0.0);
     param.cutneigh   = param.cutforce + param.skin + param.outer_skin;
     timer[SETUP]     = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
+    if (param.displacement_reneigh) {
+        storeReferencePositions(&atom);
+    }
 
     if (comm.myproc == 0) {
         printParameter(&param);
@@ -350,7 +360,12 @@ int main(int argc, char** argv)
     for (int n = 0; n < param.ntimes; n++) {
         initialIntegrate(&param, &atom);
 
-        if ((n + 1) % param.reneigh_every) {
+        bool reneigh = (param.reneigh_every > 0 && !((n + 1) % param.reneigh_every));
+        if (!reneigh && param.displacement_reneigh) {
+            reneigh = needsReneigh(&atom, &param);
+        }
+
+        if (!reneigh) {
             if (param.outer_skin > 0.0 && !((n + 1) % param.prune_every)) {
                 double prune_start = getTimeStamp();
 #ifdef CUDA_TARGET
@@ -376,6 +391,9 @@ int main(int argc, char** argv)
             }
 
             timer[NEIGH] += reneighbour(&comm, &param, &atom, &neighbor);
+            if (param.displacement_reneigh) {
+                storeReferencePositions(&atom);
+            }
 #ifdef CUDA_TARGET
             copyDataToCUDADevice(&param, &atom, &neighbor);
 #endif

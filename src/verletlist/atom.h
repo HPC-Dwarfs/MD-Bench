@@ -4,6 +4,8 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
+#include <stdbool.h>
+
 #include <box.h>
 #include <parameter.h>
 #ifdef _MPI
@@ -31,6 +33,7 @@ typedef struct {
 typedef struct {
     int Natoms, Nlocal, Nghost, Nmax;
     MD_FLOAT *x, *y, *z;
+    MD_FLOAT *x_ref, *y_ref, *z_ref;
     MD_FLOAT *vx, *vy, *vz;
     MD_FLOAT *fx, *fy, *fz;
     int* border_map;
@@ -63,6 +66,8 @@ extern int readAtom_in(Atom*, Parameter*);
 extern void writeAtom(Atom*, Parameter*);
 extern void growAtom(Atom*);
 extern void freeAtom(Atom*);
+extern bool needsReneigh(Atom*, Parameter*);
+extern void storeReferencePositions(Atom*);
 
 int packGhost(Atom*, int, MD_FLOAT*, int*);
 int unpackGhost(Parameter*, Atom*, int, MD_FLOAT*);
@@ -80,6 +85,9 @@ void copy(Atom*, int, int);
 #define atom_x(i)       atom->x[(i)*3 + 0]
 #define atom_y(i)       atom->x[(i)*3 + 1]
 #define atom_z(i)       atom->x[(i)*3 + 2]
+#define atom_x_ref(i)   atom->x_ref[(i)*3 + 0]
+#define atom_y_ref(i)   atom->x_ref[(i)*3 + 1]
+#define atom_z_ref(i)   atom->x_ref[(i)*3 + 2]
 #define atom_vx(i)      atom->vx[(i)*3 + 0]
 #define atom_vy(i)      atom->vx[(i)*3 + 1]
 #define atom_vz(i)      atom->vx[(i)*3 + 2]
@@ -91,6 +99,9 @@ void copy(Atom*, int, int);
 #define atom_x(i)       atom->x[i]
 #define atom_y(i)       atom->y[i]
 #define atom_z(i)       atom->z[i]
+#define atom_x_ref(i)   atom->x_ref[i]
+#define atom_y_ref(i)   atom->y_ref[i]
+#define atom_z_ref(i)   atom->z_ref[i]
 #define atom_vx(i)      atom->vx[i]
 #define atom_vy(i)      atom->vy[i]
 #define atom_vz(i)      atom->vz[i]

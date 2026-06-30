@@ -291,6 +291,10 @@ int main(int argc, char** argv)
             continue;
         }
 
+        if (strcmp(argv[i], "--displacement-reneigh") == 0) {
+            param.displacement_reneigh = 1;
+            continue;
+        }
         if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
             if (comm.myproc == 0) {
                 printf("MD Bench: A performance-oriented prototyping harness for MD "
@@ -314,6 +318,9 @@ int main(int argc, char** argv)
                 printf("-w <file>:                  write input atoms to file\n");
                 printf("--freq <real>:              processor frequency (GHz)\n");
                 printf("--vtk <string>:             VTK file for visualization\n");
+                printf("--displacement-reneigh:     rebuild neighbor list based on atom "
+                       "displacement (skin/2 threshold); use --reneigh-every 0 to disable "
+                       "fixed-interval rebuild\n");
                 printf(HLINE);
             }
 
@@ -333,6 +340,9 @@ int main(int argc, char** argv)
 
     param.cutneigh = param.cutforce + param.skin + param.outer_skin;
     timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
+    if (param.displacement_reneigh) {
+        storeReferencePositions(&atom);
+    }
 
     if (comm.myproc == 0) {
         printParameter(&param);
@@ -384,7 +394,10 @@ int main(int argc, char** argv)
         }
 #endif
 
-        bool reneigh = (n + 1) % param.reneigh_every == 0;
+        bool reneigh = (param.reneigh_every > 0 && (n + 1) % param.reneigh_every == 0);
+        if (!reneigh && param.displacement_reneigh) {
+            reneigh = needsReneigh(&atom, &param);
+        }
         initialIntegrate(reneigh, &param, &atom);
 
         if (reneigh) {
@@ -397,6 +410,9 @@ int main(int argc, char** argv)
                     timer[FORCE]);
 
             timer[NEIGH] += reneighbour(n, &param, &atom, &neighbor, &comm);
+            if (param.displacement_reneigh) {
+                storeReferencePositions(&atom);
+            }
         } else {
             timer[FORWARD] += forward(&comm, &atom, &param);
 #ifndef _MPI

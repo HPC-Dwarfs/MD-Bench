@@ -106,8 +106,9 @@ void initParameter(Parameter* param)
     param->nstat            = 100;
     param->mass             = 1.0;
     param->dtforce          = 0.5 * param->dt;
-    param->reneigh_every    = 20;
-    param->resort_every     = 400;
+    param->reneigh_every       = 20;
+    param->displacement_reneigh = 0;
+    param->resort_every         = 400;
     param->prune_every      = 5;
     param->x_out_every      = 20;
     param->v_out_every      = 5;
@@ -402,8 +403,14 @@ void printParameter(Parameter* param)
         "    Half neighbor-lists:               %s\n",
         param->half_neigh ? "yes" : "no");
     fprintf(stdout,
-        "    Reneighbor every:                  %d steps\n",
-        param->reneigh_every);
+        "    Reneighbor every:                  %s\n",
+        param->reneigh_every > 0 ? "N steps" : "disabled");
+    if (param->reneigh_every > 0) {
+        fprintf(stdout, "        N =                            %d\n", param->reneigh_every);
+    }
+    fprintf(stdout,
+        "    Displacement reneighbor:           %s\n",
+        param->displacement_reneigh ? "enabled" : "disabled");
     fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
 #ifdef SORT_ATOMS
     fprintf(stdout,

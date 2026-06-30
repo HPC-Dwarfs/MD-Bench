@@ -67,10 +67,9 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
 
     const MD_FLOAT cutneigh   = param.cutneigh;
     const MD_FLOAT cutneighsq = cutneigh * cutneigh;
-    const int nci             = atom.Nclusters_local;
-    const int ncj_total       = atom.ncj + atom.Nclusters_ghost;
-    const int nbM             = nci;
-    const int nbN             = neighbor.maxneighs;
+    const int nci       = atom.Nclusters_local;
+    const int ncj_total = atom.ncj + atom.Nclusters_ghost;
+    const int nbM       = nci;
 
     /* If no clusters or neighbor arrays are present (e.g., degenerate setup),
        skip this check without failing the whole test suite. */
@@ -89,7 +88,7 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
         ASSERT_TRUE(present != NULL, "alloc present[]");
 
         for (int k = 0; k < numneigh; ++k) {
-            int cj = neighs(neighbor.neighbors, ci, k, nbM, nbN);
+            int cj = neighs(neighbor.neighbors, ci, k, nbM, &neighbor);
             ASSERT_TRUE(cj >= 0 && cj < ncj_total, "neighbor index in range");
             present[cj] = 1;
         }
@@ -127,12 +126,90 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
     return 0;
 }
 
+static int test_store_and_check_displacement(void)
+{
+    Parameter param;
+    Atom atom;
+    Neighbor neighbor;
+
+    build_small_system(&param, &atom, &neighbor);
+
+    if (atom.Nclusters_local == 0 || atom.iclusters[0].natoms == 0) {
+        return 0;
+    }
+
+    // After storing references, no displacement has occurred yet.
+    storeReferencePositions(&atom);
+    ASSERT_TRUE(!needsReneigh(&atom, &param),
+        "needsReneigh false immediately after storeReferencePositions");
+
+    // Move one atom by less than skin/2 — threshold = (skin/2)^2.
+    // skin defaults to 0.3, so threshold = 0.0225; move by 0.14 → sq=0.0196, no trigger.
+    int base                        = CI_VECTOR3_BASE_INDEX(0);
+    atom.cl_x[base + CL_X_INDEX_3D(0)] += (MD_FLOAT)0.14;
+    ASSERT_TRUE(!needsReneigh(&atom, &param),
+        "needsReneigh false when displacement < skin/2");
+
+    // Move past skin/2: total displacement = 0.16 → sq = 0.0256 > 0.0225.
+    atom.cl_x[base + CL_X_INDEX_3D(0)] += (MD_FLOAT)0.02;
+    ASSERT_TRUE(needsReneigh(&atom, &param),
+        "needsReneigh true when displacement > skin/2");
+
+    // After storing the new reference the flag clears.
+    storeReferencePositions(&atom);
+    ASSERT_TRUE(!needsReneigh(&atom, &param),
+        "needsReneigh false after re-storing reference positions");
+
+    return 0;
+}
+
+static int test_displacement_threshold_exact(void)
+{
+    Parameter param;
+    Atom atom;
+    Neighbor neighbor;
+
+    build_small_system(&param, &atom, &neighbor);
+
+    if (atom.Nclusters_local == 0 || atom.iclusters[0].natoms == 0) {
+        return 0;
+    }
+
+    // Use a known skin and verify threshold boundary precisely.
+    param.skin = (MD_FLOAT)1.0;
+    // threshold = (0.5)^2 = 0.25
+
+    storeReferencePositions(&atom);
+
+    // Displace by exactly skin/2 in each of two atoms (different clusters if available).
+    int base0 = CI_VECTOR3_BASE_INDEX(0);
+    atom.cl_x[base0 + CL_X_INDEX_3D(0)] += (MD_FLOAT)0.5;
+    // Displacement sq = 0.25, which equals threshold — should NOT trigger (strict >).
+    ASSERT_TRUE(!needsReneigh(&atom, &param),
+        "needsReneigh false when displacement equals skin/2 exactly");
+
+    // One epsilon over threshold.
+    atom.cl_x[base0 + CL_X_INDEX_3D(0)] += (MD_FLOAT)1e-4;
+    ASSERT_TRUE(needsReneigh(&atom, &param),
+        "needsReneigh true when displacement infinitesimally exceeds skin/2");
+
+    return 0;
+}
+
 int run_neighbor_tests(void)
 {
     int rc = 0;
 
     tr_log("  neighbor: bbox vs list consistency");
     rc = test_neighbor_vs_bruteforce_bounding_boxes();
+    if (rc) return rc;
+
+    tr_log("  neighbor: displacement reneigh store and check");
+    rc = test_store_and_check_displacement();
+    if (rc) return rc;
+
+    tr_log("  neighbor: displacement reneigh threshold boundary");
+    rc = test_displacement_threshold_exact();
     if (rc) return rc;
 
     return 0;
