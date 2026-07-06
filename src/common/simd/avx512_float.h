@@ -88,12 +88,16 @@ static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MA
 }
 static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
 {
-    // This would only be called in a Mx16 configuration, which is not valid in GROMACS
-    fprintf(stderr,
-        "simd_h_reduce_sum(): Called with AVX512 intrinsics and single-precision which "
-        "is not valid!\n");
-    exit(-1);
-    return 0.0;
+    // Verlet List's M=1 usage: plain 16-wide horizontal sum. Fold 512 -> 256 via a
+    // core AVX512F lane shuffle (0x4e swaps the two 256-bit halves), then finish with
+    // the same 256 -> 128 -> scalar reduction used by the AVX2 float backend.
+    __m512 swapped = _mm512_shuffle_f32x4(a, a, 0x4e);
+    __m256 sum256  = _mm256_add_ps(_mm512_castps512_ps256(a), _mm512_castps512_ps256(swapped));
+    __m128 t0      = _mm_add_ps(_mm256_castps256_ps128(sum256),
+        _mm256_extractf128_ps(sum256, 0x1));
+    t0 = _mm_add_ps(t0, _mm_permute_ps(t0, _MM_SHUFFLE(1, 0, 3, 2)));
+    t0 = _mm_add_ss(t0, _mm_permute_ps(t0, _MM_SHUFFLE(0, 3, 2, 1)));
+    return _mm_cvtss_f32(t0);
 }
 
 static inline MD_FLOAT simd_real_incr_reduced_sum(
@@ -161,6 +165,23 @@ static inline void simd_real_h_decr3(
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm512_add_epi32(a, b);
+}
+
+static inline MD_SIMD_INT simd_i32_zero(void) { return _mm512_setzero_si512(); }
+
+static inline MD_SIMD_INT simd_i32_seq(void)
+{
+    return _mm512_set_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+}
+
+static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
+{
+    return _mm512_mask_loadu_epi32(simd_i32_zero(), k, m);
+}
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm512_cmp_epi32_mask(a, b, _MM_CMPINT_LT);
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)

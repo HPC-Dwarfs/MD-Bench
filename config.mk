@@ -57,6 +57,10 @@ USE_SCALAR_KERNEL ?= false
 USE_REFERENCE_KERNEL ?= false
 # Use SIMD intrinsic kernels for force computation (true or false)
 USE_SIMD_KERNEL ?= false
+# Compress cutoff-passing neighbors into full SIMD registers before running
+# the expensive LJ force stage, instead of masking out failing lanes
+# (requires USE_SIMD_KERNEL=true; AVX2/AVX512 only for now)
+SIMD_COMPRESS ?= false
 # Enable XTC output (a GROMACS file format for trajectories)
 XTC_OUTPUT ?= false
 
@@ -94,24 +98,15 @@ ifeq ($(strip $(ISA)),ARM)
     ifeq ($(strip $(SIMD)),NEON)
         __ISA_NEON__=true
         __SIMD_WIDTH_DBL__=2
-        ifeq ($(strip $(DATA_TYPE)),DP)
-            __SIMD_KERNEL__=true
-        endif
     else ifeq ($(strip $(SIMD)),SVE)
         __ISA_SVE__=true
 		# needs further specification
         __SIMD_WIDTH_DBL__=2
-        ifeq ($(strip $(DATA_TYPE)),DP)
-            __SIMD_KERNEL__=true
-        endif
     else ifeq ($(strip $(SIMD)),SVE2)
         __ISA_SVE__=true
         __ISA_SVE2__=true
         # needs further specification
         __SIMD_WIDTH_DBL__=2
-        ifeq ($(strip $(DATA_TYPE)),DP)
-            __SIMD_KERNEL__=true
-        endif
     endif
 else
 # X86
@@ -126,15 +121,11 @@ else
         __ISA_AVX_FMA__=true
         __SIMD_WIDTH_DBL__=4
     else ifeq ($(strip $(SIMD)),AVX2)
-        __SIMD_KERNEL__=true
         __ISA_AVX2__=true
         __SIMD_WIDTH_DBL__=4
     else ifeq ($(strip $(SIMD)),AVX512)
         __ISA_AVX512__=true
         __SIMD_WIDTH_DBL__=8
-        ifeq ($(strip $(DATA_TYPE)),DP)
-            __SIMD_KERNEL__=true
-        endif
     endif
 endif
 
@@ -228,8 +219,9 @@ ifneq ($(VECTOR_WIDTH),)
 endif
 
 ifeq ($(strip $(USE_SIMD_KERNEL)),true)
-    ifeq ($(strip $(__SIMD_KERNEL__)),true)
-        DEFINES += -D__SIMD_KERNEL__
+    DEFINES += -D__SIMD_KERNEL__
+    ifeq ($(strip $(SIMD_COMPRESS)),true)
+        DEFINES += -D__SIMD_COMPRESS__
     endif
 endif
 
@@ -283,6 +275,10 @@ ifeq ($(strip $(SIMD)),NONE)
 		TOOL_TAG = $(TOOLCHAIN)-$(ISA)
 else
 		TOOL_TAG = $(TOOLCHAIN)-$(ISA)-$(SIMD)
+endif
+
+ifeq ($(strip $(SIMD_COMPRESS)),true)
+		TOOL_TAG := $(TOOL_TAG)-CMP
 endif
 
 ifeq ($(strip $(OPT_SCHEME)),clusterpair)

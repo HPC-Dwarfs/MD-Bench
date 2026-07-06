@@ -32,11 +32,19 @@ void initForce(Parameter* param)
         computeForce = computeForceLJCUDA;
 #else
 #ifdef __SIMD_KERNEL__
+#ifdef __SIMD_COMPRESS__
+        if (param->half_neigh || param->method) {
+            computeForce = computeForceLJHalfNeigh_simd_compress;
+        } else {
+            computeForce = computeForceLJFullNeigh_simd_compress;
+        }
+#else
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJHalfNeigh_simd;
         } else {
             computeForce = computeForceLJFullNeigh_simd;
         }
+#endif
 #else
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJHalfNeigh;
