@@ -54,6 +54,19 @@ typedef struct {
     int* neighbors;
     int* neigh_start;
     unsigned int* neighbors_imask;
+
+#ifdef NBLIST_PAIRLIST
+    // Explicit flat (ci,cj) pair list, flattened from the per-ci list above
+    // right after pruning, preserving masked-prefix/unmasked-suffix order.
+    // Padded to a multiple of VECTOR_WIDTH; padding lanes have
+    // pair_ci = pair_cj = -1 and pair_mask = 0 (skipped explicitly).
+    int npairs;
+    int nchunks;
+    int* pair_ci;
+    int* pair_cj;
+    unsigned int* pair_mask;
+#endif
+
     // MPI
     int Nshell;
     int* numNeighShell;

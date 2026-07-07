@@ -135,6 +135,10 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_half_neigh.sh
 	@echo "===>  RUNNING  test_data_layout"
 	@bash tests/test_data_layout.sh
+	@echo "===>  RUNNING  test_pairlist (verletlist)"
+	@OPT_SCHEME=verletlist bash tests/test_pairlist.sh
+	@echo "===>  RUNNING  test_pairlist (clusterpair)"
+	@OPT_SCHEME=clusterpair bash tests/test_pairlist.sh
 	@echo "===>  RUNNING  test_mpi"
 	@bash tests/test_mpi.sh
 	@echo "===>  RUNNING  test_displacement_reneigh"

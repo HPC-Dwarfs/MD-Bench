@@ -60,6 +60,9 @@ static int eightZone(Atom*, int);
 static int halfZone(Atom*, int);
 static void neighborGhost(Atom*, Neighbor*);
 static inline int skipNeigh(Atom* atom, int i, int j);
+#ifdef NBLIST_PAIRLIST
+static void flattenPairList(Atom*, Neighbor*);
+#endif
 
 /* exported subroutines */
 void initNeighbor(Neighbor* neighbor, Parameter* param)
@@ -82,6 +85,12 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     neighbor->numneigh_inner = NULL;
     neighbor->neighbors      = NULL;
     neighbor->neigh_start    = NULL;
+#ifdef NBLIST_PAIRLIST
+    neighbor->npairs  = 0;
+    neighbor->nchunks = 0;
+    neighbor->pair_i  = NULL;
+    neighbor->pair_j  = NULL;
+#endif
     is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
     method = param->method;
     if (method == halfShell || method == eightShell) {
@@ -505,6 +514,9 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         for (int i = 0; i < nlocal; i++) {
             neighbor->numneigh_inner[i] = neighbor->numneigh[i];
         }
+#ifdef NBLIST_PAIRLIST
+        flattenPairList(atom, neighbor);
+#endif
         DEBUG_MESSAGE("pruneNeighborCPU end\n");
         return;
     }
@@ -562,8 +574,79 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
 #endif
     }
 
+#ifdef NBLIST_PAIRLIST
+    flattenPairList(atom, neighbor);
+#endif
+
     DEBUG_MESSAGE("pruneNeighborCPU end\n");
 }
+
+#ifdef NBLIST_PAIRLIST
+// Flatten the per-i inner neighbor list into an explicit, padded (i,j) pair
+// list. Must run after pruning: numneigh_inner (not the raw build-time
+// numneigh) is what the force kernels actually consume. Interleaves pairs
+// round-robin across active i's (one pair per still-active i per pass) so a
+// contiguous run of VECTOR_WIDTH entries tends to reference distinct i's,
+// which is what lets a SIMD pair-list kernel mix lanes across atoms.
+static void flattenPairList(Atom* atom, Neighbor* neighbor)
+{
+    const int nlocal = atom->Nlocal;
+
+    int npairs = 0;
+    for (int i = 0; i < nlocal; i++) {
+        npairs += neighbor->numneigh_inner[i];
+    }
+
+    const int vw      = MAX(1, VECTOR_WIDTH);
+    const int nchunks = (npairs + vw - 1) / vw;
+    const int npadded = nchunks * vw;
+
+    if (neighbor->pair_i) free(neighbor->pair_i);
+    if (neighbor->pair_j) free(neighbor->pair_j);
+    neighbor->pair_i  = (int*)allocate(ALIGNMENT, MAX(1, npadded) * sizeof(int));
+    neighbor->pair_j  = (int*)allocate(ALIGNMENT, MAX(1, npadded) * sizeof(int));
+    neighbor->npairs  = npairs;
+    neighbor->nchunks = nchunks;
+
+    int* cursor = (int*)allocate(ALIGNMENT, MAX(1, nlocal) * sizeof(int));
+    int* active = (int*)allocate(ALIGNMENT, MAX(1, nlocal) * sizeof(int));
+    int nactive = 0;
+    for (int i = 0; i < nlocal; i++) {
+        cursor[i] = 0;
+        if (neighbor->numneigh_inner[i] > 0) {
+            active[nactive++] = i;
+        }
+    }
+
+    int pos = 0;
+    while (nactive > 0) {
+        int a = 0;
+        while (a < nactive) {
+            int i = active[a];
+            int k = cursor[i]++;
+            int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
+            neighbor->pair_i[pos] = i;
+            neighbor->pair_j[pos] = j;
+            pos++;
+
+            if (cursor[i] >= neighbor->numneigh_inner[i]) {
+                active[a] = active[nactive - 1];
+                nactive--;
+            } else {
+                a++;
+            }
+        }
+    }
+
+    for (int p = pos; p < npadded; p++) {
+        neighbor->pair_i[p] = 0;
+        neighbor->pair_j[p] = 0;
+    }
+
+    free(cursor);
+    free(active);
+}
+#endif
 
 /* internal subroutines */
 MD_FLOAT bindist(int i, int j, int k)

@@ -18,7 +18,9 @@ void initForce(Parameter* param)
         computeForce = computeForceEam;
         break;
     case FF_LJ:
-#if defined(CLUSTERPAIR_KERNEL_REF)
+#if defined(NBLIST_PAIRLIST) && !defined(CLUSTERPAIR_KERNEL_GPU)
+        computeForce = computeForceLJPairListRef;
+#elif defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJRef;
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         if (param->half_neigh || param->method) {

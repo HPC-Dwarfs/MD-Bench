@@ -30,6 +30,12 @@ void initForce(Parameter* param)
     case FF_LJ:
 #ifdef CUDA_TARGET
         computeForce = computeForceLJCUDA;
+#elif defined(NBLIST_PAIRLIST)
+#ifdef __SIMD_KERNEL__
+        computeForce = computeForceLJPairList_simd;
+#else
+        computeForce = computeForceLJPairListRef;
+#endif
 #else
 #ifdef __SIMD_KERNEL__
 #ifdef __SIMD_COMPRESS__

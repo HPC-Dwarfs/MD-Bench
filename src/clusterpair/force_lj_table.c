@@ -193,6 +193,7 @@ double computeForceLJTableRef(
                 (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
         }
         if (param->method == eightShell) {
+#pragma omp single
             computeForceGhostShell(param, atom, neighbor);
         }
         LIKWID_MARKER_STOP("force");

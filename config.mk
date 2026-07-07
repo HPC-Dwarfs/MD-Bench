@@ -9,7 +9,7 @@ SIMD ?= AVX512
 # Optimization scheme (verletlist/clusterpair)
 OPT_SCHEME ?= verletlist
 # Enable likwid (true or false)
-ENABLE_LIKWID ?= false
+ENABLE_LIKWID ?= true
 # Enable OpenMP parallelization (true or false)
 ENABLE_OPENMP ?= true
 # Enable MPI parallelization
@@ -18,10 +18,15 @@ ENABLE_MPI ?= false
 DATA_TYPE ?= SP
 # AOS or SOA
 ATOM_DATA_LAYOUT ?= AOS
-# Neighbor-lists data layout (auto/AOS/SOA/CSR)
+# Neighbor-lists data layout (auto/AOS/SOA/CSR/PAIRLIST)
 # AOS="atom"-major, SOA="neighbor"-major, CSR=compact (no padding)
+# PAIRLIST=explicit flat (i,j) pair list, built alongside the per-owner list
 # For CPU, auto=AOS; For GPU, auto=SOA
 NBLIST_DATA_LAYOUT ?= auto
+# Force write-back strategy for PAIRLIST kernels (buffer/atomic)
+# buffer: per-thread force buffers + a final reduction pass (default)
+# atomic: #pragma omp atomic / atomicAdd on every write, no extra buffer
+PAIRLIST_REDUCE ?= buffer
 # Debug
 DEBUG ?= false
 
@@ -149,8 +154,17 @@ else ifeq ($(strip $(NBLIST_DATA_LAYOUT)),CSR)
     DEFINES +=  -DNBLIST_CSR
 else ifeq ($(strip $(NBLIST_DATA_LAYOUT)),SOA)
     DEFINES +=  -DNBLIST_SOA
+else ifeq ($(strip $(NBLIST_DATA_LAYOUT)),PAIRLIST)
+    DEFINES +=  -DNBLIST_AOS
+    DEFINES +=  -DNBLIST_PAIRLIST
 else
-    $(error Invalid NBLIST_DATA_LAYOUT: $(NBLIST_DATA_LAYOUT). Must be one of: auto, AOS, SOA, CSR)
+    $(error Invalid NBLIST_DATA_LAYOUT: $(NBLIST_DATA_LAYOUT). Must be one of: auto, AOS, SOA, CSR, PAIRLIST)
+endif
+
+ifeq ($(strip $(PAIRLIST_REDUCE)),atomic)
+    DEFINES +=  -DPAIRLIST_REDUCE_ATOMIC
+else ifneq ($(strip $(PAIRLIST_REDUCE)),buffer)
+    $(error Invalid PAIRLIST_REDUCE: $(PAIRLIST_REDUCE). Must be one of: buffer, atomic)
 endif
 ifeq ($(strip $(SUPERCLUSTER_DATA_LAYOUT)),AOS3)
     DEFINES +=  -DPOSITION_AOS3_SUP

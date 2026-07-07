@@ -45,6 +45,18 @@ typedef struct {
     int* numneigh;
     int* numneigh_inner;
 
+#ifdef NBLIST_PAIRLIST
+    // Explicit flat (i,j) pair list, flattened from the per-i list above
+    // right after pruning. Padded to a multiple of VECTOR_WIDTH; padding
+    // lanes have pair_i = pair_j = 0 (a safe, in-bounds gather index for
+    // SIMD kernels) and are excluded from force write-back by position
+    // (p >= npairs), not by the index value itself.
+    int npairs;
+    int nchunks;
+    int* pair_i;
+    int* pair_j;
+#endif
+
     // Device data
     DeviceNeighbor d_neighbor;
     // MPI

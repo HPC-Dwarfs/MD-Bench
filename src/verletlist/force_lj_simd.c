@@ -23,9 +23,17 @@
 #include <parameter.h>
 #include <stats.h>
 #include <timing.h>
+#include <util.h>
 
 #ifdef __SIMD_KERNEL__
 #include <simd.h>
+#endif
+
+#if defined(NBLIST_PAIRLIST) && defined(__SIMD_KERNEL__)
+#include <allocate.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #endif
 
 // Compile-time guards for unsupported configurations.
@@ -797,3 +805,212 @@ double computeForceLJHalfNeigh_simd_compress(
 #undef LJ_EXTRA_ARGS
 
 #endif // __SIMD_COMPRESS__
+
+#if defined(NBLIST_PAIRLIST) && defined(__SIMD_KERNEL__)
+// Per-thread scratch force buffer, same shape/purpose as the one in
+// force_lj.c's computeForceLJPairListRef (duplicated rather than shared,
+// matching this file's existing self-contained-translation-unit style).
+static MD_FLOAT* pairlist_simd_fbuf   = NULL;
+static size_t pairlist_simd_fbuf_cap  = 0;
+
+static MD_FLOAT* getPairlistSimdForceBuffer(int nall, int nthreads)
+{
+    size_t needed = (size_t)nthreads * (size_t)nall * 3;
+    if (needed > pairlist_simd_fbuf_cap) {
+        if (pairlist_simd_fbuf) free(pairlist_simd_fbuf);
+        size_t alloc_size    = needed > 0 ? needed : 1;
+        pairlist_simd_fbuf     = (MD_FLOAT*)allocate(ALIGNMENT, alloc_size * sizeof(MD_FLOAT));
+        pairlist_simd_fbuf_cap = needed;
+    }
+    return pairlist_simd_fbuf;
+}
+
+// SIMD pair-list kernel: unlike the per-i kernels above, which broadcast one
+// atom i's position/params across all lanes and only gather j, this gathers
+// BOTH i and j per lane, so a single vector instruction mixes interactions
+// belonging to different i atoms (flattenPairList() interleaves the pair
+// list round-robin across i's specifically to make this land in practice).
+//
+// The expensive math (distance, reciprocal, LJ formula) stays fully
+// vectorized. Only the force write-back is scalarized: two lanes in the
+// same chunk could target the same atom (as either i or j), so a vector
+// scatter-store would race within the instruction; unpacking to scalars and
+// adding sequentially is always correct regardless of duplicate indices,
+// at the same asymptotic cost the scalar reference kernel already pays per
+// pair for its own write-back.
+double computeForceLJPairList_simd(
+    Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
+    DEBUG_MESSAGE("computeForceLJPairList_simd begin\n");
+
+    int nlocal = atom->Nlocal;
+    int nghost = atom->Nghost;
+    int nall   = nlocal + nghost;
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
+    MD_FLOAT sigma6     = param->sigma6;
+    MD_FLOAT epsilon    = param->epsilon;
+#endif
+
+    for (int i = 0; i < nall; i++) {
+        atom_fx(i) = 0.0;
+        atom_fy(i) = 0.0;
+        atom_fz(i) = 0.0;
+    }
+
+    int nthreads = 1;
+#ifdef _OPENMP
+    nthreads = omp_get_max_threads();
+#endif
+    MD_FLOAT* fbuf = getPairlistSimdForceBuffer(MAX(1, nall), nthreads);
+    int npairs     = neighbor->npairs;
+
+    double S = getTimeStamp();
+
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
+    MD_SIMD_FLOAT sigma6_vec     = simd_real_broadcast(sigma6);
+    MD_SIMD_FLOAT eps_vec        = simd_real_broadcast(epsilon);
+#else
+    MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
+#endif
+#if LJ_COMB_RULE == LJ_COMB_NONE
+    MD_SIMD_INT ntypes_vec = simd_i32_broadcast(atom->ntypes);
+#endif
+    MD_SIMD_FLOAT c48_vec  = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec  = simd_real_broadcast(0.5);
+    MD_SIMD_INT nlocal_vec = simd_i32_broadcast(nlocal);
+    MD_SIMD_INT npairs_vec = simd_i32_broadcast(npairs);
+
+#pragma omp parallel
+    {
+        LIKWID_MARKER_START("force");
+        int tid = 0;
+#ifdef _OPENMP
+        tid = omp_get_thread_num();
+#endif
+        MD_FLOAT* tf = fbuf + (size_t)tid * nall * 3;
+        for (int k = 0; k < nall * 3; k++) {
+            tf[k] = 0.0;
+        }
+
+#pragma omp for schedule(static)
+        for (int p = 0; p < npairs; p += VECTOR_WIDTH) {
+            MD_SIMD_MASK valid_mask = simd_mask_i32_cond_lt(
+                simd_i32_add(simd_i32_broadcast(p), simd_i32_seq()), npairs_vec);
+
+            MD_SIMD_INT ivec = simd_i32_load(&neighbor->pair_i[p]);
+            MD_SIMD_INT jvec = simd_i32_load(&neighbor->pair_j[p]);
+
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            MD_SIMD_FLOAT sqrt_eps_i = simd_real_gather(ivec,
+                atom->sqrt_epsilon,
+                sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT sigma3_i   = simd_real_gather(ivec, atom->sigma3, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(jvec,
+                atom->sqrt_epsilon,
+                sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT sigma3_j   = simd_real_gather(jvec, atom->sigma3, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
+            MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            MD_SIMD_INT ti           = simd_i32_gather(ivec, atom->type, sizeof(int));
+            MD_SIMD_INT tj           = simd_i32_gather(jvec, atom->type, sizeof(int));
+            MD_SIMD_INT tij          = simd_i32_add(simd_i32_mul(ti, ntypes_vec), tj);
+            MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij, atom->sigma6, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij, atom->epsilon, sizeof(MD_FLOAT));
+#endif
+
+#ifdef ATOM_POSITION_AOS
+            MD_SIMD_INT i3     = simd_i32_add(simd_i32_add(ivec, ivec), ivec);
+            MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
+            MD_SIMD_FLOAT xi   = simd_real_gather(i3, &(atom->x[0]), sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT yi   = simd_real_gather(i3, &(atom->x[1]), sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT zi   = simd_real_gather(i3, &(atom->x[2]), sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT xj   = simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT yj   = simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT zj   = simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT));
+#else
+            MD_SIMD_FLOAT xi = simd_real_gather(ivec, atom->x, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT yi = simd_real_gather(ivec, atom->y, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT zi = simd_real_gather(ivec, atom->z, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT xj = simd_real_gather(jvec, atom->x, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT yj = simd_real_gather(jvec, atom->y, sizeof(MD_FLOAT));
+            MD_SIMD_FLOAT zj = simd_real_gather(jvec, atom->z, sizeof(MD_FLOAT));
+#endif
+
+            MD_SIMD_FLOAT delx = simd_real_sub(xi, xj);
+            MD_SIMD_FLOAT dely = simd_real_sub(yi, yj);
+            MD_SIMD_FLOAT delz = simd_real_sub(zi, zj);
+            MD_SIMD_FLOAT rsq  = simd_real_fma(delx,
+                delx,
+                simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
+            MD_SIMD_MASK cutoff_mask = simd_mask_and(valid_mask,
+                simd_mask_cond_lt(rsq, cutforcesq_vec));
+
+            MD_SIMD_FLOAT sr2   = simd_real_reciprocal(rsq);
+            MD_SIMD_FLOAT sr6   = simd_real_mul(sr2,
+                simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
+            MD_SIMD_FLOAT force = simd_real_mul(c48_vec,
+                simd_real_mul(sr6,
+                    simd_real_mul(simd_real_sub(sr6, c05_vec), simd_real_mul(sr2, eps_vec))));
+
+            // Zero out invalid/failed-cutoff lanes so the scalar write-back
+            // below can add unconditionally without a per-lane branch.
+            MD_SIMD_FLOAT fx_masked = simd_real_masked_add(simd_real_zero(),
+                simd_real_mul(delx, force),
+                cutoff_mask);
+            MD_SIMD_FLOAT fy_masked = simd_real_masked_add(simd_real_zero(),
+                simd_real_mul(dely, force),
+                cutoff_mask);
+            MD_SIMD_FLOAT fz_masked = simd_real_masked_add(simd_real_zero(),
+                simd_real_mul(delz, force),
+                cutoff_mask);
+
+            MD_FLOAT fxa[VECTOR_WIDTH] __attribute__((aligned(64)));
+            MD_FLOAT fya[VECTOR_WIDTH] __attribute__((aligned(64)));
+            MD_FLOAT fza[VECTOR_WIDTH] __attribute__((aligned(64)));
+            simd_real_store(fxa, fx_masked);
+            simd_real_store(fya, fy_masked);
+            simd_real_store(fza, fz_masked);
+
+            for (int lane = 0; lane < VECTOR_WIDTH; lane++) {
+                int li = neighbor->pair_i[p + lane];
+                int lj = neighbor->pair_j[p + lane];
+
+                tf[li * 3 + 0] += fxa[lane];
+                tf[li * 3 + 1] += fya[lane];
+                tf[li * 3 + 2] += fza[lane];
+
+                if ((param->half_neigh && lj < nlocal) || param->method) {
+                    tf[lj * 3 + 0] -= fxa[lane];
+                    tf[lj * 3 + 1] -= fya[lane];
+                    tf[lj * 3 + 2] -= fza[lane];
+                }
+            }
+        }
+
+#pragma omp for schedule(static)
+        for (int i = 0; i < nall; i++) {
+            MD_FLOAT sx = 0.0, sy = 0.0, sz = 0.0;
+            for (int t = 0; t < nthreads; t++) {
+                MD_FLOAT* tfi = fbuf + (size_t)t * nall * 3;
+                sx += tfi[i * 3 + 0];
+                sy += tfi[i * 3 + 1];
+                sz += tfi[i * 3 + 2];
+            }
+            atom_fx(i) += sx;
+            atom_fy(i) += sy;
+            atom_fz(i) += sz;
+        }
+
+        LIKWID_MARKER_STOP("force");
+    }
+
+    addStat(stats->total_force_neighs, npairs);
+
+    double E = getTimeStamp();
+    DEBUG_MESSAGE("computeForceLJPairList_simd end\n");
+    return E - S;
+}
+#endif

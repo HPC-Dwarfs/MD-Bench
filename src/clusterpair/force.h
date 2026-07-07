@@ -41,6 +41,10 @@ extern double computeForceLJ2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
+#ifdef NBLIST_PAIRLIST
+extern double computeForceLJPairListRef(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
+
 #ifdef CUDA_TARGET
 double computeForceLJCuda(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats);
 double computeForceLJCudaSup(

@@ -17,6 +17,13 @@
 #include <timing.h>
 #include <util.h>
 
+#ifdef NBLIST_PAIRLIST
+#include <allocate.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+#endif
+
 void computeForceGhostShell(Parameter*, Atom*, Neighbor*);
 
 #ifdef USE_REFERENCE_KERNEL
@@ -177,6 +184,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                 (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
         }
         if (param->method == eightShell) {
+            #pragma omp single
             computeForceGhostShell(param, atom, neighbor);
         }
         LIKWID_MARKER_STOP("force");
@@ -560,6 +568,7 @@ double computeForceLJ2xnnHalfNeigh(
                 (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
         }
         if (param->method == eightShell) {
+            #pragma omp single
             computeForceGhostShell(param, atom, neighbor);
         }
         LIKWID_MARKER_STOP("force");
@@ -1494,7 +1503,10 @@ double computeForceLJ4xnHalfNeigh(
             addStat(stats->force_iters,
                 (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
         }
-        if (param->method == eightShell) computeForceGhostShell(param, atom, neighbor);
+        if (param->method == eightShell) {
+#pragma omp single
+            computeForceGhostShell(param, atom, neighbor);
+        }
         LIKWID_MARKER_STOP("force");
     }
 
@@ -2113,3 +2125,183 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
         // addStat(stats->force_iters, (long long int)((double)numneighs));
     }
 }
+
+#ifdef NBLIST_PAIRLIST
+// Per-thread scratch force buffer for the cluster-pair pair-list kernel:
+// nthreads contiguous slices, each sized identically to atom->cl_f, so the
+// same CI/CJ_VECTOR3_BASE_INDEX + CL_*_INDEX_3D macros used by the existing
+// per-ci kernels apply unchanged, just offset by the thread's slice.
+static MD_FLOAT* pairlist_fbuf   = NULL;
+static size_t pairlist_fbuf_cap  = 0;
+
+static MD_FLOAT* getPairlistForceBuffer(int cl_f_size, int nthreads)
+{
+    size_t needed = (size_t)nthreads * (size_t)cl_f_size;
+    if (needed > pairlist_fbuf_cap) {
+        if (pairlist_fbuf) free(pairlist_fbuf);
+        size_t alloc_size = needed > 0 ? needed : 1;
+        pairlist_fbuf      = (MD_FLOAT*)allocate(ALIGNMENT, alloc_size * sizeof(MD_FLOAT));
+        pairlist_fbuf_cap  = needed;
+    }
+    return pairlist_fbuf;
+}
+
+// Reference (scalar) cluster-pair kernel: iterates the flat (ci,cj) pair
+// list built by flattenPairList() instead of a per-ci neighbor list. The
+// per-atom-pair math and diagonal-exclusion "cond" logic are identical to
+// computeForceLJRef; only the outer iteration and force write-back change.
+// Since different threads may now process pairs touching the same ci or cj,
+// each thread accumulates into its own private buffer slice, then a final
+// pass reduces all slices into atom->cl_f.
+double computeForceLJPairListRef(
+    Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
+    DEBUG_MESSAGE("computeForceLJPairListRef begin\n");
+
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
+    MD_FLOAT sigma6     = param->sigma6;
+    MD_FLOAT epsilon    = param->epsilon;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
+#endif
+
+    const int cl_f_size = atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3;
+    int nthreads         = 1;
+#ifdef _OPENMP
+    nthreads = omp_get_max_threads();
+#endif
+    MD_FLOAT* fbuf = getPairlistForceBuffer(MAX(1, cl_f_size), nthreads);
+    int npairs     = neighbor->npairs;
+
+    double S = getTimeStamp();
+
+#pragma omp parallel
+    {
+        LIKWID_MARKER_START("force");
+        int tid = 0;
+#ifdef _OPENMP
+        tid = omp_get_thread_num();
+#endif
+        MD_FLOAT* tf = fbuf + (size_t)tid * cl_f_size;
+        for (int k = 0; k < cl_f_size; k++) {
+            tf[k] = 0.0;
+        }
+
+#pragma omp for schedule(static)
+        for (int p = 0; p < npairs; p++) {
+            const int ci     = neighbor->pair_ci[p];
+            const int cj     = neighbor->pair_cj[p];
+            const int ci_cj0 = CJ0_FROM_CI(ci);
+            const int ci_cj1 = CJ1_FROM_CI(ci);
+
+            MD_FLOAT* ci_x = &atom->cl_x[CI_VECTOR3_BASE_INDEX(ci)];
+            MD_FLOAT* cj_x = &atom->cl_x[CJ_VECTOR3_BASE_INDEX(cj)];
+            MD_FLOAT* ci_f = &tf[CI_VECTOR3_BASE_INDEX(ci)];
+            MD_FLOAT* cj_f = &tf[CJ_VECTOR3_BASE_INDEX(cj)];
+
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[CI_SCALAR_BASE_INDEX(ci)];
+            MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[CI_SCALAR_BASE_INDEX(ci)];
+            MD_FLOAT* cj_sqrt_eps = &atom->cl_sqrt_epsilon[CJ_SCALAR_BASE_INDEX(cj)];
+            MD_FLOAT* cj_sigma3   = &atom->cl_sigma3[CJ_SCALAR_BASE_INDEX(cj)];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+            int* ci_t = &atom->cl_t[CI_SCALAR_BASE_INDEX(ci)];
+            int* cj_t = &atom->cl_t[CJ_SCALAR_BASE_INDEX(cj)];
+#endif
+
+            for (int cii = 0; cii < CLUSTER_M; cii++) {
+#if LJ_COMB_RULE == LJ_COMB_NONE
+                int type_i = ci_t[cii];
+#endif
+                MD_FLOAT xtmp = ci_x[CL_X_INDEX_3D(cii)];
+                MD_FLOAT ytmp = ci_x[CL_Y_INDEX_3D(cii)];
+                MD_FLOAT ztmp = ci_x[CL_Z_INDEX_3D(cii)];
+                MD_FLOAT fix  = 0;
+                MD_FLOAT fiy  = 0;
+                MD_FLOAT fiz  = 0;
+
+                for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
+                    int cond;
+#if CLUSTER_M == CLUSTER_N
+                    cond = neighbor->half_neigh ? (ci_cj0 != cj || cii < cjj)
+                                                : (ci_cj0 != cj || cii != cjj);
+#elif CLUSTER_M < CLUSTER_N
+                    cond = neighbor->half_neigh
+                                           ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
+                                           : (ci_cj0 != cj ||
+                                     cii + CLUSTER_M * (ci & 0x1) != cjj);
+#else
+                    cond = neighbor->half_neigh
+                               ? (ci_cj0 != cj || cii < cjj) &&
+                                     (ci_cj1 != cj || cii < cjj + CLUSTER_N)
+                               : (ci_cj0 != cj || cii != cjj) &&
+                                     (ci_cj1 != cj || cii != cjj + CLUSTER_N);
+#endif
+                    if (cond) {
+                        MD_FLOAT delx = xtmp - cj_x[CL_X_INDEX_3D(cjj)];
+                        MD_FLOAT dely = ytmp - cj_x[CL_Y_INDEX_3D(cjj)];
+                        MD_FLOAT delz = ztmp - cj_x[CL_Z_INDEX_3D(cjj)];
+                        MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
+
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                        MD_FLOAT sigma6  = ci_sigma3[cii] * cj_sigma3[cjj];
+                        MD_FLOAT epsilon = ci_sqrt_eps[cii] * cj_sqrt_eps[cjj];
+#elif LJ_COMB_RULE == LJ_COMB_NONE
+                        int type_j          = cj_t[cjj];
+                        int type_index      = type_i * atom->ntypes + type_j;
+                        MD_FLOAT cutforcesq = atom->cutforcesq[type_index];
+                        MD_FLOAT sigma6     = atom->sigma6[type_index];
+                        MD_FLOAT epsilon    = atom->epsilon[type_index];
+#endif
+
+                        if (rsq < cutforcesq) {
+                            MD_FLOAT sr2   = 1.0 / rsq;
+                            MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
+                            MD_FLOAT force = 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
+
+                            if (neighbor->half_neigh || param->method) {
+                                cj_f[CL_X_INDEX_3D(cjj)] -= delx * force;
+                                cj_f[CL_Y_INDEX_3D(cjj)] -= dely * force;
+                                cj_f[CL_Z_INDEX_3D(cjj)] -= delz * force;
+                            }
+
+                            fix += delx * force;
+                            fiy += dely * force;
+                            fiz += delz * force;
+                            addStat(stats->atoms_within_cutoff, 1);
+                        } else {
+                            addStat(stats->atoms_outside_cutoff, 1);
+                        }
+                    }
+                }
+
+                ci_f[CL_X_INDEX_3D(cii)] += fix;
+                ci_f[CL_Y_INDEX_3D(cii)] += fiy;
+                ci_f[CL_Z_INDEX_3D(cii)] += fiz;
+            }
+        }
+
+#pragma omp for schedule(static)
+        for (int k = 0; k < cl_f_size; k++) {
+            MD_FLOAT sum = 0.0;
+            for (int t = 0; t < nthreads; t++) {
+                sum += fbuf[(size_t)t * cl_f_size + k];
+            }
+            atom->cl_f[k] = sum;
+        }
+
+        LIKWID_MARKER_STOP("force");
+    }
+
+    addStat(stats->num_neighs, npairs);
+
+    if (param->method == eightShell) {
+        computeForceGhostShell(param, atom, neighbor);
+    }
+
+    double E = getTimeStamp();
+    DEBUG_MESSAGE("computeForceLJPairListRef end\n");
+    return E - S;
+}
+#endif

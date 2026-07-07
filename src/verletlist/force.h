@@ -25,6 +25,13 @@ extern double computeForceLJTableHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*)
 extern double computeForceLJTableFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
+#ifdef NBLIST_PAIRLIST
+extern double computeForceLJPairListRef(Parameter*, Atom*, Neighbor*, Stats*);
+#ifdef __SIMD_KERNEL__
+extern double computeForceLJPairList_simd(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
+#endif
+
 #ifdef __SIMD_KERNEL__
 extern double computeForceLJHalfNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJFullNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);

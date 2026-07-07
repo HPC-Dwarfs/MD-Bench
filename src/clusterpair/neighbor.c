@@ -56,6 +56,9 @@ int shellMethod; // If shell method exist
 static int halfZoneCluster(Atom*, int);
 static int ghostClusterinRange(Atom*, int, int, MD_FLOAT);
 static void neighborGhost(Atom*, Neighbor*);
+#ifdef NBLIST_PAIRLIST
+static void flattenPairList(Atom*, Neighbor*);
+#endif
 
 /* exported subroutines */
 void initNeighbor(Neighbor* neighbor, Parameter* param)
@@ -87,6 +90,13 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     neighbor->neighbors             = NULL;
     neighbor->neigh_start           = NULL;
     neighbor->neighbors_imask       = NULL;
+#ifdef NBLIST_PAIRLIST
+    neighbor->npairs    = 0;
+    neighbor->nchunks   = 0;
+    neighbor->pair_ci   = NULL;
+    neighbor->pair_cj   = NULL;
+    neighbor->pair_mask = NULL;
+#endif
     // MPI Implementation
     method      = param->method;
     shellMethod = method ? 1 : 0;
@@ -1184,6 +1194,9 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
             neighbor->numneigh_inner[ci]        = neighbor->numneigh[ci];
             neighbor->numneigh_inner_masked[ci] = neighbor->numneigh_masked[ci];
         }
+#ifdef NBLIST_PAIRLIST
+        flattenPairList(atom, neighbor);
+#endif
         return;
     }
 
@@ -1369,8 +1382,64 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
         neighbor->numneigh_inner[ci]        = n_inner_masked + (lo - numneighs_masked);
     }
 
+#ifdef NBLIST_PAIRLIST
+    flattenPairList(atom, neighbor);
+#endif
+
     DEBUG_MESSAGE("pruneNeighbor end\n");
 }
+
+#ifdef NBLIST_PAIRLIST
+// Flatten the per-ci inner neighbor list into an explicit, padded (ci,cj)
+// pair list. Must run after pruning, reading numneigh_inner/
+// numneigh_inner_masked (not the raw build-time counts). Order-preserving
+// (iterate ci in order, masked prefix then unmasked suffix) rather than
+// round-robin: unlike verletlist, clusterpair gets its SIMD width from the
+// existing per-cluster M*N kernel math, so there's no cross-ci lane-mixing
+// to set up here. neighbors_imask is carried straight into pair_mask.
+static void flattenPairList(Atom* atom, Neighbor* neighbor)
+{
+    const int nci = atom->Nclusters_local;
+    const int nbM = nci;
+
+    int npairs = 0;
+    for (int ci = 0; ci < nci; ci++) {
+        npairs += neighbor->numneigh_inner[ci];
+    }
+
+    const int vw      = MAX(1, VECTOR_WIDTH);
+    const int nchunks = (npairs + vw - 1) / vw;
+    const int npadded = nchunks * vw;
+
+    if (neighbor->pair_ci) free(neighbor->pair_ci);
+    if (neighbor->pair_cj) free(neighbor->pair_cj);
+    if (neighbor->pair_mask) free(neighbor->pair_mask);
+    neighbor->pair_ci   = (int*)allocate(ALIGNMENT, MAX(1, npadded) * sizeof(int));
+    neighbor->pair_cj   = (int*)allocate(ALIGNMENT, MAX(1, npadded) * sizeof(int));
+    neighbor->pair_mask =
+        (unsigned int*)allocate(ALIGNMENT, MAX(1, npadded) * sizeof(unsigned int));
+    neighbor->npairs  = npairs;
+    neighbor->nchunks = nchunks;
+
+    int pos = 0;
+    for (int ci = 0; ci < nci; ci++) {
+        const int numneighs = neighbor->numneigh_inner[ci];
+        for (int k = 0; k < numneighs; k++) {
+            neighbor->pair_ci[pos]   = ci;
+            neighbor->pair_cj[pos]   = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
+            neighbor->pair_mask[pos] =
+                neighs(neighbor->neighbors_imask, ci, k, nbM, neighbor);
+            pos++;
+        }
+    }
+
+    for (int p = pos; p < npadded; p++) {
+        neighbor->pair_ci[p]   = -1;
+        neighbor->pair_cj[p]   = -1;
+        neighbor->pair_mask[p] = 0;
+    }
+}
+#endif
 
 void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
