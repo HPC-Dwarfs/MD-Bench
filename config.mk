@@ -30,7 +30,7 @@ SORT_ATOMS ?= false
 # Index variable for tabulated LJ forces (r/rsq)
 # r:   uniform grid in distance (matches GROMACS), needs a sqrt per pair
 # rsq: uniform grid in squared distance, avoids the sqrt (load-bound variant)
-LJ_TABLE_INDEX ?= r
+LJ_TABLE_INDEX ?= rsq
 # LJ combination rule (single/geometric/none)
 # single: single atom type, broadcast global params (fastest, no type lookup)
 # geometric: per-type params with geometric combination (default)
