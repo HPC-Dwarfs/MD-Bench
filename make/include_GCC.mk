@@ -38,7 +38,7 @@ ifeq ($(strip $(ISA)),X86)
 OPTS = -Ofast -ffast-math -funroll-loops
 DEFINES    += -DNO_ZMM_INTRIN
 ifeq ($(SIMD),AVX512)
-OPTS +=  -march=x86-64-v4
+OPTS +=  -march=x86-64-v4 -mavx512f
 endif
 ifeq ($(strip $(SIMD)),AVX2)
 OPTS += -march=x86-64-v3 -mavx2
