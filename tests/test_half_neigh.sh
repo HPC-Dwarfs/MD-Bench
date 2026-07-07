@@ -17,20 +17,26 @@ ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
+USE_SIMD_KERNEL="${USE_SIMD_KERNEL:-false}"
 
 cd "${ROOT_DIR}"
 
 echo "Building Verlet-list binary (SIMD=${SIMD}, LJ_COMB_RULE=${LJ_COMB_RULE})..."
 make clean >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
-     DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
+     DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" \
+     USE_SIMD_KERNEL="${USE_SIMD_KERNEL}" >/dev/null
 
 if [ "${SIMD}" = "NONE" ]; then
   TOOL_TAG="${TOOLCHAIN}-${ISA}"
 else
   TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
 fi
-VL_BIN="./MDBench-VL-${TOOL_TAG}-${DATA_TYPE}"
+OPT_TAG="VL"
+if [ "${USE_SIMD_KERNEL}" = "true" ]; then
+  OPT_TAG="${OPT_TAG}-SIMD"
+fi
+VL_BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 
 if [[ ! -x "${VL_BIN}" ]]; then
   echo "Binary '${VL_BIN}' is not executable" >&2

@@ -27,7 +27,7 @@ if [ "${SIMD}" = "NONE" ]; then
 else
   TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
 fi
-VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}"
+VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 VL_BIN="./MDBench-${VL_TAG}"
 
 echo "Building Cluster-pair binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."

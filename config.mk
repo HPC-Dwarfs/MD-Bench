@@ -267,6 +267,10 @@ endif
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL
+    ifeq ($(strip $(USE_SIMD_KERNEL)),true)
+        OPT_TAG := $(OPT_TAG)-SIMD
+    endif
+    TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
 else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
 		OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
 endif
