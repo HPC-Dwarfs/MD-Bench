@@ -4,6 +4,7 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 //---
@@ -15,6 +16,7 @@
 //---
 #include <allocate.h>
 #include <atom.h>
+#include <device.h>
 #include <eam.h>
 #include <force.h>
 #include <neighbor.h>
@@ -34,8 +36,12 @@
 #define P_FIX  1
 #define P_RAND 2
 
+extern void copyDataToCUDADevice(Parameter*, Atom*);
+extern void copyDataFromCUDADevice(Parameter*, Atom*);
+
 void init(Parameter* param)
 {
+    initParameter(param);
     param->input_file  = NULL;
     param->force_field = FF_LJ;
     param->epsilon     = 1.0;
@@ -66,7 +72,8 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
     const int maxneighs = nneighs * nreps;
     // Match the production path (neighbor.c): the force kernels read these
     // lists, so they must use the aligned allocator for fair benchmarking.
-    neighbor->numneigh  = (int*)allocate(ALIGNMENT, atom->Nmax * sizeof(int));
+    neighbor->numneigh       = (int*)allocate(ALIGNMENT, atom->Nmax * sizeof(int));
+    neighbor->numneigh_inner = (int*)allocate(ALIGNMENT, atom->Nmax * sizeof(int));
     neighbor->neighbors = (int*)allocate(ALIGNMENT, atom->Nmax * maxneighs * sizeof(int));
 
     if (pattern == P_RAND && atom->Nlocal <= nneighs) {
@@ -95,6 +102,7 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
                         }
                     }
                 } while (found == 1);
+                neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor) = j;
             } else {
                 neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor) = j;
                 j = (j + 1) % m;
@@ -115,7 +123,8 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
             }
         }
 
-        neighbor->numneigh[i] = nneighs * nreps;
+        neighbor->numneigh[i]       = nneighs * nreps;
+        neighbor->numneigh_inner[i] = nneighs * nreps;
     }
 }
 
@@ -248,6 +257,8 @@ int main(int argc, const char* argv[])
         atom_vx(atom->Nlocal)    = 0.0;
         atom_vy(atom->Nlocal)    = 0.0;
         atom_vz(atom->Nlocal)    = 0.0;
+        atom->sqrt_epsilon[atom->Nlocal] = sqrt(param.epsilon);
+        atom->sigma3[atom->Nlocal]       = sqrt(param.sigma6);
         atom->Nlocal++;
     }
 
@@ -273,6 +284,11 @@ int main(int argc, const char* argv[])
     initNeighbor(&neighbor, &param);
     DEBUG_MESSAGE("Creating neighbor lists...\n");
     createNeighbors(atom, &neighbor, pattern, nneighs, nreps);
+    initDevice(&param, atom, &neighbor);
+#ifdef CUDA_TARGET
+    copyDataToCUDADevice(&param, atom);
+#endif
+    initForce(&param);
     DEBUG_MESSAGE("Computing forces...\n");
 
     double T_accum = 0.0;
@@ -281,16 +297,12 @@ int main(int argc, const char* argv[])
         traceAddresses(&param, atom, &neighbor, i + 1);
 #endif
 
-        if (param.force_field == FF_EAM) {
-            computeForceEam(&param, atom, &neighbor, &stats);
-        } else {
-            if (param.half_neigh) {
-                T_accum += computeForceLJHalfNeigh(&param, atom, &neighbor, &stats);
-            } else {
-                T_accum += computeForceLJFullNeigh(&param, atom, &neighbor, &stats);
-            }
-        }
+        T_accum += computeForce(&param, atom, &neighbor, &stats);
     }
+
+#ifdef CUDA_TARGET
+    copyDataFromCUDADevice(&param, atom);
+#endif
 
     double freq_hz                     = param.proc_freq * 1.e9;
     const double atoms_updates_per_sec = (double)(atom->Nlocal) / T_accum *
