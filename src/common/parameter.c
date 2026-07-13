@@ -125,6 +125,7 @@ void initParameter(Parameter* param)
     param->method        = 0;
     param->balance_every = param->reneigh_every;
     param->setup         = 1;
+    param->verbose       = 0;
 
 #ifdef _OPENMP
     // Use static scheduling as default

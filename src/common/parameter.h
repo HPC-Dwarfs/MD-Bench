@@ -119,6 +119,7 @@ typedef struct {
     int method;
     int balance_every;
     int setup;
+    int verbose;
 } Parameter;
 
 void initParameter(Parameter*);

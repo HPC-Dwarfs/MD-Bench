@@ -116,12 +116,14 @@ double setup(Parameter* param,
     return timeStop - timeStart;
 }
 
-double reneighbour(int n, Parameter* param, Atom* atom, Neighbor* neighbor, Comm* comm)
+double reneighbour(
+    int n, Parameter* param, Atom* atom, Neighbor* neighbor, Comm* comm, double* timer)
 {
-    double timeStart, timeStop;
+    double timeStart, timeStop, stepStart, stepStop;
     timeStart = getTimeStamp();
     LIKWID_MARKER_START("reneighbour");
     // updateAtomsPbc(atom, param, true); function called at updateAtoms
+    stepStart = getTimeStamp();
 #ifdef _MPI
     ghostNeighbor(comm, atom, param);
 #ifdef CUDA_TARGET
@@ -131,7 +133,14 @@ double reneighbour(int n, Parameter* param, Atom* atom, Neighbor* neighbor, Comm
     setupPbc(atom, param);
     updatePbc(atom, param, true);
 #endif
+    stepStop = getTimeStamp();
+    timer[NEIGH_PBC] += stepStop - stepStart;
+
+    stepStart = getTimeStamp();
     buildNeighbor(atom, neighbor);
+    stepStop = getTimeStamp();
+    timer[NEIGH_BUILD] += stepStop - stepStart;
+
     LIKWID_MARKER_STOP("reneighbour");
     timeStop = getTimeStamp();
     return timeStop - timeStart;
@@ -167,6 +176,25 @@ double updateAtoms(Comm* comm, Atom* atom, Parameter* param)
 
     timeStop = getTimeStamp();
     return timeStop - timeStart;
+}
+
+// Prints one indented sub-row of the timing breakdown table, nested under its
+// parent aggregate row (only shown with -v/--verbose). Indent (6) + label
+// width (18) match the parent rows' indent (4) + label width (20) so the
+// numeric columns line up.
+static void printTimerSubRow(
+    const char* label, timertype idx, double* sumt, double* mint, double* maxt,
+    double total, int nproc)
+{
+    double avg = sumt[idx] / nproc;
+    fprintf(stdout,
+        "      %-18s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
+        label,
+        avg,
+        mint[idx],
+        maxt[idx],
+        100.0 * sumt[idx] / (nproc * total),
+        avg > 0.0 ? 100.0 * (maxt[idx] - mint[idx]) / avg : 0.0);
 }
 
 void writeInput(Parameter* param, Atom* atom)
@@ -295,6 +323,10 @@ int main(int argc, char** argv)
             param.displacement_reneigh = 1;
             continue;
         }
+        if ((strcmp(argv[i], "-v") == 0) || (strcmp(argv[i], "--verbose") == 0)) {
+            param.verbose = 1;
+            continue;
+        }
         if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
             if (comm.myproc == 0) {
                 printf("MD Bench: A performance-oriented prototyping harness for MD "
@@ -321,6 +353,8 @@ int main(int argc, char** argv)
                 printf("--displacement-reneigh:     rebuild neighbor list based on atom "
                        "displacement (skin/2 threshold); use --reneigh-every 0 to disable "
                        "fixed-interval rebuild\n");
+                printf("-v / --verbose:             print a per-routine timing breakdown "
+                       "in the performance report\n");
                 printf(HLINE);
             }
 
@@ -373,10 +407,18 @@ int main(int argc, char** argv)
     barrierComm();
     timer[TOTAL]   = getTimeStamp();
     timer[FORCE]   = computeForce(&param, &atom, &neighbor, &stats);
-    timer[NEIGH]   = 0.0;
-    timer[FORWARD] = 0.0;
-    timer[UPDATE]  = 0.0;
-    timer[BALANCE] = 0.0;
+    timer[NEIGH]              = 0.0;
+    timer[FORWARD]            = 0.0;
+    timer[UPDATE]             = 0.0;
+    timer[BALANCE]            = 0.0;
+    timer[NEIGH_PBC]          = 0.0;
+    timer[NEIGH_BUILD]        = 0.0;
+    timer[NEIGH_PRUNE]        = 0.0;
+    timer[NEIGH_SORT]         = 0.0;
+    timer[INTEGRATE_INITIAL]  = 0.0;
+    timer[INTEGRATE_FINAL]    = 0.0;
+    timer[THERMO]             = 0.0;
+    timer[RENEIGH_CHECK]      = 0.0;
     timer[REVERSE] = reverse(&comm, &atom, &param);
     if (param.vtk_file != NULL) {
         // write_atoms_to_vtk_file(param.vtk_file, &atom, 0);
@@ -390,15 +432,23 @@ int main(int argc, char** argv)
             DEBUG_MESSAGE("Resorting atoms\n");
             atom.Nghost = 0;
             sortAtom(&atom);
-            timer[NEIGH] += getTimeStamp() - sortStart;
+            double sortElapsed = getTimeStamp() - sortStart;
+            timer[NEIGH] += sortElapsed;
+            timer[NEIGH_SORT] += sortElapsed;
         }
 #endif
 
         bool reneigh = (param.reneigh_every > 0 && (n + 1) % param.reneigh_every == 0);
         if (!reneigh && param.displacement_reneigh) {
+            double checkStart = getTimeStamp();
             reneigh = needsReneigh(&atom, &param);
+            timer[RENEIGH_CHECK] += getTimeStamp() - checkStart;
         }
-        initialIntegrate(reneigh, &param, &atom);
+        {
+            double integrateStart = getTimeStamp();
+            initialIntegrate(reneigh, &param, &atom);
+            timer[INTEGRATE_INITIAL] += getTimeStamp() - integrateStart;
+        }
 
         if (reneigh) {
             timer[UPDATE] += updateAtoms(&comm, &atom, &param);
@@ -409,7 +459,7 @@ int main(int argc, char** argv)
                     &param,
                     timer[FORCE]);
 
-            timer[NEIGH] += reneighbour(n, &param, &atom, &neighbor, &comm);
+            timer[NEIGH] += reneighbour(n, &param, &atom, &neighbor, &comm, timer);
             if (param.displacement_reneigh) {
                 storeReferencePositions(&atom);
             }
@@ -425,7 +475,9 @@ int main(int argc, char** argv)
 #else
                 pruneNeighbor(&param, &atom, &neighbor);
 #endif
-                timer[NEIGH] += getTimeStamp() - prune_start;
+                double pruneElapsed = getTimeStamp() - prune_start;
+                timer[NEIGH] += pruneElapsed;
+                timer[NEIGH_PRUNE] += pruneElapsed;
             }
         }
 
@@ -435,13 +487,19 @@ int main(int argc, char** argv)
 
         timer[FORCE] += computeForce(&param, &atom, &neighbor, &stats);
         timer[REVERSE] += reverse(&comm, &atom, &param);
-        finalIntegrate(reneigh, &param, &atom);
+        {
+            double integrateStart = getTimeStamp();
+            finalIntegrate(reneigh, &param, &atom);
+            timer[INTEGRATE_FINAL] += getTimeStamp() - integrateStart;
+        }
 
         if (!((n + 1) % param.nstat) && (n + 1) < param.ntimes) {
 #ifdef CUDA_TARGET
             memcpyFromGPU(atom.x, atom.d_atom.x, atom.Nmax * sizeof(MD_FLOAT) * 3);
 #endif
+            double thermoStart = getTimeStamp();
             computeThermo(n + 1, &param, &atom);
+            timer[THERMO] += getTimeStamp() - thermoStart;
         }
 
         if (param.vtk_file != NULL) {
@@ -503,6 +561,12 @@ int main(int argc, char** argv)
             maxt[NEIGH],
             100.0 * sumt[NEIGH] / (n * timer[TOTAL]),
             100.0 * (maxt[NEIGH] - mint[NEIGH]) / (sumt[NEIGH] / n));
+        if (param.verbose) {
+            printTimerSubRow("Pbc/ghost", NEIGH_PBC, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Building", NEIGH_BUILD, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Prune", NEIGH_PRUNE, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Sort", NEIGH_SORT, sumt, mint, maxt, timer[TOTAL], n);
+        }
         fprintf(stdout,
             "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Rest",
@@ -511,6 +575,14 @@ int main(int argc, char** argv)
             maxt[REST],
             100.0 * sumt[REST] / (n * timer[TOTAL]),
             100.0 * (maxt[REST] - mint[REST]) / (sumt[REST] / n));
+        if (param.verbose) {
+            printTimerSubRow(
+                "Integrate initial", INTEGRATE_INITIAL, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow(
+                "Integrate final", INTEGRATE_FINAL, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Thermo output", THERMO, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Reneigh check", RENEIGH_CHECK, sumt, mint, maxt, timer[TOTAL], n);
+        }
         fprintf(stdout,
             "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Integration",
@@ -519,6 +591,9 @@ int main(int argc, char** argv)
             maxt[UPDATE],
             100.0 * sumt[UPDATE] / (n * timer[TOTAL]),
             100.0 * (maxt[UPDATE] - mint[UPDATE]) / (sumt[UPDATE] / n));
+        if (param.verbose) {
+            printTimerSubRow("Load balance", BALANCE, sumt, mint, maxt, timer[TOTAL], n);
+        }
         fprintf(stdout,
             "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",
             "Setup",
@@ -543,6 +618,7 @@ int main(int argc, char** argv)
             maxt[FORWARD],
             100.0 * sumt[FORWARD] / (n * timer[TOTAL]),
             100.0 * (maxt[FORWARD] - mint[FORWARD]) / (sumt[FORWARD] / n));
+
         fprintf(stdout,
             "\n  System: %d atoms (%d ghost) | %d timesteps\n",
             atom.Natoms,
