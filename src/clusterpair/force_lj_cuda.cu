@@ -278,7 +278,7 @@ __global__ void computeForceLJCudaFullNeigh(
     int ci_sca_base     = CI_SCALAR_BASE_INDEX(ci);
     MD_FLOAT sqrt_eps_i = cuda_cl_sqrt_epsilon[ci_sca_base + cii];
     MD_FLOAT sigma3_i   = cuda_cl_sigma3[ci_sca_base + cii];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
     int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
     int type_i      = cuda_cl_t[ci_sca_base + cii];
 #endif
@@ -304,7 +304,7 @@ __global__ void computeForceLJCudaFullNeigh(
             int cj_sca_base  = CJ_SCALAR_BASE_INDEX(cj);
             MD_FLOAT sigma6  = sigma3_i * cuda_cl_sigma3[cj_sca_base + cjj];
             MD_FLOAT epsilon = sqrt_eps_i * cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
             int type_j          = cuda_cl_t[cj_sca_base + cjj];
             int type_index      = type_i * ntypes + type_j;
@@ -425,7 +425,7 @@ __global__ void computeForceLJCudaHalfNeigh(
     int ci_sca_base     = CI_SCALAR_BASE_INDEX(ci);
     MD_FLOAT sqrt_eps_i = cuda_cl_sqrt_epsilon[ci_sca_base + cii];
     MD_FLOAT sigma3_i   = cuda_cl_sigma3[ci_sca_base + cii];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
     int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
     int type_i      = cuda_cl_t[ci_sca_base + cii];
 #endif
@@ -451,7 +451,7 @@ __global__ void computeForceLJCudaHalfNeigh(
             int cj_sca_base  = CJ_SCALAR_BASE_INDEX(cj);
             MD_FLOAT sigma6  = sigma3_i * cuda_cl_sigma3[cj_sca_base + cjj];
             MD_FLOAT epsilon = sqrt_eps_i * cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
             int type_j          = cuda_cl_t[cj_sca_base + cjj];
             int type_index      = type_i * ntypes + type_j;

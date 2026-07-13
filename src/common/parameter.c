@@ -423,7 +423,7 @@ void printParameter(Parameter* param)
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
     fprintf(stdout, "    LJ combination rule:               geometric\n");
 #else
-    fprintf(stdout, "    LJ combination rule:               none\n");
+    fprintf(stdout, "    LJ combination rule:               full\n");
 #endif
     fprintf(stdout,
         "    Prune every:                       %d steps\n",

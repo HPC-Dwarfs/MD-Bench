@@ -106,7 +106,7 @@ utilisation and easier SIMD vectorization.
 to `AOS` for CPU builds and `SOA` for GPU builds.
 - `LJ_COMB_RULE`: Lennard-Jones combination rule. `single` uses a single atom type
 with broadcast global parameters (fastest, no type lookup). `geometric` uses
-per-type parameters with geometric combination (default). `none` uses a full
+per-type parameters with geometric combination (default). `full` uses a full
 type-pair matrix lookup (not supported in SIMD kernels).
 - `DEBUG`: Enable additional debug output
 - `SORT_ATOMS`: Resort atoms to ensure that atoms that are nearby are also close

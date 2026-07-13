@@ -222,7 +222,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
         int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
         MD_FLOAT sqrt_eps_j = cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
         MD_FLOAT sigma3_j   = cuda_cl_sigma3[cj_sca_base + cjj];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         int type_j      = cuda_cl_t[cj_sca_base + cjj];
 #endif
@@ -246,7 +246,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
                 MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + ci * CLUSTER_N + cii];
                 MD_FLOAT sigma6   = sigma3_i * sigma3_j;
                 MD_FLOAT epsilon  = sqrt_eps_i * sqrt_eps_j;
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 int type_i          = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
@@ -430,7 +430,7 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
         int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
         MD_FLOAT sqrt_eps_j = cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
         MD_FLOAT sigma3_j   = cuda_cl_sigma3[cj_sca_base + cjj];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         int type_j      = cuda_cl_t[cj_sca_base + cjj];
 #endif
@@ -453,7 +453,7 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
                 MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + ci * CLUSTER_N + cii];
                 MD_FLOAT sigma6   = sigma3_i * sigma3_j;
                 MD_FLOAT epsilon  = sqrt_eps_i * sqrt_eps_j;
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 int type_i          = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];

@@ -56,7 +56,7 @@ double computeForceLJFullNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
             const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             const int type_i = atom->type[i];
 #endif
 
@@ -70,7 +70,7 @@ double computeForceLJFullNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -161,7 +161,7 @@ double computeForceLJHalfNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
             const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             const int type_i = atom->type[i];
 #endif
 
@@ -177,7 +177,7 @@ double computeForceLJHalfNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -249,7 +249,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[iatom];
         const MD_FLOAT sigma3_i   = atom->sigma3[iatom];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
         const int type_i = atom->type[iatom];
 #endif
 
@@ -263,7 +263,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[jatom];
             const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[jatom];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             const int type_j          = atom->type[jatom];
             const int type_ij         = type_i * atom->ntypes + type_j;
             const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

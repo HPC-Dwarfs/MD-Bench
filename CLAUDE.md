@@ -31,7 +31,7 @@ All configuration is in `config.mk`. Key variables:
 - `ENABLE_LIKWID` (default: false): Enable LIKWID performance counter instrumentation
 - `ENABLE_OPENMP` (default: true): Enable OpenMP parallelization
 - `ENABLE_MPI` (default: false): Enable MPI distributed parallelization
-- `LJ_COMB_RULE` (default: geometric): single/geometric/none (LJ parameter combination rule)
+- `LJ_COMB_RULE` (default: geometric): single/geometric/full (LJ parameter combination rule)
 - `LJ_TABLE_INDEX` (default: r): r or rsq (tabulated force lookup grid spacing)
 - `USE_REFERENCE_KERNEL` (default: false): Use reference scalar kernel instead of SIMD
 - `USE_SIMD_KERNEL` (default: false): Force SIMD intrinsic kernels (when available)
@@ -187,7 +187,7 @@ Key fields in `Parameter` struct:
 - `MD_FLOAT epsilon, sigma, sigma6`: LJ parameters (global or per-type)
 - `MD_FLOAT* epsilon_per_type, sigma_per_type`: Per-type LJ parameters (read from types_file)
 - `int ntypes`: Number of atom types
-- `int LJ_COMB_RULE`: Combination rule (0=single, 1=geometric, 2=none)
+- `int LJ_COMB_RULE`: Combination rule (0=single, 1=geometric, 2=full)
 - `int half_neigh`: Use half neighbor lists (Newton's 3rd law)
 - `int reneigh_every`: Rebuild neighbor list every N steps
 - `int nstat`: Print statistics every N steps
@@ -207,7 +207,7 @@ Parameters are loaded from a text file (see `readParameter`, `readTypesFile` in 
 **Combination rules** (compile-time via -DLJ_COMB_RULE):
 - `LJ_COMB_SINGLE=0`: Single type; broadcast global epsilon/sigma (fastest, no type lookup)
 - `LJ_COMB_GEOM=1`: Per-type geometric: epsilon_ij = sqrt(eps_i * eps_j), sigma6_ij = sigma3_i * sigma3_j
-- `LJ_COMB_NONE=2`: Full type-pair matrix lookup (not SIMD-optimized)
+- `LJ_COMB_FULL=2`: Full type-pair matrix lookup (not SIMD-optimized)
 
 **Force calculation** (reference kernel):
 ```c

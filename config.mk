@@ -31,10 +31,10 @@ SORT_ATOMS ?= false
 # r:   uniform grid in distance (matches GROMACS), needs a sqrt per pair
 # rsq: uniform grid in squared distance, avoids the sqrt (load-bound variant)
 LJ_TABLE_INDEX ?= rsq
-# LJ combination rule (single/geometric/none)
+# LJ combination rule (single/geometric/full)
 # single: single atom type, broadcast global params (fastest, no type lookup)
 # geometric: per-type params with geometric combination (default)
-# none: full type-pair matrix lookup (not supported in SIMD kernels)
+# full: full type-pair matrix lookup (not supported in SIMD kernels)
 LJ_COMB_RULE ?= geometric
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
@@ -178,10 +178,10 @@ ifeq ($(strip $(LJ_COMB_RULE)),single)
     DEFINES += -DLJ_COMB_RULE=0
 else ifeq ($(strip $(LJ_COMB_RULE)),geometric)
     DEFINES += -DLJ_COMB_RULE=1
-else ifeq ($(strip $(LJ_COMB_RULE)),none)
+else ifeq ($(strip $(LJ_COMB_RULE)),full)
     DEFINES += -DLJ_COMB_RULE=2
 else
-    $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, none)
+    $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, full)
 endif
 
 ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
@@ -281,10 +281,10 @@ ifeq ($(strip $(OPT_SCHEME)),verletlist)
     ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)
         OPT_TAG := $(OPT_TAG)-NBSIMD
     endif
-    TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
 else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
 		OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
 endif
+TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
 
 ifeq ($(strip $(SIMD)),NONE)
 		TOOL_TAG = $(TOOLCHAIN)-$(ISA)
