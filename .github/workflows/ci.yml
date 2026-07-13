@@ -115,11 +115,10 @@ jobs:
           # Reconstruct binary name as in Makefile
           if [ "${{ matrix.opt_scheme }}" = "verletlist" ]; then
             OPT_TAG="VL"
-            TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
           else
             OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
-            TAG_SUFFIX=""
           fi
+          TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
 
           if [ "${{ matrix.simd }}" = "NONE" ]; then
             TOOL_TAG="${TOOLCHAIN}-${ISA}"
@@ -183,11 +182,10 @@ jobs:
 
           if [ "${{ matrix.opt_scheme }}" = "verletlist" ]; then
             OPT_TAG="VL"
-            TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
           else
             OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
-            TAG_SUFFIX=""
           fi
+          TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
           TOOL_TAG="${TOOLCHAIN}-${ISA}-${{ matrix.simd }}"
           BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}${TAG_SUFFIX}"
           echo "Using binary ${BIN}"

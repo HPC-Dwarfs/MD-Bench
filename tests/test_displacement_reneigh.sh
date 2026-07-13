@@ -240,7 +240,7 @@ run_scheme() {
 }
 
 run_scheme "verletlist"  "VL"      "${SIMD}"    "-${LJ_COMB_RULE}"
-run_scheme "clusterpair" "CP-auto" "${SIMD_CP}"
+run_scheme "clusterpair" "CP-auto" "${SIMD_CP}"    "-${LJ_COMB_RULE}"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed."
