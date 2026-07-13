@@ -330,6 +330,11 @@ void printParameter(Parameter* param)
 #endif
     fprintf(stdout, "    Atom data layout:                  %s\n", POS_DATA_LAYOUT);
     fprintf(stdout, "    Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
+#ifdef __SIMD_NEIGHBOR__
+    fprintf(stdout, "    Neighbor-list build:               SIMD\n");
+#else
+    fprintf(stdout, "    Neighbor-list build:               Scalar\n");
+#endif
     fprintf(stdout, "    FP precision:                      %s\n", PRECISION_STRING);
 
     // System configuration

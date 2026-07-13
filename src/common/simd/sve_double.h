@@ -83,6 +83,11 @@ static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
     return svand_b_z(svptrue_b64(), a, b);
 }
 
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return svnot_b_z(svptrue_b64(), a);
+}
+
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return svcmplt_f64(svptrue_b64(), a, b);
@@ -203,6 +208,11 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
     return svcmplt_s64(svptrue_b64(), a, b);
 }
 
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svcmpeq_s64(svptrue_b64(), a, b);
+}
+
 // Masked integer load
 static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 {
@@ -256,6 +266,19 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     svbool_t pg = svwhilelt_b32(0, VECTOR_WIDTH);
     return svunpklo_s64(svld1_s32(pg, m));
+}
+
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    // a holds VECTOR_WIDTH 64-bit lanes (sign-extended from int32 by
+    // simd_i32_load()/simd_i32_mask_load()); narrow back to 32-bit on the way out
+    // via a scalar loop, matching the scalar-fallback style already used elsewhere
+    // in this file (e.g. simd_i32_gather(), simd_real_masked_scatter_sub()).
+    int64_t tmp[VECTOR_WIDTH] __attribute__((aligned(64)));
+    svst1_s64(svptrue_b64(), tmp, a);
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        m[i] = (int)tmp[i];
+    }
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)

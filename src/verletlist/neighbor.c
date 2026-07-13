@@ -18,6 +18,22 @@
 #include <omp.h>
 #endif
 
+// USE_SIMD_NEIGHBOR controls the vectorized neighbor-list build independently
+// of USE_SIMD_KERNEL (which only affects the force kernel). It writes through
+// the neighs() macro, so it works under either NBLIST_AOS or NBLIST_SOA, but
+// not the separate two-pass NBLIST_CSR build algorithm below.
+#ifdef __SIMD_NEIGHBOR__
+#include <simd.h>
+#if !defined(__ISA_AVX512__) && !defined(__ISA_AVX2__) && !defined(__ISA_NEON__) \
+    && !defined(__ISA_SVE__) && !defined(__ISA_SVE2__)
+#error "USE_SIMD_NEIGHBOR requires SIMD=AVX2/AVX512/NEON/SVE/SVE2 (needs " \
+    "simd_mask_not/simd_mask_i32_cond_eq, not implemented for SSE/AVX so far)"
+#endif
+#if defined(NBLIST_CSR)
+#error "USE_SIMD_NEIGHBOR is not implemented for NBLIST_DATA_LAYOUT=CSR"
+#endif
+#endif
+
 #define SMALL  1.0e-6
 #define FACTOR 0.999
 
@@ -428,6 +444,110 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
             int type_i = atom->type[i];
 #endif
+#ifdef __SIMD_NEIGHBOR__
+            // Vectorized bin scan: gather candidate positions, build a lane mask
+            // from (i != j) & (half_neigh ? j >= i : true) & (rsq < cutoff), then
+            // compact the surviving j indices into the neighbor list via a scalar
+            // bit-scan (no hardware compress-store needed, portable across ISAs).
+            MD_SIMD_INT ivec       = simd_i32_broadcast(i);
+            MD_SIMD_FLOAT xtmp_vec = simd_real_broadcast(xtmp);
+            MD_SIMD_FLOAT ytmp_vec = simd_real_broadcast(ytmp);
+            MD_SIMD_FLOAT ztmp_vec = simd_real_broadcast(ztmp);
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+            MD_SIMD_FLOAT cutoff_vec_single = simd_real_broadcast(cutneighsq);
+#else
+            MD_SIMD_INT tbase_i = simd_i32_broadcast(type_i * atom->ntypes);
+#endif
+            for (int k = 0; k < nstencil; k++) {
+                int jbin     = ibin + stencil[k];
+                int* loc_bin = &bins[jbin * atoms_per_bin];
+                int bincount_j = bincount[jbin];
+
+                // skipNeigh() encodes an ordering tie-break only needed for the
+                // MPI half-stencil self-bin case; fall back to the scalar scan
+                // there rather than vectorizing that rare path.
+                if (half_stencil && ibin == jbin) {
+                    for (int m = 0; m < bincount_j; m++) {
+                        int j = loc_bin[m];
+                        if (i == j) continue;
+                        if (neighbor->half_neigh && j < i) continue;
+                        if (skipNeigh(atom, i, j)) continue;
+
+                        MD_FLOAT delx = xtmp - atom_x(j);
+                        MD_FLOAT dely = ytmp - atom_y(j);
+                        MD_FLOAT delz = ztmp - atom_z(j);
+                        MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
+#if LJ_COMB_RULE != LJ_COMB_SINGLE
+                        int type_j = atom->type[j];
+                        const MD_FLOAT cutoff =
+                            atom->cutneighsq[type_i * atom->ntypes + type_j];
+#else
+                        const MD_FLOAT cutoff = cutneighsq;
+#endif
+                        if (rsq <= cutoff) {
+                            neighs(neighbor->neighbors, i, n, atom->Nlocal, neighbor) = j;
+                            n++;
+                        }
+                    }
+                    continue;
+                }
+
+                MD_SIMD_INT bincount_vec = simd_i32_broadcast(bincount_j);
+
+                for (int m = 0; m < bincount_j; m += VECTOR_WIDTH) {
+                    MD_SIMD_MASK bound_mask = simd_mask_i32_cond_lt(
+                        simd_i32_add(simd_i32_broadcast(m), simd_i32_seq()),
+                        bincount_vec);
+                    MD_SIMD_INT jvec = simd_i32_mask_load(&loc_bin[m], bound_mask);
+
+#ifdef ATOM_POSITION_AOS
+                    MD_SIMD_INT j3   = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
+                    MD_SIMD_FLOAT xj = simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT yj = simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT zj = simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT));
+#else
+                    MD_SIMD_FLOAT xj = simd_real_gather(jvec, atom->x, sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT yj = simd_real_gather(jvec, atom->y, sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT zj = simd_real_gather(jvec, atom->z, sizeof(MD_FLOAT));
+#endif
+                    MD_SIMD_FLOAT delx = simd_real_sub(xtmp_vec, xj);
+                    MD_SIMD_FLOAT dely = simd_real_sub(ytmp_vec, yj);
+                    MD_SIMD_FLOAT delz = simd_real_sub(ztmp_vec, zj);
+                    MD_SIMD_FLOAT rsq  = simd_real_fma(
+                        delx, delx, simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
+
+                    MD_SIMD_MASK keep = simd_mask_and(
+                        bound_mask, simd_mask_not(simd_mask_i32_cond_eq(jvec, ivec)));
+                    if (neighbor->half_neigh) {
+                        keep = simd_mask_and(
+                            keep, simd_mask_not(simd_mask_i32_cond_lt(jvec, ivec)));
+                    }
+
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+                    MD_SIMD_FLOAT cutoff_vec = cutoff_vec_single;
+#else
+                    MD_SIMD_INT type_j_vec = simd_i32_gather(jvec, atom->type, sizeof(int));
+                    MD_SIMD_INT tij        = simd_i32_add(tbase_i, type_j_vec);
+                    MD_SIMD_FLOAT cutoff_vec =
+                        simd_real_gather(tij, atom->cutneighsq, sizeof(MD_FLOAT));
+#endif
+                    keep = simd_mask_and(keep, simd_mask_cond_lt(rsq, cutoff_vec));
+
+                    unsigned int bits = simd_mask_to_u32(keep);
+                    if (bits) {
+                        int tmp_j[VECTOR_WIDTH] __attribute__((aligned(64)));
+                        simd_i32_store(tmp_j, jvec);
+                        while (bits) {
+                            int lane = __builtin_ctz(bits);
+                            bits &= bits - 1;
+                            neighs(neighbor->neighbors, i, n, atom->Nlocal, neighbor) =
+                                tmp_j[lane];
+                            n++;
+                        }
+                    }
+                }
+            }
+#else
             for (int k = 0; k < nstencil; k++) {
                 int jbin     = ibin + stencil[k];
                 int* loc_bin = &bins[jbin * atoms_per_bin];
@@ -460,6 +580,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                     }
                 }
             }
+#endif
 
             neighbor->numneigh[i] = n;
             if (n >= neighbor->maxneighs) {

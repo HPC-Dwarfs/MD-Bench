@@ -121,9 +121,17 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
     // _mm256_cvtepi32_pd would convert -1 to -1.0 (0xBFF0...) rather than all-ones.
     return _mm256_castsi256_pd(_mm256_cvtepi32_epi64(_mm_cmplt_epi32(a, b)));
 }
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_castsi256_pd(_mm256_cvtepi32_epi64(_mm_cmpeq_epi32(a, b)));
+}
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _mm256_and_pd(a, b);
+}
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return _mm256_xor_pd(a, _mm256_castsi256_pd(_mm256_set1_epi64x(-1)));
 }
 // TODO: Initialize all diagonal cases and just select the proper one (all bits set or
 // diagonal) based on cond0

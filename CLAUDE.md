@@ -35,6 +35,7 @@ All configuration is in `config.mk`. Key variables:
 - `LJ_TABLE_INDEX` (default: r): r or rsq (tabulated force lookup grid spacing)
 - `USE_REFERENCE_KERNEL` (default: false): Use reference scalar kernel instead of SIMD
 - `USE_SIMD_KERNEL` (default: false): Force SIMD intrinsic kernels (when available)
+- `USE_SIMD_NEIGHBOR` (default: false): Use SIMD intrinsics to build the Verlet-list neighbor lists. Independent of `USE_SIMD_KERNEL` (which only affects the force kernel). Supported for AVX2/AVX512/NEON/SVE/SVE2 (not SSE/AVX); not implemented for `NBLIST_DATA_LAYOUT=CSR`. Note: the NEON and SVE/SVE2 code paths have not been compiled or run on real ARM hardware/toolchain; only AVX2/AVX512 have been build- and regression-verified.
 - `SORT_ATOMS` (default: false): Sort atoms by frequency
 - `MEM_TRACER`/`INDEX_TRACER`/`COMPUTE_STATS`: Enable performance tracing/statistics
 

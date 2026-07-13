@@ -61,6 +61,10 @@ USE_SIMD_KERNEL ?= false
 # the expensive LJ force stage, instead of masking out failing lanes
 # (requires USE_SIMD_KERNEL=true; AVX2/AVX512 only for now)
 SIMD_COMPRESS ?= false
+# Use SIMD intrinsics to build the Verlet-list neighbor lists (true or false).
+# Independent of USE_SIMD_KERNEL, which only affects the force kernel.
+# (AVX512 only for now; not implemented for NBLIST_DATA_LAYOUT=CSR)
+USE_SIMD_NEIGHBOR ?= false
 # Enable XTC output (a GROMACS file format for trajectories)
 XTC_OUTPUT ?= false
 
@@ -225,6 +229,10 @@ ifeq ($(strip $(USE_SIMD_KERNEL)),true)
     endif
 endif
 
+ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)
+    DEFINES += -D__SIMD_NEIGHBOR__
+endif
+
 ifeq ($(strip $(__SSE__)),true)
     DEFINES += -D__ISA_SSE__
 endif
@@ -269,6 +277,9 @@ ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL
     ifeq ($(strip $(USE_SIMD_KERNEL)),true)
         OPT_TAG := $(OPT_TAG)-SIMD
+    endif
+    ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)
+        OPT_TAG := $(OPT_TAG)-NBSIMD
     endif
     TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
 else ifeq ($(strip $(OPT_SCHEME)),clusterpair)

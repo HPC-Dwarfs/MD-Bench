@@ -85,6 +85,11 @@ static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
     return svand_b_z(svptrue_b32(), a, b);
 }
 
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return svnot_b_z(svptrue_b32(), a);
+}
+
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return svcmplt_f32(svptrue_b32(), a, b);
@@ -182,9 +187,39 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
     return svadd_s32_x(svptrue_b32(), a, b);
 }
 
+static inline MD_SIMD_INT simd_i32_seq(void) { return svindex_s32(0, 1); }
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svcmplt_s32(svptrue_b32(), a, b);
+}
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svcmpeq_s32(svptrue_b32(), a, b);
+}
+
+// SVE natively supports predicated loads: inactive lanes are zeroed, matching
+// the semantics buildNeighborCPU()'s SIMD path relies on for its tail mask.
+static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
+{
+    return svld1_s32(mask, ptr);
+}
+
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    svint32_t offsets = svmul_n_s32_x(svptrue_b32(), vidx, scale);
+    return svld1_gather_s32offset_s32(svptrue_b32(), base, offsets);
+}
+
 static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return svld1_s32(svptrue_b32(), m);
+}
+
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    svst1_s32(svptrue_b32(), m, a);
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)
