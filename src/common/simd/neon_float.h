@@ -87,6 +87,19 @@ static inline float simd_real_incr_reduced_sum(
     return vget_lane_f32(sum_low, 0);
 }
 
+static inline float simd_real_incr_reduced_sum_j2(
+     float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+ {
+    float32x4_t sum0 = vpaddq_f32(v0, v1); 
+    float32x2_t sum = vpadd_f32(vget_low_f32(sum0), vget_high_f32(sum0)); 
+ 
+     float32x2_t mem = vld1_f32(m); 
+     sum             = vadd_f32(sum, mem); 
+     vst1_f32(m, sum);  
+     
+     return vget_lane_f32(vpadd_f32(sum, sum), 0); 
+ }
+
 static inline MD_SIMD_FLOAT simd_real_masked_add(
     MD_SIMD_FLOAT a, MD_SIMD_FLOAT b, MD_SIMD_MASK m)
 {

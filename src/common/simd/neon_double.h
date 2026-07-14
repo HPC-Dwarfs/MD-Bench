@@ -105,6 +105,24 @@ static inline MD_FLOAT simd_real_incr_reduced_sum(
     */
 }
 
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    float64x2_t t1, t2;
+ 
+    t1 = vuzp1q_f64(v0, v1);
+    t2 = vuzp2q_f64(v0, v1);
+     
+    t1 = vaddq_f64(t1, t2);
+ 
+    t2 = vaddq_f64(t1, vld1q_f64(m));
+    vst1q_f64(m, t2);
+ 
+    t2 = vpaddq_f64(t1, t1);
+ 
+    return vgetq_lane_f64(t2, 0);
+}
+
 static inline MD_SIMD_FLOAT simd_real_masked_add(
     MD_SIMD_FLOAT a, MD_SIMD_FLOAT b, MD_SIMD_MASK m)
 {
@@ -120,7 +138,7 @@ static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MA
 
 static inline MD_SIMD_INT simd_i32_load(const int* ptr)
 {
-    return vld1q_s64((int64_t*)ptr);
+    return vmovl_s32(vld1_s32(ptr));
 }
 static inline MD_SIMD_INT simd_i32_broadcast(int value) { return vdupq_n_s64(value); }
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
