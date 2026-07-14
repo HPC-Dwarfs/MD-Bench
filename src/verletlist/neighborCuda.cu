@@ -178,23 +178,27 @@ __global__ void compute_neighborhood(DeviceAtom a,
     int type_i = atom->type[i];
 #endif
     for (int k = 0; k < nstencil; k++) {
-        int jbin     = ibin + stencil[k];
+        // __ldg: stencil/bins/x/type are read-only here, but the compiler cannot
+        // prove they don't alias the neighbor-list writes, so it won't use the
+        // read-only cache on its own (same as the force kernel)
+        int jbin     = ibin + __ldg(&stencil[k]);
         int* loc_bin = &bins[jbin * atoms_per_bin];
+        int bincnt   = __ldg(&bincount[jbin]);
 
-        for (int m = 0; m < bincount[jbin]; m++) {
-            int j = loc_bin[m];
+        for (int m = 0; m < bincnt; m++) {
+            int j = __ldg(&loc_bin[m]);
             if (j == i || (halfneigh && (j < i))) {
                 continue;
             }
 
-            MD_FLOAT delx = xtmp - atom_x(j);
-            MD_FLOAT dely = ytmp - atom_y(j);
-            MD_FLOAT delz = ztmp - atom_z(j);
+            MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
+            MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
+            MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_j            = atom->type[j];
-            const MD_FLOAT cutoff = atom->cutneighsq[type_i * ntypes + type_j];
+            int type_j            = __ldg(&atom->type[j]);
+            const MD_FLOAT cutoff = __ldg(&atom->cutneighsq[type_i * ntypes + type_j]);
 #else
             const MD_FLOAT cutoff = cutneighsq;
 #endif

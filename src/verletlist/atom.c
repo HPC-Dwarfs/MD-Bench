@@ -799,7 +799,7 @@ void growAtom(Atom* atom)
 #define REALLOC(p, t, ns, os)                                                            \
     ;                                                                                    \
     atom->p        = (t*)reallocate(atom->p, ALIGNMENT, ns, os);                         \
-    atom->d_atom.p = (t*)reallocateGPU(atom->d_atom.p, ns);
+    atom->d_atom.p = (t*)reallocateGPUKeep(atom->d_atom.p, ns, os);
 
 #ifdef ATOM_POSITION_AOS
     REALLOC(x, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);

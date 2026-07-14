@@ -6,6 +6,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 //---
 #include <device.h>
 
@@ -40,6 +41,31 @@ void* reallocateGPU(void* ptr, size_t new_bytesize)
 #endif
     }
     return allocateGPU(new_bytesize);
+}
+
+// Growing realloc that preserves the old contents. reallocateGPU() above is
+// free+malloc and loses the data, which is only safe for buffers that are
+// refilled right after; growAtom() must not lose device state (e.g. velocities
+// are never re-uploaded in non-MPI runs).
+void* reallocateGPUKeep(void* ptr, size_t new_bytesize, size_t old_bytesize)
+{
+    void* new_ptr = allocateGPU(new_bytesize);
+    if (ptr != NULL) {
+        if (old_bytesize > 0) {
+#ifdef CUDA_HOST_MEMORY
+            memcpy(new_ptr, ptr, old_bytesize);
+#else
+            cuda_assert("reallocateGPUKeep",
+                GPU_MEMCPY(new_ptr, ptr, old_bytesize, GPU_D2D));
+#endif
+        }
+#ifdef CUDA_HOST_MEMORY
+        (void)GPU_FREE_HOST(ptr);
+#else
+        (void)GPU_FREE(ptr);
+#endif
+    }
+    return new_ptr;
 }
 
 void memcpyToGPU(void* d_ptr, void* h_ptr, size_t bytesize)

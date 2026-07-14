@@ -53,6 +53,7 @@ extern void GPUfree(void*);
 extern void initDevice(Parameter*, Atom*, Neighbor*);
 extern void* allocateGPU(size_t bytesize);
 extern void* reallocateGPU(void* ptr, size_t new_bytesize);
+extern void* reallocateGPUKeep(void* ptr, size_t new_bytesize, size_t old_bytesize);
 extern void memcpyToGPU(void* d_ptr, void* h_ptr, size_t bytesize);
 extern void memcpyFromGPU(void* h_ptr, void* d_ptr, size_t bytesize);
 extern void memcpyOnGPU(void* d_dst, void* d_src, size_t bytesize);

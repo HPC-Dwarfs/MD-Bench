@@ -98,8 +98,10 @@ double setup(Parameter* param,
     sortAtom(atom);
 #endif
 
-    setupPbc(atom, param);
+    // initDevice must precede setupPbc: the CUDA setupPbc reads positions on
+    // the device, so the initial H2D upload has to happen first.
     initDevice(param, atom, neighbor);
+    setupPbc(atom, param);
 
 #ifdef _MPI
     ghostNeighbor(comm, atom, param);
