@@ -68,28 +68,28 @@ double computeForceLJCudaSup(
  */
 
 #ifdef CUDA_TARGET
+// GPU
 extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #undef VECTOR_WIDTH
 #define VECTOR_WIDTH 8
 #define CLUSTERPAIR_KERNEL_GPU
+#ifdef CLUSTERPAIR_KERNEL_AUTO
+#define CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+#endif
 #define KERNEL_NAME "GPU"
 #define CLUSTER_M   8
 #define CLUSTER_N   VECTOR_WIDTH
 #define UNROLL_J    1
 #else
+// CPU
 #ifdef USE_REFERENCE_KERNEL
 #define CLUSTERPAIR_KERNEL_REF
 #define KERNEL_NAME "Reference"
 #define CLUSTER_M   1
 #define CLUSTER_N   VECTOR_WIDTH
 #else
-
-
-// Auto selection based on VECTOR_WIDTH and architecture
+// Cluster pair kernels
 #ifdef CLUSTERPAIR_KERNEL_AUTO
-    #if defined(CLUSTERPAIR_KERNEL_GPU)
-        #define CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
-    #endif
     #if defined(__ISA_NEON__) || defined(__ISA_SVE__) || defined(__ISA_SVE2__)
         #define CLUSTERPAIR_KERNEL_2XN
     #else
