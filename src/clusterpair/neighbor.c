@@ -311,10 +311,19 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             nmax * neighbor->maxneighs * sizeof(int));
         neighbor->neighbors_imask       = (unsigned int*)allocate(ALIGNMENT,
             nmax * neighbor->maxneighs * sizeof(unsigned int));
+
 #ifdef NBLIST_CSR
         if (neighbor->neigh_start) free(neighbor->neigh_start);
         neighbor->neigh_start = (int*)allocate(ALIGNMENT, (nmax + 1) * sizeof(int));
+    } else {
+        free(neighbor->neighbors);
+        free(neighbor->neighbors_imask);
+        neighbor->neighbors       = (int*)allocate(ALIGNMENT,
+            nmax * neighbor->maxneighs * sizeof(int));
+        neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
+            nmax * neighbor->maxneighs * sizeof(unsigned int));
 #endif
+
     }
 
     MD_FLOAT bbx    = 0.5 * (binsizex + binsizex);
