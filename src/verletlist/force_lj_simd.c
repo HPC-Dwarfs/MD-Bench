@@ -6,7 +6,10 @@
  *
  * SIMD-optimized Lennard-Jones force kernels for Verlet Lists
  * Supports: AVX2, AVX512, NEON, SVE (double precision)
- * Requires: __SIMD_KERNEL__ flag and NBLIST_AOS layout
+ * Requires: __SIMD_KERNEL__ flag. Works under NBLIST_AOS, NBLIST_SOA, and
+ * NBLIST_CSR neighbor-list layouts (see the per-layout neighbor-index load
+ * below, and neighbor.c for the corresponding buffer-safety guarantees each
+ * layout relies on).
  *
  * LJ combination rules (compile-time via -DLJ_COMB_RULE=<value>):
  *   LJ_COMB_SINGLE (0): Single atom type - broadcast global epsilon/sigma
@@ -28,17 +31,16 @@
 #include <simd.h>
 #endif
 
-// Compile-time guards for unsupported configurations.
-// Only error out when the SIMD kernel is actually selected for this build;
-// on CUDA/HIP builds, SIMD is forced to NONE and these functions are never
-// called (force.c dispatches to computeForceLJCUDA), so the file just needs
-// to compile to stubs.
-#if defined(NBLIST_SOA) && defined(__SIMD_KERNEL__)
-#error "SIMD kernel not implemented when NBLIST_DATA_LAYOUT is SOA"
-#endif
-#if defined(NBLIST_CSR) && defined(__SIMD_KERNEL__)
-#error "SIMD kernel not implemented when NBLIST_DATA_LAYOUT is CSR"
-#endif
+// NBLIST_AOS/NBLIST_CSR are both contiguous per-atom (neighbors[i*maxneighs+j]
+// and neighbors[neigh_start[i]+j] respectively), so they share the same
+// neighs[k] pointer-walk below. NBLIST_SOA is strided (neighbors[j*Nlocal+i]),
+// so it instead computes a per-lane gather index directly (clamped to
+// maxneighs-1, which neighbor.c's shared AOS/SOA buffer sizing guarantees is
+// always in-bounds regardless of ghost-atom count) and gathers with
+// simd_i32_gather. Both CSR's buffer (padded by VECTOR_WIDTH zeroed sentinel
+// elements) and the shared AOS/SOA buffer (fully zeroed on allocation) are
+// safe for a full-width masked load/gather past an atom's actual neighbor
+// count -- see neighbor.c.
 
 double computeForceLJFullNeigh_simd(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
@@ -81,11 +83,16 @@ double computeForceLJFullNeigh_simd(
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
             int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
-#else
+#elif !defined(NBLIST_SOA)
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
+#ifdef NBLIST_SOA
+            MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
+            MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
+            MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
+#endif
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
             MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
             MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
@@ -107,7 +114,16 @@ double computeForceLJFullNeigh_simd(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
+#ifdef NBLIST_SOA
+                MD_SIMD_INT k_safe  = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(
+                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(
+                    soa_idx, neighbor->neighbors, sizeof(int));
+#else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
+#endif
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 // Direct gather of per-atom LJ params (avoids type index computation)
@@ -225,11 +241,16 @@ double computeForceLJHalfNeigh_simd(
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
             int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
-#else
+#elif !defined(NBLIST_SOA)
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
+#ifdef NBLIST_SOA
+            MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
+            MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
+            MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
+#endif
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
             MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
             MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
@@ -250,7 +271,16 @@ double computeForceLJHalfNeigh_simd(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
+#ifdef NBLIST_SOA
+                MD_SIMD_INT k_safe  = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(
+                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(
+                    soa_idx, neighbor->neighbors, sizeof(int));
+#else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
+#endif
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 // Direct gather of per-atom LJ params (avoids type index computation)
@@ -447,11 +477,16 @@ double computeForceLJFullNeigh_simd_compress(
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
             int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
-#else
+#elif !defined(NBLIST_SOA)
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
+#ifdef NBLIST_SOA
+            MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
+            MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
+            MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
+#endif
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
             MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
             MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
@@ -475,7 +510,16 @@ double computeForceLJFullNeigh_simd_compress(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
+#ifdef NBLIST_SOA
+                MD_SIMD_INT k_safe  = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(
+                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(
+                    soa_idx, neighbor->neighbors, sizeof(int));
+#else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
+#endif
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j);
@@ -627,11 +671,16 @@ double computeForceLJHalfNeigh_simd_compress(
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
             int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
-#else
+#elif !defined(NBLIST_SOA)
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
+#ifdef NBLIST_SOA
+            MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
+            MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
+            MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
+#endif
             MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
             MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
             MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
@@ -653,7 +702,16 @@ double computeForceLJHalfNeigh_simd_compress(
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
+#ifdef NBLIST_SOA
+                MD_SIMD_INT k_safe  = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(
+                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(
+                    soa_idx, neighbor->neighbors, sizeof(int));
+#else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
+#endif
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j);

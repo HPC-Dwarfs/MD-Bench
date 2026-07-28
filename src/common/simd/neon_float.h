@@ -120,6 +120,11 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
     return vaddq_s32(a, b);
 }
 
+static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return vmulq_s32(a, b);
+}
+
 // Create sequence [0, 1, 2, 3] for NEON float (VECTOR_WIDTH=4)
 static inline MD_SIMD_INT simd_i32_seq(void)
 {

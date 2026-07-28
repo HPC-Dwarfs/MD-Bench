@@ -168,6 +168,11 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
     return _mm512_add_epi32(a, b);
 }
 
+static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm512_mullo_epi32(a, b);
+}
+
 static inline MD_SIMD_INT simd_i32_zero(void) { return _mm512_setzero_si512(); }
 
 static inline MD_SIMD_INT simd_i32_seq(void)

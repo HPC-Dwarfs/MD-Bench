@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <allocate.h>
 #include <atom.h>
@@ -304,6 +305,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         if (neighbor->neighbors) free(neighbor->neighbors);
         neighbor->neighbors = (int*)allocate(ALIGNMENT,
             nmax * neighbor->maxneighs * sizeof(int));
+        memset(neighbor->neighbors, 0, nmax * neighbor->maxneighs * sizeof(int));
 #endif
     }
 
@@ -397,7 +399,9 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         int total = t_offsets[actual_nthreads];
 
         if (neighbor->neighbors) free(neighbor->neighbors);
-        neighbor->neighbors = (int*)allocate(ALIGNMENT, MAX(1, total) * sizeof(int));
+        neighbor->neighbors = (int*)allocate(
+            ALIGNMENT, (MAX(1, total) + VECTOR_WIDTH) * sizeof(int));
+        memset(neighbor->neighbors + total, 0, VECTOR_WIDTH * sizeof(int));
 
         for (int i = 0; i < Nlocal; i++)
             neighbor->neigh_start[i] += t_offsets[t_owner[i]];
@@ -599,6 +603,10 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             free(neighbor->neighbors);
             free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
+                atom->Nmax * neighbor->maxneighs * sizeof(int));
+            // See the matching memset above (first-allocation path) for why.
+            memset(neighbor->neighbors,
+                0,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
             is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
         }

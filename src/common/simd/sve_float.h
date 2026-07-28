@@ -187,6 +187,11 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
     return svadd_s32_x(svptrue_b32(), a, b);
 }
 
+static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svmul_s32_x(svptrue_b32(), a, b);
+}
+
 static inline MD_SIMD_INT simd_i32_seq(void) { return svindex_s32(0, 1); }
 
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
