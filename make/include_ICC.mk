@@ -8,6 +8,8 @@ endif
 
 ifeq ($(strip $(ENABLE_OPENMP)),true)
 OPENMP      = -qopenmp
+else
+OPENMP      = -qopenmp-simd
 endif
 
 PROFILE     = #-profile-functions -g  -pg

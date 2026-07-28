@@ -1,7 +1,11 @@
 #CONFIGURE BUILD SYSTEM
+# Optional directory prefix for TARGET/BUILD_DIR (binary, objects, and generated .s files)
+PREFIX_DIR ?=
+# Without `override`, this normalization would silently never run.
+override PREFIX_DIR := $(if $(strip $(PREFIX_DIR)),$(patsubst %/,%,$(strip $(PREFIX_DIR)))/,)
 TAG = $(OPT_TAG)-$(TOOL_TAG)-$(DATA_TYPE)$(TAG_SUFFIX)
-TARGET	   = MDBench-$(TAG)
-BUILD_DIR  = ./build/build-$(TAG)
+TARGET     = $(PREFIX_DIR)/MDBench-$(TAG)
+BUILD_DIR  = $(PREFIX_DIR)/build/build-$(TAG)
 SRC_ROOT   = src
 SRC_DIR    = $(SRC_ROOT)/$(OPT_SCHEME)
 COMMON_DIR = $(SRC_ROOT)/common
