@@ -268,6 +268,13 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
     return svunpklo_s64(svld1_s32(pg, m));
 }
 
+// SVE's svld1 has no alignment requirement, so unaligned is the same load.
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    svbool_t pg = svwhilelt_b32(0, VECTOR_WIDTH);
+    return svunpklo_s64(svld1_s32(pg, m));
+}
+
 static inline void simd_i32_store(int* m, MD_SIMD_INT a)
 {
     // a holds VECTOR_WIDTH 64-bit lanes (sign-extended from int32 by

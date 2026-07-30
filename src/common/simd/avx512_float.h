@@ -211,6 +211,11 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
     return _mm512_load_si512((const MD_SIMD_INT*)m);
 }
 
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return _mm512_loadu_si512((const MD_SIMD_INT*)m);
+}
+
 static inline void simd_i32_store(int* m, MD_SIMD_INT a)
 {
     _mm512_store_si512((MD_SIMD_INT*)m, a);

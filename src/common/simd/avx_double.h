@@ -221,6 +221,10 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return _mm_load_si128((__m128i const*)m);
 }
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return _mm_loadu_si128((__m128i const*)m);
+}
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm_add_epi32(a, b);

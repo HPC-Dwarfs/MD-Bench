@@ -137,6 +137,11 @@ static inline MD_SIMD_INT simd_i32_load(const int* ptr)
 {
     return vld1q_s64((int64_t*)ptr);
 }
+// NEON's vld1q has no alignment requirement, so unaligned is the same load.
+static inline MD_SIMD_INT simd_i32_loadu(const int* ptr)
+{
+    return vld1q_s64((int64_t*)ptr);
+}
 static inline void simd_i32_store(int* ptr, MD_SIMD_INT a)
 {
     // a holds VECTOR_WIDTH 64-bit lanes; narrow back to the 32-bit int array,

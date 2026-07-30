@@ -113,6 +113,8 @@ static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MA
 }
 
 static inline MD_SIMD_INT simd_i32_load(const int* ptr) { return vld1q_s32(ptr); }
+// NEON's vld1q has no alignment requirement, so unaligned is the same load.
+static inline MD_SIMD_INT simd_i32_loadu(const int* ptr) { return vld1q_s32(ptr); }
 static inline void simd_i32_store(int* ptr, MD_SIMD_INT a) { vst1q_s32(ptr, a); }
 static inline MD_SIMD_INT simd_i32_broadcast(int value) { return vdupq_n_s32(value); }
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)

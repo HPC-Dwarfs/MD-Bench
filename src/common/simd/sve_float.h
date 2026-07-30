@@ -222,6 +222,12 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
     return svld1_s32(svptrue_b32(), m);
 }
 
+// SVE's svld1 has no alignment requirement, so unaligned is the same load.
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return svld1_s32(svptrue_b32(), m);
+}
+
 static inline void simd_i32_store(int* m, MD_SIMD_INT a)
 {
     svst1_s32(svptrue_b32(), m, a);

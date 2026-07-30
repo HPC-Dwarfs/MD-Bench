@@ -87,6 +87,7 @@ double computeForceLJFullNeigh_simd(
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
+            int numneighs_aligned     = numneighs - (numneighs % VECTOR_WIDTH);
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
 #ifdef NBLIST_SOA
             MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
@@ -108,9 +109,78 @@ double computeForceLJFullNeigh_simd(
             MD_SIMD_INT tbase_i = simd_i32_broadcast(atom->type[i] * atom->ntypes);
 #endif
 
-            for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
-                // If the last iteration of this loop is separated from the rest, this
-                // mask can be set only there
+            // Aligned main loop: k+VECTOR_WIDTH-1 < numneighs always holds here, so
+            // no bounds mask is needed -- only the cutoff test gates accumulation.
+            for (int k = 0; k < numneighs_aligned; k += VECTOR_WIDTH) {
+#ifdef NBLIST_SOA
+                MD_SIMD_INT k_vec   = simd_i32_add(simd_i32_broadcast(k), simd_i32_seq());
+                MD_SIMD_INT soa_idx = simd_i32_add(
+                    simd_i32_mul(k_vec, nlocal_vec_soa), i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(
+                    soa_idx, neighbor->neighbors, sizeof(int));
+#else
+                MD_SIMD_INT j = simd_i32_loadu(&neighs[k]);
+#endif
+
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
+                    atom->sqrt_epsilon,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
+                    atom->sigma3,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
+#elif LJ_COMB_RULE == LJ_COMB_FULL
+                MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
+                MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij,
+                    atom->sigma6,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij,
+                    atom->epsilon,
+                    sizeof(MD_FLOAT));
+#endif
+
+#ifdef ATOM_POSITION_AOS
+                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                                                &(atom->x[0]),
+                                                sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                &(atom->x[1]),
+                                                sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                &(atom->x[2]),
+                                                sizeof(MD_FLOAT));
+#else
+                MD_SIMD_FLOAT delx       = xtmp -
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT dely = ytmp -
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delz = ztmp -
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+#endif
+                MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
+                    delx,
+                    simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
+                MD_SIMD_MASK cutoff_mask = simd_mask_cond_lt(rsq, cutforcesq_vec);
+                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
+                    simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
+                MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
+                    simd_real_mul(sr6,
+                        simd_real_mul(simd_real_sub(sr6, c05_vec),
+                            simd_real_mul(sr2, eps_vec))));
+
+                fix = simd_real_masked_add(fix, simd_real_mul(delx, force), cutoff_mask);
+                fiy = simd_real_masked_add(fiy, simd_real_mul(dely, force), cutoff_mask);
+                fiz = simd_real_masked_add(fiz, simd_real_mul(delz, force), cutoff_mask);
+            }
+
+            // Tail: whatever is left below one full VECTOR_WIDTH, masked.
+            if (numneighs_aligned < numneighs) {
+                int k = numneighs_aligned;
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
@@ -126,15 +196,12 @@ double computeForceLJFullNeigh_simd(
 #endif
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-                // Direct gather of per-atom LJ params (avoids type index computation)
                 MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
                     atom->sqrt_epsilon,
                     sizeof(MD_FLOAT));
                 MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
                     atom->sigma3,
                     sizeof(MD_FLOAT));
-                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij =
-                // sigma3_i * sigma3_j
                 MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
                 MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
 #elif LJ_COMB_RULE == LJ_COMB_FULL
@@ -245,6 +312,7 @@ double computeForceLJHalfNeigh_simd(
             int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
+            int numneighs_aligned     = numneighs - (numneighs % VECTOR_WIDTH);
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
 #ifdef NBLIST_SOA
             MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
@@ -266,8 +334,97 @@ double computeForceLJHalfNeigh_simd(
             MD_SIMD_INT tbase_i = simd_i32_broadcast(atom->type[i] * atom->ntypes);
 #endif
 
-            for (int k = 0; k < numneighs; k += VECTOR_WIDTH) {
-                // Mask for valid neighbors in this iteration
+            // Aligned main loop: k+VECTOR_WIDTH-1 < numneighs always holds here, so
+            // no bounds mask is needed -- only the cutoff test gates accumulation.
+            for (int k = 0; k < numneighs_aligned; k += VECTOR_WIDTH) {
+#ifdef NBLIST_SOA
+                MD_SIMD_INT k_vec   = simd_i32_add(simd_i32_broadcast(k), simd_i32_seq());
+                MD_SIMD_INT soa_idx = simd_i32_add(
+                    simd_i32_mul(k_vec, nlocal_vec_soa), i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(
+                    soa_idx, neighbor->neighbors, sizeof(int));
+#else
+                MD_SIMD_INT j = simd_i32_loadu(&neighs[k]);
+#endif
+
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
+                    atom->sqrt_epsilon,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
+                    atom->sigma3,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
+#elif LJ_COMB_RULE == LJ_COMB_FULL
+                MD_SIMD_INT tj           = simd_i32_gather(j, atom->type, sizeof(int));
+                MD_SIMD_INT tij          = simd_i32_add(tbase_i, tj);
+                MD_SIMD_FLOAT sigma6_vec = simd_real_gather(tij,
+                    atom->sigma6,
+                    sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij,
+                    atom->epsilon,
+                    sizeof(MD_FLOAT));
+#endif
+
+#ifdef ATOM_POSITION_AOS
+                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                                                &(atom->x[0]),
+                                                sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                &(atom->x[1]),
+                                                sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                &(atom->x[2]),
+                                                sizeof(MD_FLOAT));
+#else
+                MD_SIMD_FLOAT delx       = xtmp -
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT dely = ytmp -
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delz = ztmp -
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+#endif
+                MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
+                    delx,
+                    simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
+                MD_SIMD_MASK cutoff_mask = simd_mask_cond_lt(rsq, cutforcesq_vec);
+                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
+                    simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
+                MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
+                    simd_real_mul(sr6,
+                        simd_real_mul(simd_real_sub(sr6, c05_vec),
+                            simd_real_mul(sr2, eps_vec))));
+
+                MD_SIMD_FLOAT fx_tmp = simd_real_mul(delx, force);
+                MD_SIMD_FLOAT fy_tmp = simd_real_mul(dely, force);
+                MD_SIMD_FLOAT fz_tmp = simd_real_mul(delz, force);
+
+                fix = simd_real_masked_add(fix, fx_tmp, cutoff_mask);
+                fiy = simd_real_masked_add(fiy, fy_tmp, cutoff_mask);
+                fiz = simd_real_masked_add(fiz, fz_tmp, cutoff_mask);
+
+                // Newton's third law via vectorized scatter -- not thread-safe
+                // under OpenMP (no atomic scatter support).
+                MD_SIMD_MASK j_local_mask  = simd_mask_i32_cond_lt(j, nlocal_vec);
+                MD_SIMD_MASK j_update_mask = simd_mask_and(cutoff_mask,
+                    param->method ? cutoff_mask : j_local_mask);
+#ifdef ATOM_POSITION_AOS
+                simd_real_masked_scatter_sub(&atom->fx[0], j3, fx_tmp, j_update_mask);
+                simd_real_masked_scatter_sub(&atom->fx[1], j3, fy_tmp, j_update_mask);
+                simd_real_masked_scatter_sub(&atom->fx[2], j3, fz_tmp, j_update_mask);
+#else
+                simd_real_masked_scatter_sub(atom->fx, j, fx_tmp, j_update_mask);
+                simd_real_masked_scatter_sub(atom->fy, j, fy_tmp, j_update_mask);
+                simd_real_masked_scatter_sub(atom->fz, j, fz_tmp, j_update_mask);
+#endif
+            }
+
+            // Tail: whatever is left below one full VECTOR_WIDTH, masked.
+            if (numneighs_aligned < numneighs) {
+                int k = numneighs_aligned;
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
@@ -283,15 +440,12 @@ double computeForceLJHalfNeigh_simd(
 #endif
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-                // Direct gather of per-atom LJ params (avoids type index computation)
                 MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(j,
                     atom->sqrt_epsilon,
                     sizeof(MD_FLOAT));
                 MD_SIMD_FLOAT sigma3_j   = simd_real_gather(j,
                     atom->sigma3,
                     sizeof(MD_FLOAT));
-                // Geometric combination: eps_ij = sqrt(eps_i) * sqrt(eps_j), sigma6_ij =
-                // sigma3_i * sigma3_j
                 MD_SIMD_FLOAT eps_vec    = simd_real_mul(sqrt_eps_i, sqrt_eps_j);
                 MD_SIMD_FLOAT sigma6_vec = simd_real_mul(sigma3_i, sigma3_j);
 #elif LJ_COMB_RULE == LJ_COMB_FULL
@@ -337,7 +491,6 @@ double computeForceLJHalfNeigh_simd(
                         simd_real_mul(simd_real_sub(sr6, c05_vec),
                             simd_real_mul(sr2, eps_vec))));
 
-                // Compute force components and accumulate for atom i
                 MD_SIMD_FLOAT fx_tmp = simd_real_mul(delx, force);
                 MD_SIMD_FLOAT fy_tmp = simd_real_mul(dely, force);
                 MD_SIMD_FLOAT fz_tmp = simd_real_mul(delz, force);
@@ -346,8 +499,6 @@ double computeForceLJHalfNeigh_simd(
                 fiy = simd_real_masked_add(fiy, fy_tmp, cutoff_mask);
                 fiz = simd_real_masked_add(fiz, fz_tmp, cutoff_mask);
 
-                // Apply Newton's third law using vectorized scatter
-                // Note: not thread-safe under OpenMP (no atomic scatter support)
                 MD_SIMD_MASK j_local_mask  = simd_mask_i32_cond_lt(j, nlocal_vec);
                 MD_SIMD_MASK j_update_mask = simd_mask_and(cutoff_mask,
                     param->method ? cutoff_mask : j_local_mask);
