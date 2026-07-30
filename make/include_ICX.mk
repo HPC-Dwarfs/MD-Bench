@@ -15,7 +15,7 @@ endif
 PROFILE     = #-profile-functions -g  -pg
 
 # SIMD options
-OPTS        = -O3 -ffast-math
+OPTS        = -O3 -ffast-math -funroll-loops
 ifeq ($(strip $(SIMD)),AVX512)
 OPTS        += -xCORE-AVX512 -qopt-zmm-usage=high
 endif

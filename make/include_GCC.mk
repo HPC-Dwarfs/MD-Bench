@@ -35,7 +35,7 @@ endif
 
 # X86 SIMD options
 ifeq ($(strip $(ISA)),X86)
-OPTS = -Ofast -ffast-math -funroll-loops
+OPTS = -O3 -ffast-math -funroll-loops
 DEFINES    += -DNO_ZMM_INTRIN
 ifeq ($(SIMD),AVX512)
 OPTS +=  -march=x86-64-v4 -mavx512f -mprefer-vector-width=512
