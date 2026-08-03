@@ -93,6 +93,7 @@ double setup(Parameter* param,
     ghostNeighbor(comm, atom, param);
 #else
     setupPbc(atom, param);
+    updatePbcCPU(atom, param, true);
 #endif
     binJClusters(param, atom);
     buildNeighbor(atom, neighbor);
@@ -120,6 +121,7 @@ double reneighbour(
     ghostNeighbor(comm, atom, param);
 #else
     setupPbc(atom, param);
+    updatePbcCPU(atom, param, true);
 #endif
     stepStop = getTimeStamp();
     timer[NEIGH_PBC] += stepStop - stepStart;

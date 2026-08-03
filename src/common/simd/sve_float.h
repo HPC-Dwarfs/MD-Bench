@@ -217,6 +217,37 @@ static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int
     return svld1_gather_s32offset_s32(svptrue_b32(), base, offsets);
 }
 
+// Horizontal sum reduction
+static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
+{
+    return svaddv_f32(svptrue_b32(), a);
+}
+
+// Masked scatter-subtract (for half-neighbor lists). SVE has no atomic
+// scatter, so fall back to a scalar loop -- same bitmask-driven shape as
+// the AVX2 fallback (simd_mask_to_u32() + per-lane atomic), rather than
+// svpnext_b32()-based iteration: svpnext_b32() walks to the *next active
+// predicate element*, which does not correspond to a fixed loop index i,
+// so pairing it with base[idx[i]]/vals[i] (indexed by i, not by which lane
+// svpnext_b32() actually advanced to) mismatches values/indices with the
+// wrong lanes -- corrupts memory once any mask lane is inactive.
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    unsigned int m = simd_mask_to_u32(mask);
+    MD_FLOAT vals[VECTOR_WIDTH] __attribute__((aligned(64)));
+    int32_t idx[VECTOR_WIDTH] __attribute__((aligned(64)));
+    svst1_f32(svptrue_b32(), vals, v);
+    svst1_s32(svptrue_b32(), idx, vidx);
+
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        if ((m >> i) & 1) {
+#pragma omp atomic
+            base[idx[i]] -= vals[i];
+        }
+    }
+}
+
 static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return svld1_s32(svptrue_b32(), m);

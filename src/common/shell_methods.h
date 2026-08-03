@@ -82,6 +82,18 @@ double reverse(Comm* comm, Atom* atom, Parameter* param)
     copyForceToGPU(atom);
 #endif
 
+#else
+#ifdef CLUSTER_PAIR
+#ifdef CUDA_TARGET
+    copyForceFromGPU(atom);
+#endif
+
+    reverseGhostForcesCPU(atom, param);
+
+#ifdef CUDA_TARGET
+    copyForceToGPU(atom);
+#endif
+#endif
 #endif
     E = getTimeStamp();
     return E - S;

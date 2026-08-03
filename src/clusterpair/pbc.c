@@ -115,6 +115,29 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
     DEBUG_MESSAGE("updatePbc end\n");
 }
 
+/* fold ghost-cluster reaction forces back onto the real cluster they mirror */
+void reverseGhostForcesCPU(Atom* atom, Parameter* param)
+{
+    DEBUG_MESSAGE("reverseGhostForcesCPU start\n");
+    int ncj = get_ncj_from_nci(atom->Nclusters_local);
+
+    for (int cg = 0; cg < atom->Nclusters_ghost; cg++) {
+        const int cj    = ncj + cg;
+        int cjVecBase   = CJ_VECTOR3_BASE_INDEX(cj);
+        int bmapVecBase = CJ_VECTOR3_BASE_INDEX(atom->border_map[cg]);
+        MD_FLOAT* cjF   = &atom->cl_f[cjVecBase];
+        MD_FLOAT* bmapF = &atom->cl_f[bmapVecBase];
+
+        for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
+            bmapF[CL_X_INDEX_3D(cjj)] += cjF[CL_X_INDEX_3D(cjj)];
+            bmapF[CL_Y_INDEX_3D(cjj)] += cjF[CL_Y_INDEX_3D(cjj)];
+            bmapF[CL_Z_INDEX_3D(cjj)] += cjF[CL_Z_INDEX_3D(cjj)];
+        }
+    }
+
+    DEBUG_MESSAGE("reverseGhostForcesCPU end\n");
+}
+
 /* relocate atoms that have left domain according
  * to periodic boundary conditions */
 void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy)

@@ -780,6 +780,37 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                 (int*)allocate(ALIGNMENT, MAX(1, neighbor->maxneighs) * sizeof(int));
         }
     }
+#elif !defined(NBLIST_AOS)
+    /* Compact padded build buffer into SOA layout */
+    {
+        const int padded_nbN = neighbor->maxneighs;
+        const int nbM        = atom->Nclusters_local;
+        int* soa_neighbors   = (int*)allocate(ALIGNMENT,
+            (size_t)nbM * padded_nbN * sizeof(int));
+        unsigned int* soa_imask = (unsigned int*)allocate(ALIGNMENT,
+            (size_t)nbM * padded_nbN * sizeof(unsigned int));
+
+        for (int ci = 0; ci < nbM; ci++) {
+            int nn = neighbor->numneigh[ci];
+            for (int k = 0; k < nn; k++) {
+                soa_neighbors[k * nbM + ci] = neighs_padded(neighbor->neighbors,
+                    ci,
+                    k,
+                    nbM,
+                    padded_nbN);
+                soa_imask[k * nbM + ci] = neighs_padded(neighbor->neighbors_imask,
+                    ci,
+                    k,
+                    nbM,
+                    padded_nbN);
+            }
+        }
+
+        free(neighbor->neighbors);
+        free(neighbor->neighbors_imask);
+        neighbor->neighbors       = soa_neighbors;
+        neighbor->neighbors_imask = soa_imask;
+    }
 #endif
 
     if (method == eightShell) {
@@ -1033,6 +1064,30 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
         }
     }
+
+#if !defined(NBLIST_AOS)
+    /* Compact padded build buffer into SOA layout */
+    {
+        const int padded_nbN = neighbor->maxneighs;
+        const int nbM        = atom->Nclusters_local;
+        int* soa_neighbors   = (int*)allocate(ALIGNMENT,
+            (size_t)nbM * padded_nbN * sizeof(int));
+
+        for (int sci = 0; sci < nbM; sci++) {
+            int nn = neighbor->numneigh[sci];
+            for (int k = 0; k < nn; k++) {
+                soa_neighbors[k * nbM + sci] = neighs_padded(neighbor->neighbors,
+                    sci,
+                    k,
+                    nbM,
+                    padded_nbN);
+            }
+        }
+
+        free(neighbor->neighbors);
+        neighbor->neighbors = soa_neighbors;
+    }
+#endif
     // if (atom->Nclusters_local > 0) debug_check_supercluster_neighbors(atom, neighbor,
     // 0);
 

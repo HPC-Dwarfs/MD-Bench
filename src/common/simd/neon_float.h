@@ -178,6 +178,36 @@ static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int
     return result;
 }
 
+// Horizontal sum reduction
+static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a) { return vaddvq_f32(a); }
+
+// Masked scatter-subtract (for half-neighbor lists)
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    MD_FLOAT vals[4] __attribute__((aligned(16)));
+    int32_t idx[4] __attribute__((aligned(16)));
+    vst1q_f32(vals, v);
+    vst1q_s32(idx, vidx);
+
+    if (vgetq_lane_u32(mask, 0)) {
+#pragma omp atomic
+        base[idx[0]] -= vals[0];
+    }
+    if (vgetq_lane_u32(mask, 1)) {
+#pragma omp atomic
+        base[idx[1]] -= vals[1];
+    }
+    if (vgetq_lane_u32(mask, 2)) {
+#pragma omp atomic
+        base[idx[2]] -= vals[2];
+    }
+    if (vgetq_lane_u32(mask, 3)) {
+#pragma omp atomic
+        base[idx[3]] -= vals[3];
+    }
+}
+
 static inline MD_SIMD_FLOAT simd_real_gather(
     MD_SIMD_INT vidx, MD_FLOAT* base, const int scale)
 {

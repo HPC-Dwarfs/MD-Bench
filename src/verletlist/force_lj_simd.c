@@ -144,22 +144,22 @@ double computeForceLJFullNeigh_simd(
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
                                                 &(atom->x[0]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
                                                 &(atom->x[1]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
                                                 &(atom->x[2]),
-                                                sizeof(MD_FLOAT));
+                                                sizeof(MD_FLOAT)));
 #else
-                MD_SIMD_FLOAT delx       = xtmp -
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp -
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp -
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -217,22 +217,22 @@ double computeForceLJFullNeigh_simd(
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
                                                 &(atom->x[0]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
                                                 &(atom->x[1]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
                                                 &(atom->x[2]),
-                                                sizeof(MD_FLOAT));
+                                                sizeof(MD_FLOAT)));
 #else
-                MD_SIMD_FLOAT delx       = xtmp -
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp -
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp -
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -369,22 +369,22 @@ double computeForceLJHalfNeigh_simd(
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
                                                 &(atom->x[0]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
                                                 &(atom->x[1]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
                                                 &(atom->x[2]),
-                                                sizeof(MD_FLOAT));
+                                                sizeof(MD_FLOAT)));
 #else
-                MD_SIMD_FLOAT delx       = xtmp -
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp -
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp -
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -461,22 +461,22 @@ double computeForceLJHalfNeigh_simd(
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
                                                 &(atom->x[0]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
                                                 &(atom->x[1]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
                                                 &(atom->x[2]),
-                                                sizeof(MD_FLOAT));
+                                                sizeof(MD_FLOAT)));
 #else
-                MD_SIMD_FLOAT delx       = xtmp -
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp -
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp -
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -674,22 +674,22 @@ double computeForceLJFullNeigh_simd_compress(
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j);
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
                                                 &(atom->x[0]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
                                                 &(atom->x[1]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
                                                 &(atom->x[2]),
-                                                sizeof(MD_FLOAT));
+                                                sizeof(MD_FLOAT)));
 #else
-                MD_SIMD_FLOAT delx       = xtmp -
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp -
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp -
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -866,22 +866,22 @@ double computeForceLJHalfNeigh_simd_compress(
 
 #ifdef ATOM_POSITION_AOS
                 MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j);
-                MD_SIMD_FLOAT delx       = xtmp - simd_real_gather(j3,
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
                                                 &(atom->x[0]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely       = ytmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
                                                 &(atom->x[1]),
-                                                sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz       = ztmp - simd_real_gather(j3,
+                                                sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
                                                 &(atom->x[2]),
-                                                sizeof(MD_FLOAT));
+                                                sizeof(MD_FLOAT)));
 #else
-                MD_SIMD_FLOAT delx       = xtmp -
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT dely = ytmp -
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT));
-                MD_SIMD_FLOAT delz = ztmp -
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT));
+                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
+                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
