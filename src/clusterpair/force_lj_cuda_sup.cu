@@ -146,6 +146,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     int* cuda_numneigh,
     int* cuda_neighs,
     unsigned int* cuda_neighs_imask,
+    int* cuda_border_map,
     int maxneighs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
@@ -200,8 +201,12 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     __syncthreads();
 
     const int numneigh_sci = cuda_numneigh[sci];
+    const int ncj_local    = Nclusters_local * SCLUSTER_SIZE;
     for (int k = slice; k < numneigh_sci; k += nslices) {
-        int cj             = neighs(cuda_neighs, sci, k, Nclusters_local, maxneighs);
+        int cj = neighs(cuda_neighs, sci, k, Nclusters_local, maxneighs);
+        /* Resolve a ghost cj to its real mirror before ordering, else a
+         * periodic-boundary pair gets counted from both sides. */
+        int order_cj = (cj < ncj_local) ? cj : cuda_border_map[cj - ncj_local];
         unsigned int imask = neighs(cuda_neighs_imask,
             sci,
             k,
@@ -230,8 +235,8 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
             const int ci = sci * SCLUSTER_SIZE + sci_ci;
-            bool skip    = !((imask >> sci_ci) & 1u) || (ci > cj) ||
-                        (ci == cj && cii >= cjj);
+            bool skip    = !((imask >> sci_ci) & 1u) || (ci > order_cj) ||
+                        (ci == order_cj && cii >= cjj);
 
             if (!skip) {
                 int ai        = sci_ci * CLUSTER_M + cii;
@@ -596,6 +601,7 @@ extern "C" double computeForceLJCudaSup(
             cuda_numneigh_inner,
             cuda_neighbors,
             cuda_neighbors_imask,
+            cuda_border_map,
             neighbor->maxneighs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,

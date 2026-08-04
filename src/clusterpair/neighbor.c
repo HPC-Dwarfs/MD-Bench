@@ -333,6 +333,12 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
     rbb_sq          = rbb_sq * rbb_sq;
     int resize      = 1;
 
+#ifdef CUDA_TARGET
+    /* Ghost cj must be resolved to its real mirror before ordering, else a
+     * periodic-boundary pair gets counted from both sides. */
+    const int ncj_for_order = get_ncj_from_nci(atom->Nclusters_local);
+#endif
+
     /* loop over each atom, storing neighbors */
     while (resize) {
         const int nbM     = atom->Nclusters_local;
@@ -429,9 +435,18 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                     do {
                         m++;
                         cj = loc_bin[m];
+#ifdef CUDA_TARGET
+                        if (neighbor->half_neigh &&
+                            ci_cj0 > (cj < ncj_for_order
+                                             ? cj
+                                             : atom->border_map[cj - ncj_for_order])) {
+                            continue;
+                        }
+#else
                         if (neighbor->half_neigh && ci_cj0 > cj) {
                             continue;
                         }
+#endif
                         jbb_zmin = atom->jclusters[cj].bbminz;
                         jbb_zmax = atom->jclusters[cj].bbmaxz;
                         dl       = ibb_zmin - jbb_zmax;
@@ -447,7 +462,14 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                     jbb_ymax = atom->jclusters[cj].bbmaxy;
 
                     while (m < c) {
+#ifdef CUDA_TARGET
+                        if (!neighbor->half_neigh ||
+                            ci_cj0 <= (cj < ncj_for_order
+                                              ? cj
+                                              : atom->border_map[cj - ncj_for_order])) {
+#else
                         if (!neighbor->half_neigh || ci_cj0 <= cj) {
+#endif
                             dl      = ibb_zmin - jbb_zmax;
                             dh      = jbb_zmin - ibb_zmax;
                             dm      = MAX(dl, dh);
@@ -977,6 +999,10 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
     int resize      = 1;
 
     /* loop over each atom, storing neighbors */
+    /* Ghost cj must be resolved to its real mirror before ordering, else a
+     * periodic-boundary pair gets counted from both sides. */
+    const int ncj_local_for_order = get_ncj_from_nci(atom->Nclusters_local);
+
     while (resize) {
         const int nbM     = atom->Nclusters_local;
         const int nbN     = neighbor->maxneighs;
@@ -1007,7 +1033,11 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                     do {
                         m++;
                         cj = loc_bin[m];
-                        if (neighbor->half_neigh && sci > SCI_FROM_CJ(cj)) {
+                        if (neighbor->half_neigh &&
+                            sci > SCI_FROM_CJ(cj < ncj_local_for_order
+                                                   ? cj
+                                                   : atom->border_map[cj -
+                                                         ncj_local_for_order])) {
                             continue;
                         }
 
@@ -1026,7 +1056,11 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                     jbb_ymax = atom->jclusters[cj].bbmaxy;
 
                     while (m < c) {
-                        if (!neighbor->half_neigh || sci <= SCI_FROM_CJ(cj)) {
+                        if (!neighbor->half_neigh ||
+                            sci <= SCI_FROM_CJ(cj < ncj_local_for_order
+                                                    ? cj
+                                                    : atom->border_map[cj -
+                                                          ncj_local_for_order])) {
                             dl      = ibb_zmin - jbb_zmax;
                             dh      = jbb_zmin - ibb_zmax;
                             dm      = MAX(dl, dh);
