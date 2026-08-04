@@ -86,12 +86,15 @@ double reverse(Comm* comm, Atom* atom, Parameter* param)
 #ifdef CLUSTER_PAIR
 #ifdef CUDA_TARGET
     copyForceFromGPU(atom);
-#endif
-
     reverseGhostForcesCPU(atom, param);
-
-#ifdef CUDA_TARGET
     copyForceToGPU(atom);
+#else
+    /* CPU full-neighbor-list kernels never write reaction forces onto
+     * ghost clusters, so their cl_f slots hold stale/uninitialized data;
+     * only fold them back when the active kernel is half-neighbor. */
+    if (param->half_neigh) {
+        reverseGhostForcesCPU(atom, param);
+    }
 #endif
 #endif
 #endif
