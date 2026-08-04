@@ -69,13 +69,12 @@ static inline MD_SIMD_MASK simd_mask_from_u32(uint32_t a)
 
 static inline uint32_t simd_mask_to_u32(MD_SIMD_MASK mask)
 {
-    svuint32_t seq    = svindex_u32(0, 1);
-    uint32_t result   = 0;
-    MD_SIMD_MASK next = svpnext_b32(svptrue_b32(), mask);
+    svuint32_t seq  = svindex_u32(0, 1);
+    uint32_t result = 0;
+    svbool_t next   = svpfalse_b();
 
-    while (svptest_any(svptrue_b32(), next)) {
-        result |= 1 << svaddv_u32(next, seq);
-        mask = svand_b_z(svptrue_b32(), mask, svnot_b_z(svptrue_b32(), next));
+    while (svptest_any(mask, next = svpnext_b32(mask, next))) {
+        result |= 1u << svaddv_u32(next, seq);
     }
 
     return result;
@@ -106,48 +105,49 @@ static inline MD_SIMD_FLOAT simd_real_reciprocal(MD_SIMD_FLOAT a)
 static inline float simd_real_incr_reduced_sum(
     float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1, MD_SIMD_FLOAT v2, MD_SIMD_FLOAT v3)
 {
-    /*
-    svbool_t    pg = svptrue_b32();
-    svfloat32_t _m, _s;
-    float32_t   sum[4];
+    svbool_t pg = svptrue_b32();
+    float sum[4];
     sum[0] = svadda_f32(pg, 0.0f, v0);
     sum[1] = svadda_f32(pg, 0.0f, v1);
     sum[2] = svadda_f32(pg, 0.0f, v2);
     sum[3] = svadda_f32(pg, 0.0f, v3);
-    pg     = svptrue_pat_b32(SV_VL4);
-    _m     = svld1_f32(pg, m);
-    _s     = svld1_f32(pg, sum);
+#if VECTOR_WIDTH >= 4
+    pg                 = svptrue_pat_b32(SV_VL4);
+    svfloat32_t _m     = svld1_f32(pg, m);
+    svfloat32_t _s     = svld1_f32(pg, sum);
     svst1_f32(pg, m, svadd_f32_x(pg, _m, _s));
     return svadda_f32(pg, 0.0f, _s);
-    */
-
-    MD_SIMD_FLOAT sum0 = svaddp_f32_m(svptrue_b32(), v0, v1);
-    MD_SIMD_FLOAT sum1 = svaddp_f32_m(svptrue_b32(), v2, v3);
-    MD_SIMD_FLOAT odd  = svuzp2_f32(sum0, sum1);
-    MD_SIMD_FLOAT even = svuzp1_f32(sum0, sum1);
-    MD_SIMD_FLOAT sum  = svaddp_f32_m(svptrue_b32(), even, odd);
-
-    MD_SIMD_FLOAT mem = svld1_f32(svptrue_b32(), m);
-    sum               = svadd_f32_m(svptrue_b32(), sum, mem);
-
-    svst1_f32(svptrue_b32(), m, sum);
-    return svaddv_f32(svptrue_b32(), sum);
+#else
+    float res = 0;
+    for (int i = 0; i < 4; i++) {
+        m[i] += sum[i];
+        res += sum[i];
+    }
+    return res;
+#endif
 }
 
 static inline float simd_real_incr_reduced_sum_j2(
      float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
 {
-
-    svfloat32_t sum0 = svaddp_f32_x(svptrue_b32(), v0, v1);
-    svfloat32_t even = svuzp1_f32(sum0, sum0); // [a+b, e+f, ...]
-    svfloat32_t odd  = svuzp2_f32(sum0, sum0);
-    svbool_t pg = svwhilelt_b32(0, 2);
-    MD_SIMD_FLOAT sum  = svaddp_f32_m(pg, even, odd);
-    MD_SIMD_FLOAT mem = svld1_f32(pg, m);
-    sum               = svadd_f32_m(pg, sum, mem);
-
-    svst1_f32(pg, m, sum);
-    return svaddv_f32(pg, sum);
+    svbool_t pg = svptrue_b32();
+    float sum[2];
+    sum[0] = svadda_f32(pg, 0.0f, v0);
+    sum[1] = svadda_f32(pg, 0.0f, v1);
+#if VECTOR_WIDTH >= 2
+    pg                 = svptrue_pat_b32(SV_VL2);
+    svfloat32_t _m     = svld1_f32(pg, m);
+    svfloat32_t _s     = svld1_f32(pg, sum);
+    svst1_f32(pg, m, svadd_f32_x(pg, _m, _s));
+    return svadda_f32(pg, 0.0f, _s);
+#else
+    float res = 0;
+    for (int i = 0; i < 2; i++) {
+        m[i] += sum[i];
+        res += sum[i];
+    }
+    return res;
+#endif
 }
 
 static inline MD_SIMD_FLOAT simd_real_masked_add(
@@ -241,13 +241,7 @@ static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
 }
 
 // Masked scatter-subtract (for half-neighbor lists). SVE has no atomic
-// scatter, so fall back to a scalar loop -- same bitmask-driven shape as
-// the AVX2 fallback (simd_mask_to_u32() + per-lane atomic), rather than
-// svpnext_b32()-based iteration: svpnext_b32() walks to the *next active
-// predicate element*, which does not correspond to a fixed loop index i,
-// so pairing it with base[idx[i]]/vals[i] (indexed by i, not by which lane
-// svpnext_b32() actually advanced to) mismatches values/indices with the
-// wrong lanes -- corrupts memory once any mask lane is inactive.
+// scatter, so fall back to a scalar loop
 static inline void simd_real_masked_scatter_sub(
     MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
 {
