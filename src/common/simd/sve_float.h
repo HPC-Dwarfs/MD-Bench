@@ -35,6 +35,7 @@ static inline MD_SIMD_FLOAT simd_real_gather(
     // return svld1_gather_s32index_f32(svptrue_b32(), base, vidx);
 }
 
+
 static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
 {
     svst1_f32(svptrue_b32(), ptr, vec);
@@ -131,6 +132,22 @@ static inline float simd_real_incr_reduced_sum(
 
     svst1_f32(svptrue_b32(), m, sum);
     return svaddv_f32(svptrue_b32(), sum);
+}
+
+static inline float simd_real_incr_reduced_sum_j2(
+     float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+
+    svfloat32_t sum0 = svaddp_f32_x(svptrue_b32(), v0, v1);
+    svfloat32_t even = svuzp1_f32(sum0, sum0); // [a+b, e+f, ...]
+    svfloat32_t odd  = svuzp2_f32(sum0, sum0);
+    svbool_t pg = svwhilelt_b32(0, 2);
+    MD_SIMD_FLOAT sum  = svaddp_f32_m(pg, even, odd);
+    MD_SIMD_FLOAT mem = svld1_f32(pg, m);
+    sum               = svadd_f32_m(pg, sum, mem);
+
+    svst1_f32(pg, m, sum);
+    return svaddv_f32(pg, sum);
 }
 
 static inline MD_SIMD_FLOAT simd_real_masked_add(

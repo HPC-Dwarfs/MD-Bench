@@ -139,6 +139,28 @@ static inline MD_FLOAT simd_real_incr_reduced_sum(
     */
 }
 
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    svbool_t pg = svptrue_b64();
+    double sum[2];
+    sum[0] = svadda_f64(pg, 0.0, v0);
+    sum[1] = svadda_f64(pg, 0.0, v1);
+#if VECTOR_WIDTH >= 2
+    svfloat64_t _m = svld1_f64(pg, m);               
+    svfloat64_t _s = svld1_f64(pg, sum);            
+    svst1_f64(pg, m, svadd_f64_x(pg, _m, _s));       
+    return svadda_f64(pg, 0.0, _s);                 
+#else
+    double res = 0;
+    for (int i = 0; i < 2; i++) {
+        m[i] += sum[i];
+        res += sum[i];
+    }
+    return res;
+#endif
+}
+
 static inline MD_SIMD_FLOAT simd_real_masked_add(
     MD_SIMD_FLOAT a, MD_SIMD_FLOAT b, MD_SIMD_MASK m)
 {
@@ -226,11 +248,9 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 // Gather integers (for multi-atom-type)
 static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
-    // SVE gather for 32-bit integers with 64-bit indices
-    svint64_t offsets  = svmul_n_s64_x(svptrue_b64(), vidx, sizeof(int));
-    svint32_t gathered = svld1_gather_s64offset_s32(svptrue_b64(), base, offsets);
-    // Sign-extend 32-bit to 64-bit
-    return svunpklo_s64(gathered);
+    // SVE gather: load 32-bit ints with 64-bit byte offsets, sign-extend to 64-bit
+    svint64_t offsets = svmul_n_s64_x(svptrue_b64(), vidx, sizeof(int));
+    return svld1sw_gather_s64offset_s64(svptrue_b64(), (const int32_t*)base, offsets);
 }
 
 // Horizontal sum reduction

@@ -82,7 +82,7 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                                        (sizeof(MD_FLOAT) * 6 + sizeof(int)) +
                                    (double)(stats->num_neighs) *
                                        (sizeof(MD_FLOAT) * ATOM_DIM + sizeof(int)));
-    double avgNeighAtom = (stats->num_neighs * CLUSTER_N) /
+    double avgNeighAtom = (stats->num_neighs * MxN) /
                           (double)(atom->Natoms * (param->ntimes + 1));
     double avgNeighCluster = (double)(stats->num_neighs) /
                              (double)(stats->calculated_forces);

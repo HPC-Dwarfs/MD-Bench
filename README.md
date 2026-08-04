@@ -121,7 +121,7 @@ auto-vectorization
 Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 `gfx942` (MI300X).
 - `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme
-(`auto`/`4xN`/`2xNN`/`gpusimple`)
+(`auto`/`4xN`/`2xN`/`2xNN`/`gpusimple`/`supercluster`)
 - `SUPERCLUSTER_DATA_LAYOUT`: Data layout for super-clustering kernels
 (`AOS3`/`AOS4`/`SOA`)
 - `SUPERCLUSTER_INVERSE_THREAD_MAPPING`: Map `threadIdx.y` to `cii` and

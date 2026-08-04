@@ -13,6 +13,9 @@
 #ifndef __FORCE_H_
 #define __FORCE_H_
 
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
 typedef double (*ComputeForceFunction)(Parameter*, Atom*, Neighbor*, Stats*);
 extern ComputeForceFunction computeForce;
 
@@ -37,6 +40,8 @@ extern double computeForceLJTableCudaSup(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
 extern double computeForceLJ4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ4xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJ2xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJ2xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
@@ -55,12 +60,9 @@ double computeForceLJCudaSup(
 /* Comments from GROMACS:
  *
  * We need to choose if we want 2x(N+N) or 4xN kernels.
- * This can be controlled through CLUSTER_PAIR_KERNEL option:
- * - auto: Automatically choose based on SIMD acceleration and CPU info
- * - 4xN: Force 4xN kernel layout
- * - 2xNN: Force 2xNN kernel layout
+ * This is based on the SIMD acceleration choice and CPU information
+ * detected at runtime.
  *
- * Auto selection behavior:
  * 4xN calculates more (zero) interactions, but has less pair-search
  * work and much better kernel instruction scheduling.
  *
@@ -81,11 +83,12 @@ double computeForceLJCudaSup(
  */
 
 #ifdef CUDA_TARGET
+// GPU
 extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #undef VECTOR_WIDTH
 #define VECTOR_WIDTH 8
 #define CLUSTERPAIR_KERNEL_GPU
-#ifndef CLUSTERPAIR_KERNEL_GPU_SIMPLE
+#ifdef CLUSTERPAIR_KERNEL_AUTO
 #define CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
 #endif
 #define KERNEL_NAME "GPU"
@@ -93,27 +96,32 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define CLUSTER_N   VECTOR_WIDTH
 #define UNROLL_J    1
 #else
+// CPU
 #ifdef USE_REFERENCE_KERNEL
 #define CLUSTERPAIR_KERNEL_REF
 #define KERNEL_NAME "Reference"
 #define CLUSTER_M   1
 #define CLUSTER_N   VECTOR_WIDTH
 #else
-#define CLUSTER_M 4
-
-// Auto selection based on VECTOR_WIDTH and architecture
+// Cluster pair kernels
 #ifdef CLUSTERPAIR_KERNEL_AUTO
-#if (VECTOR_WIDTH > (CLUSTER_M * 2))
-#define CLUSTERPAIR_KERNEL_2XNN
-#else
-#define CLUSTERPAIR_KERNEL_4XN
-#endif
+    #if defined(__ISA_NEON__) || defined(__ISA_SVE__) || defined(__ISA_SVE2__)
+        #define CLUSTERPAIR_KERNEL_2XN
+    #else
+        #define CLUSTER_M 4
+        #if VECTOR_WIDTH > (CLUSTER_M * 2)
+            #define CLUSTERPAIR_KERNEL_2XNN
+        #else
+            #define CLUSTERPAIR_KERNEL_4XN
+        #endif
+    #endif
 #endif
 
 // Define the kernel-specific macros based on which kernel is selected
 #ifdef CLUSTERPAIR_KERNEL_4XN
 #define KERNEL_NAME "Simd4xN"
 #define CLUSTER_N   VECTOR_WIDTH
+#define CLUSTER_M   4
 #define UNROLL_I    4
 #define UNROLL_J    1
 #endif
@@ -121,13 +129,26 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #ifdef CLUSTERPAIR_KERNEL_2XNN
 #define KERNEL_NAME "Simd2xNN"
 #define CLUSTER_N   (VECTOR_WIDTH / 2)
+#define CLUSTER_M   4
 #define UNROLL_I    4
 #define UNROLL_J    2
 #endif
 
+#ifdef CLUSTERPAIR_KERNEL_2XN
+#define KERNEL_NAME "Simd2xN"
+#define CLUSTER_N   VECTOR_WIDTH
+#define CLUSTER_M   2
+#define UNROLL_I    2
+#define UNROLL_J    2
+#endif
+
 // Verify that one of the kernel variants is selected
-#if !defined(CLUSTERPAIR_KERNEL_4XN) && !defined(CLUSTERPAIR_KERNEL_2XNN)
-#error "No cluster pair kernel variant selected"
+#if !defined(CLUSTERPAIR_KERNEL_4XN) && !defined(CLUSTERPAIR_KERNEL_2XNN) && !defined(CLUSTERPAIR_KERNEL_2XN)
+    #error "No cluster pair kernel variant selected"
+#endif
+
+#if defined(CLUSTERPAIR_KERNEL_2XNN) + defined(CLUSTERPAIR_KERNEL_2XN) + defined(CLUSTERPAIR_KERNEL_4XN) > 1
+    #error "Multiple CLUSTERPAIR_KERNEL_ macros defined!"
 #endif
 
 #endif

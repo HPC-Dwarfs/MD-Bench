@@ -44,7 +44,7 @@ INDEX_TRACER ?= false
 COMPUTE_STATS ?= false
 
 # Configurations for clusterpair optimization scheme
-# Cluster pair kernel variant (auto/4xN/2xNN/gpusimple)
+# Cluster pair kernel variant (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 CLUSTER_PAIR_KERNEL ?= auto
 # Data layout for super-clustering kernels (AOS3/AOS4/SOA)
 SUPERCLUSTER_DATA_LAYOUT ?= AOS3
@@ -299,13 +299,17 @@ endif
 ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),auto)
         DEFINES += -DCLUSTERPAIR_KERNEL_AUTO
+    else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),supercluster)
+        DEFINES += -DCLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),gpusimple)
         DEFINES += -DCLUSTERPAIR_KERNEL_GPU_SIMPLE
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),4xN)
         DEFINES += -DCLUSTERPAIR_KERNEL_4XN
+    else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),2xN)
+        DEFINES += -DCLUSTERPAIR_KERNEL_2XN
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),2xNN)
         DEFINES += -DCLUSTERPAIR_KERNEL_2XNN
     else
-        $(error Invalid CLUSTER_PAIR_KERNEL, must be one of: auto, 4xN, 2xNN, gpusimple)
+        $(error Invalid CLUSTER_PAIR_KERNEL, must be one of: auto, 4xN, 2xNN, 2xN, gpusimple, supercluster)
     endif
 endif
