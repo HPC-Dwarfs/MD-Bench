@@ -41,7 +41,7 @@ void initForce(Parameter* param)
 #endif
         break;
     case FF_LJ_TABLE:
-//#if defined(CLUSTERPAIR_KERNEL_REF)
+// #if defined(CLUSTERPAIR_KERNEL_REF)
 #if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJTableRef;
 #else

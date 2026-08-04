@@ -260,8 +260,8 @@ __global__ void computeForceLJCudaFullNeigh(
     int cii = threadIdx.y;
     int cjj = threadIdx.x;
 #else
-    int cii         = threadIdx.x;
-    int cjj         = threadIdx.y;
+    int cii = threadIdx.x;
+    int cjj = threadIdx.y;
 #endif
     int ci_cj0     = CJ0_FROM_CI(ci);
     MD_FLOAT* ci_x = &cuda_cl_x[CI_VECTOR_BASE_INDEX(ci)];
@@ -407,8 +407,8 @@ __global__ void computeForceLJCudaHalfNeigh(
     int cii = threadIdx.y;
     int cjj = threadIdx.x;
 #else
-    int cii         = threadIdx.x;
-    int cjj         = threadIdx.y;
+    int cii = threadIdx.x;
+    int cjj = threadIdx.y;
 #endif
     int ci_cj0     = CJ0_FROM_CI(ci);
     MD_FLOAT* ci_x = &cuda_cl_x[CI_VECTOR_BASE_INDEX(ci)];

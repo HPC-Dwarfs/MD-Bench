@@ -161,8 +161,7 @@ __device__ static inline int computeGhostShifts(MD_FLOAT x,
         if (x >= (xprd - cutneigh) && y < cutneigh && z >= (zprd - cutneigh)) {
             ADDSHIFT(-1, +1, -1);
         }
-        if (x >= (xprd - cutneigh) && y >= (yprd - cutneigh) &&
-            z >= (zprd - cutneigh)) {
+        if (x >= (xprd - cutneigh) && y >= (yprd - cutneigh) && z >= (zprd - cutneigh)) {
             ADDSHIFT(-1, -1, -1);
         }
     }
@@ -311,8 +310,7 @@ void setupPbcCUDA(Atom* atom, Parameter* param)
 
     if (c_offsetsCap < nlocal + 1) {
         c_offsetsCap   = nlocal + 1;
-        c_ghostOffsets = (int*)reallocateGPU(c_ghostOffsets,
-            c_offsetsCap * sizeof(int));
+        c_ghostOffsets = (int*)reallocateGPU(c_ghostOffsets, c_offsetsCap * sizeof(int));
     }
 
     int num_blocks = ceil((float)(nlocal + 1) / (float)num_threads_per_block);

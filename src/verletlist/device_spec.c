@@ -32,7 +32,7 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
     d_neighbor->neighbors   = NULL;
     d_neighbor->neigh_start = (int*)allocateGPU(sizeof(int) * (atom->Nmax + 1));
 #else
-    d_neighbor->neighbors   = (int*)allocateGPU(
+    d_neighbor->neighbors = (int*)allocateGPU(
         sizeof(int) * atom->Nmax * neighbor->maxneighs);
     d_neighbor->neigh_start = NULL;
 #endif

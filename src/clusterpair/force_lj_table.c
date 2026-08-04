@@ -115,8 +115,8 @@ double computeForceLJTableRef(
                                                     : (ci_cj0 != cj || cii != cjj);
 #elif CLUSTER_M < CLUSTER_N
                         cond = neighbor->half_neigh
-                                               ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
-                                               : (ci_cj0 != cj ||
+                                   ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
+                                   : (ci_cj0 != cj ||
                                          cii + CLUSTER_M * (ci & 0x1) != cjj);
 #else
                         cond = neighbor->half_neigh

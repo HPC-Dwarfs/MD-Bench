@@ -145,9 +145,13 @@ double reneighbour(
 // parent aggregate row (only shown with -v/--verbose). Indent (6) + label
 // width (18) match the parent rows' indent (4) + label width (20) so the
 // numeric columns line up.
-static void printTimerSubRow(
-    const char* label, timertype idx, double* sumt, double* mint, double* maxt,
-    double total, int nproc)
+static void printTimerSubRow(const char* label,
+    timertype idx,
+    double* sumt,
+    double* mint,
+    double* maxt,
+    double total,
+    int nproc)
 {
     double avg = sumt[idx] / nproc;
     fprintf(stdout,
@@ -330,7 +334,8 @@ int main(int argc, char** argv)
             printf("--prune-every <int>:  pruning frequency (steps between inner-list "
                    "refresh)\n");
             printf("--reneigh-every <int>: neighbor-list rebuild frequency (steps)\n");
-            printf("--displacement-reneigh: rebuild neighbor list based on atom displacement "
+            printf("--displacement-reneigh: rebuild neighbor list based on atom "
+                   "displacement "
                    "(skin/2 threshold); use --reneigh-every 0 to disable fixed-interval "
                    "rebuild\n");
             printf("--freq <real>:        processor frequency (GHz)\n");
@@ -384,22 +389,22 @@ int main(int argc, char** argv)
     copyDataToCUDADevice(&param, &atom, &neighbor);
 #endif
     barrierComm();
-    timer[TOTAL]   = getTimeStamp();
-    timer[FORCE]   = computeForce(&param, &atom, &neighbor, &stats);
-    timer[NEIGH]              = 0.0;
-    timer[FORWARD]            = 0.0;
-    timer[UPDATE]             = 0.0;
-    timer[BALANCE]            = 0.0;
-    timer[NEIGH_PBC]          = 0.0;
-    timer[NEIGH_BUILD]        = 0.0;
-    timer[NEIGH_PRUNE]        = 0.0;
-    timer[NEIGH_CLUSTERS]     = 0.0;
-    timer[NEIGH_BIN]          = 0.0;
-    timer[INTEGRATE_INITIAL]  = 0.0;
-    timer[INTEGRATE_FINAL]    = 0.0;
-    timer[THERMO]             = 0.0;
-    timer[RENEIGH_CHECK]      = 0.0;
-    timer[REVERSE] = reverse(&comm, &atom, &param);
+    timer[TOTAL]             = getTimeStamp();
+    timer[FORCE]             = computeForce(&param, &atom, &neighbor, &stats);
+    timer[NEIGH]             = 0.0;
+    timer[FORWARD]           = 0.0;
+    timer[UPDATE]            = 0.0;
+    timer[BALANCE]           = 0.0;
+    timer[NEIGH_PBC]         = 0.0;
+    timer[NEIGH_BUILD]       = 0.0;
+    timer[NEIGH_PRUNE]       = 0.0;
+    timer[NEIGH_CLUSTERS]    = 0.0;
+    timer[NEIGH_BIN]         = 0.0;
+    timer[INTEGRATE_INITIAL] = 0.0;
+    timer[INTEGRATE_FINAL]   = 0.0;
+    timer[THERMO]            = 0.0;
+    timer[RENEIGH_CHECK]     = 0.0;
+    timer[REVERSE]           = reverse(&comm, &atom, &param);
 
     if (param.vtk_file != NULL) {
         printvtk(param.vtk_file, &comm, &atom, &param, 0);
@@ -420,7 +425,7 @@ int main(int argc, char** argv)
         bool reneigh = (param.reneigh_every > 0 && !((n + 1) % param.reneigh_every));
         if (!reneigh && param.displacement_reneigh) {
             double checkStart = getTimeStamp();
-            reneigh = needsReneigh(&atom, &param);
+            reneigh           = needsReneigh(&atom, &param);
             timer[RENEIGH_CHECK] += getTimeStamp() - checkStart;
         }
 
@@ -559,7 +564,13 @@ int main(int argc, char** argv)
             100.0 * sumt[NEIGH] / (n * timer[TOTAL]),
             100.0 * (maxt[NEIGH] - mint[NEIGH]) / (sumt[NEIGH] / n));
         if (param.verbose) {
-            printTimerSubRow("Clusters", NEIGH_CLUSTERS, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Clusters",
+                NEIGH_CLUSTERS,
+                sumt,
+                mint,
+                maxt,
+                timer[TOTAL],
+                n);
             printTimerSubRow("Pbc/ghost", NEIGH_PBC, sumt, mint, maxt, timer[TOTAL], n);
             printTimerSubRow("Binning", NEIGH_BIN, sumt, mint, maxt, timer[TOTAL], n);
             printTimerSubRow("Building", NEIGH_BUILD, sumt, mint, maxt, timer[TOTAL], n);
@@ -574,12 +585,28 @@ int main(int argc, char** argv)
             100.0 * sumt[REST] / (n * timer[TOTAL]),
             100.0 * (maxt[REST] - mint[REST]) / (sumt[REST] / n));
         if (param.verbose) {
-            printTimerSubRow(
-                "Integrate initial", INTEGRATE_INITIAL, sumt, mint, maxt, timer[TOTAL], n);
-            printTimerSubRow(
-                "Integrate final", INTEGRATE_FINAL, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Integrate initial",
+                INTEGRATE_INITIAL,
+                sumt,
+                mint,
+                maxt,
+                timer[TOTAL],
+                n);
+            printTimerSubRow("Integrate final",
+                INTEGRATE_FINAL,
+                sumt,
+                mint,
+                maxt,
+                timer[TOTAL],
+                n);
             printTimerSubRow("Thermo output", THERMO, sumt, mint, maxt, timer[TOTAL], n);
-            printTimerSubRow("Reneigh check", RENEIGH_CHECK, sumt, mint, maxt, timer[TOTAL], n);
+            printTimerSubRow("Reneigh check",
+                RENEIGH_CHECK,
+                sumt,
+                mint,
+                maxt,
+                timer[TOTAL],
+                n);
         }
         fprintf(stdout,
             "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",

@@ -72,8 +72,8 @@ double computeForceLJFullNeigh_simd(
     // Cutoff is uniform for all types, broadcast it
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
+    MD_SIMD_FLOAT c48_vec = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec = simd_real_broadcast(0.5);
 
 #pragma omp parallel
     {
@@ -82,9 +82,9 @@ double computeForceLJFullNeigh_simd(
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
-            int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
+            int* neighs = &neighbor->neighbors[neighbor->neigh_start[i]];
 #elif !defined(NBLIST_SOA)
-            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             int numneighs_aligned     = numneighs - (numneighs % VECTOR_WIDTH);
@@ -94,12 +94,12 @@ double computeForceLJFullNeigh_simd(
             MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
             MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
 #endif
-            MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
-            MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
-            MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
-            MD_SIMD_FLOAT fix         = simd_real_zero();
-            MD_SIMD_FLOAT fiy         = simd_real_zero();
-            MD_SIMD_FLOAT fiz         = simd_real_zero();
+            MD_SIMD_FLOAT xtmp = simd_real_broadcast(atom_x(i));
+            MD_SIMD_FLOAT ytmp = simd_real_broadcast(atom_y(i));
+            MD_SIMD_FLOAT ztmp = simd_real_broadcast(atom_z(i));
+            MD_SIMD_FLOAT fix  = simd_real_zero();
+            MD_SIMD_FLOAT fiy  = simd_real_zero();
+            MD_SIMD_FLOAT fiz  = simd_real_zero();
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             // Broadcast per-atom LJ params for atom i (geometric combination)
@@ -114,10 +114,11 @@ double computeForceLJFullNeigh_simd(
             for (int k = 0; k < numneighs_aligned; k += VECTOR_WIDTH) {
 #ifdef NBLIST_SOA
                 MD_SIMD_INT k_vec   = simd_i32_add(simd_i32_broadcast(k), simd_i32_seq());
-                MD_SIMD_INT soa_idx = simd_i32_add(
-                    simd_i32_mul(k_vec, nlocal_vec_soa), i_vec_soa);
-                MD_SIMD_INT j       = simd_i32_gather(
-                    soa_idx, neighbor->neighbors, sizeof(int));
+                MD_SIMD_INT soa_idx = simd_i32_add(simd_i32_mul(k_vec, nlocal_vec_soa),
+                    i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(soa_idx,
+                    neighbor->neighbors,
+                    sizeof(int));
 #else
                 MD_SIMD_INT j = simd_i32_loadu(&neighs[k]);
 #endif
@@ -143,23 +144,20 @@ double computeForceLJFullNeigh_simd(
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
-                                                &(atom->x[0]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
-                                                &(atom->x[1]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
-                                                &(atom->x[2]),
-                                                sizeof(MD_FLOAT)));
-#else
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT)));
+#else
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                    simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                    simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -180,17 +178,19 @@ double computeForceLJFullNeigh_simd(
 
             // Tail: whatever is left below one full VECTOR_WIDTH, masked.
             if (numneighs_aligned < numneighs) {
-                int k = numneighs_aligned;
+                int k                       = numneighs_aligned;
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
 #ifdef NBLIST_SOA
-                MD_SIMD_INT k_safe  = simd_i32_min(
-                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
-                MD_SIMD_INT soa_idx = simd_i32_add(
-                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
-                MD_SIMD_INT j       = simd_i32_gather(
-                    soa_idx, neighbor->neighbors, sizeof(int));
+                MD_SIMD_INT k_safe = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
+                    maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(simd_i32_mul(k_safe, nlocal_vec_soa),
+                    i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(soa_idx,
+                    neighbor->neighbors,
+                    sizeof(int));
 #else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 #endif
@@ -216,23 +216,20 @@ double computeForceLJFullNeigh_simd(
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
-                                                &(atom->x[0]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
-                                                &(atom->x[1]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
-                                                &(atom->x[2]),
-                                                sizeof(MD_FLOAT)));
-#else
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT)));
+#else
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                    simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                    simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -296,9 +293,9 @@ double computeForceLJHalfNeigh_simd(
     // Cutoff is uniform for all types, broadcast it
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(param->cutforce * param->cutforce);
 #endif
-    MD_SIMD_FLOAT c48_vec        = simd_real_broadcast(48.0);
-    MD_SIMD_FLOAT c05_vec        = simd_real_broadcast(0.5);
-    MD_SIMD_INT nlocal_vec       = simd_i32_broadcast(Nlocal);
+    MD_SIMD_FLOAT c48_vec  = simd_real_broadcast(48.0);
+    MD_SIMD_FLOAT c05_vec  = simd_real_broadcast(0.5);
+    MD_SIMD_INT nlocal_vec = simd_i32_broadcast(Nlocal);
 
 #pragma omp parallel
     {
@@ -307,9 +304,9 @@ double computeForceLJHalfNeigh_simd(
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
-            int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
+            int* neighs = &neighbor->neighbors[neighbor->neigh_start[i]];
 #elif !defined(NBLIST_SOA)
-            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             int numneighs_aligned     = numneighs - (numneighs % VECTOR_WIDTH);
@@ -319,12 +316,12 @@ double computeForceLJHalfNeigh_simd(
             MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
             MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
 #endif
-            MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
-            MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
-            MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
-            MD_SIMD_FLOAT fix         = simd_real_zero();
-            MD_SIMD_FLOAT fiy         = simd_real_zero();
-            MD_SIMD_FLOAT fiz         = simd_real_zero();
+            MD_SIMD_FLOAT xtmp = simd_real_broadcast(atom_x(i));
+            MD_SIMD_FLOAT ytmp = simd_real_broadcast(atom_y(i));
+            MD_SIMD_FLOAT ztmp = simd_real_broadcast(atom_z(i));
+            MD_SIMD_FLOAT fix  = simd_real_zero();
+            MD_SIMD_FLOAT fiy  = simd_real_zero();
+            MD_SIMD_FLOAT fiz  = simd_real_zero();
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             // Broadcast per-atom LJ params for atom i (geometric combination)
@@ -339,10 +336,11 @@ double computeForceLJHalfNeigh_simd(
             for (int k = 0; k < numneighs_aligned; k += VECTOR_WIDTH) {
 #ifdef NBLIST_SOA
                 MD_SIMD_INT k_vec   = simd_i32_add(simd_i32_broadcast(k), simd_i32_seq());
-                MD_SIMD_INT soa_idx = simd_i32_add(
-                    simd_i32_mul(k_vec, nlocal_vec_soa), i_vec_soa);
-                MD_SIMD_INT j       = simd_i32_gather(
-                    soa_idx, neighbor->neighbors, sizeof(int));
+                MD_SIMD_INT soa_idx = simd_i32_add(simd_i32_mul(k_vec, nlocal_vec_soa),
+                    i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(soa_idx,
+                    neighbor->neighbors,
+                    sizeof(int));
 #else
                 MD_SIMD_INT j = simd_i32_loadu(&neighs[k]);
 #endif
@@ -368,23 +366,20 @@ double computeForceLJHalfNeigh_simd(
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
-                                                &(atom->x[0]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
-                                                &(atom->x[1]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
-                                                &(atom->x[2]),
-                                                sizeof(MD_FLOAT)));
-#else
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT)));
+#else
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                    simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                    simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -424,17 +419,19 @@ double computeForceLJHalfNeigh_simd(
 
             // Tail: whatever is left below one full VECTOR_WIDTH, masked.
             if (numneighs_aligned < numneighs) {
-                int k = numneighs_aligned;
+                int k                       = numneighs_aligned;
                 MD_SIMD_MASK mask_numneighs = simd_mask_i32_cond_lt(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
 #ifdef NBLIST_SOA
-                MD_SIMD_INT k_safe  = simd_i32_min(
-                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
-                MD_SIMD_INT soa_idx = simd_i32_add(
-                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
-                MD_SIMD_INT j       = simd_i32_gather(
-                    soa_idx, neighbor->neighbors, sizeof(int));
+                MD_SIMD_INT k_safe = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
+                    maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(simd_i32_mul(k_safe, nlocal_vec_soa),
+                    i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(soa_idx,
+                    neighbor->neighbors,
+                    sizeof(int));
 #else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 #endif
@@ -460,23 +457,20 @@ double computeForceLJHalfNeigh_simd(
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j); // j * 3
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
-                                                &(atom->x[0]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
-                                                &(atom->x[1]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
-                                                &(atom->x[2]),
-                                                sizeof(MD_FLOAT)));
-#else
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j); // j * 3
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT)));
+#else
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                    simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                    simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -544,12 +538,18 @@ double computeForceLJHalfNeigh_simd(
 // Computes the LJ force magnitude/r factor for a fully-compacted vector of pairs
 // that have already passed the cutoff check, so (unlike the masked kernels above)
 // no per-lane masking is needed here.
-static inline MD_SIMD_FLOAT ljforce_compressed(Atom* atom, MD_SIMD_INT jv,
-    MD_SIMD_FLOAT dvx, MD_SIMD_FLOAT dvy, MD_SIMD_FLOAT dvz, MD_SIMD_FLOAT c48_vec,
-    MD_SIMD_FLOAT c05_vec, LJ_EXTRA_PARAMS)
+static inline MD_SIMD_FLOAT ljforce_compressed(Atom* atom,
+    MD_SIMD_INT jv,
+    MD_SIMD_FLOAT dvx,
+    MD_SIMD_FLOAT dvy,
+    MD_SIMD_FLOAT dvz,
+    MD_SIMD_FLOAT c48_vec,
+    MD_SIMD_FLOAT c05_vec,
+    LJ_EXTRA_PARAMS)
 {
-    MD_SIMD_FLOAT rsq = simd_real_fma(
-        dvx, dvx, simd_real_fma(dvy, dvy, simd_real_mul(dvz, dvz)));
+    MD_SIMD_FLOAT rsq = simd_real_fma(dvx,
+        dvx,
+        simd_real_fma(dvy, dvy, simd_real_mul(dvz, dvz)));
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     MD_SIMD_FLOAT sqrt_eps_j = simd_real_gather(jv, atom->sqrt_epsilon, sizeof(MD_FLOAT));
@@ -564,8 +564,8 @@ static inline MD_SIMD_FLOAT ljforce_compressed(Atom* atom, MD_SIMD_INT jv,
 #endif
 
     MD_SIMD_FLOAT sr2 = simd_real_reciprocal(rsq);
-    MD_SIMD_FLOAT sr6 = simd_real_mul(
-        sr2, simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
+    MD_SIMD_FLOAT sr6 = simd_real_mul(sr2,
+        simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
     return simd_real_mul(c48_vec,
         simd_real_mul(sr6,
             simd_real_mul(simd_real_sub(sr6, c05_vec), simd_real_mul(sr2, eps_vec))));
@@ -627,9 +627,9 @@ double computeForceLJFullNeigh_simd_compress(
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
-            int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
+            int* neighs = &neighbor->neighbors[neighbor->neigh_start[i]];
 #elif !defined(NBLIST_SOA)
-            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
@@ -638,13 +638,13 @@ double computeForceLJFullNeigh_simd_compress(
             MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
             MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
 #endif
-            MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
-            MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
-            MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
-            MD_SIMD_FLOAT fix         = simd_real_zero();
-            MD_SIMD_FLOAT fiy         = simd_real_zero();
-            MD_SIMD_FLOAT fiz         = simd_real_zero();
-            int cnt                   = 0;
+            MD_SIMD_FLOAT xtmp = simd_real_broadcast(atom_x(i));
+            MD_SIMD_FLOAT ytmp = simd_real_broadcast(atom_y(i));
+            MD_SIMD_FLOAT ztmp = simd_real_broadcast(atom_z(i));
+            MD_SIMD_FLOAT fix  = simd_real_zero();
+            MD_SIMD_FLOAT fiy  = simd_real_zero();
+            MD_SIMD_FLOAT fiz  = simd_real_zero();
+            int cnt            = 0;
 
             // Zero buf_j so that any not-yet-written slots read by a partial
             // epilogue flush are safe gather indices (0), not stack garbage.
@@ -662,34 +662,33 @@ double computeForceLJFullNeigh_simd_compress(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
 #ifdef NBLIST_SOA
-                MD_SIMD_INT k_safe  = simd_i32_min(
-                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
-                MD_SIMD_INT soa_idx = simd_i32_add(
-                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
-                MD_SIMD_INT j       = simd_i32_gather(
-                    soa_idx, neighbor->neighbors, sizeof(int));
+                MD_SIMD_INT k_safe = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
+                    maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(simd_i32_mul(k_safe, nlocal_vec_soa),
+                    i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(soa_idx,
+                    neighbor->neighbors,
+                    sizeof(int));
 #else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j);
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
-                                                &(atom->x[0]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
-                                                &(atom->x[1]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
-                                                &(atom->x[2]),
-                                                sizeof(MD_FLOAT)));
-#else
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j);
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT)));
+#else
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                    simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                    simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -718,12 +717,18 @@ double computeForceLJFullNeigh_simd_compress(
                 }
 
                 while (cnt >= VECTOR_WIDTH) {
-                    MD_SIMD_INT jv    = simd_i32_load(buf_j);
-                    MD_SIMD_FLOAT dvx = simd_real_load(buf_delx);
-                    MD_SIMD_FLOAT dvy = simd_real_load(buf_dely);
-                    MD_SIMD_FLOAT dvz = simd_real_load(buf_delz);
-                    MD_SIMD_FLOAT force = ljforce_compressed(
-                        atom, jv, dvx, dvy, dvz, c48_vec, c05_vec, LJ_EXTRA_ARGS);
+                    MD_SIMD_INT jv      = simd_i32_load(buf_j);
+                    MD_SIMD_FLOAT dvx   = simd_real_load(buf_delx);
+                    MD_SIMD_FLOAT dvy   = simd_real_load(buf_dely);
+                    MD_SIMD_FLOAT dvz   = simd_real_load(buf_delz);
+                    MD_SIMD_FLOAT force = ljforce_compressed(atom,
+                        jv,
+                        dvx,
+                        dvy,
+                        dvz,
+                        c48_vec,
+                        c05_vec,
+                        LJ_EXTRA_ARGS);
 
                     fix = simd_real_masked_add(fix, simd_real_mul(dvx, force), all_true);
                     fiy = simd_real_masked_add(fiy, simd_real_mul(dvy, force), all_true);
@@ -750,12 +755,18 @@ double computeForceLJFullNeigh_simd_compress(
             // is exhausted is processed as one final masked (partial) vector.
             if (cnt > 0) {
                 MD_SIMD_MASK epilogue_mask = simd_mask_from_u32((1u << cnt) - 1u);
-                MD_SIMD_INT jv    = simd_i32_load(buf_j);
-                MD_SIMD_FLOAT dvx = simd_real_load(buf_delx);
-                MD_SIMD_FLOAT dvy = simd_real_load(buf_dely);
-                MD_SIMD_FLOAT dvz = simd_real_load(buf_delz);
-                MD_SIMD_FLOAT force = ljforce_compressed(
-                    atom, jv, dvx, dvy, dvz, c48_vec, c05_vec, LJ_EXTRA_ARGS);
+                MD_SIMD_INT jv             = simd_i32_load(buf_j);
+                MD_SIMD_FLOAT dvx          = simd_real_load(buf_delx);
+                MD_SIMD_FLOAT dvy          = simd_real_load(buf_dely);
+                MD_SIMD_FLOAT dvz          = simd_real_load(buf_delz);
+                MD_SIMD_FLOAT force        = ljforce_compressed(atom,
+                    jv,
+                    dvx,
+                    dvy,
+                    dvz,
+                    c48_vec,
+                    c05_vec,
+                    LJ_EXTRA_ARGS);
 
                 fix = simd_real_masked_add(fix, simd_real_mul(dvx, force), epilogue_mask);
                 fiy = simd_real_masked_add(fiy, simd_real_mul(dvy, force), epilogue_mask);
@@ -821,9 +832,9 @@ double computeForceLJHalfNeigh_simd_compress(
 #pragma omp for schedule(runtime)
         for (int i = 0; i < Nlocal; i++) {
 #ifdef NBLIST_CSR
-            int* neighs               = &neighbor->neighbors[neighbor->neigh_start[i]];
+            int* neighs = &neighbor->neighbors[neighbor->neigh_start[i]];
 #elif !defined(NBLIST_SOA)
-            int* neighs               = &neighbor->neighbors[i * neighbor->maxneighs];
+            int* neighs = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
             int numneighs             = neighbor->numneigh_inner[i];
             MD_SIMD_INT numneighs_vec = simd_i32_broadcast(numneighs);
@@ -832,13 +843,13 @@ double computeForceLJHalfNeigh_simd_compress(
             MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
             MD_SIMD_INT maxneighs_m1_vec = simd_i32_broadcast(neighbor->maxneighs - 1);
 #endif
-            MD_SIMD_FLOAT xtmp        = simd_real_broadcast(atom_x(i));
-            MD_SIMD_FLOAT ytmp        = simd_real_broadcast(atom_y(i));
-            MD_SIMD_FLOAT ztmp        = simd_real_broadcast(atom_z(i));
-            MD_SIMD_FLOAT fix         = simd_real_zero();
-            MD_SIMD_FLOAT fiy         = simd_real_zero();
-            MD_SIMD_FLOAT fiz         = simd_real_zero();
-            int cnt                   = 0;
+            MD_SIMD_FLOAT xtmp = simd_real_broadcast(atom_x(i));
+            MD_SIMD_FLOAT ytmp = simd_real_broadcast(atom_y(i));
+            MD_SIMD_FLOAT ztmp = simd_real_broadcast(atom_z(i));
+            MD_SIMD_FLOAT fix  = simd_real_zero();
+            MD_SIMD_FLOAT fiy  = simd_real_zero();
+            MD_SIMD_FLOAT fiz  = simd_real_zero();
+            int cnt            = 0;
 
             memset(buf_j, 0, sizeof(buf_j));
 
@@ -854,34 +865,33 @@ double computeForceLJHalfNeigh_simd_compress(
                     simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
                     numneighs_vec);
 #ifdef NBLIST_SOA
-                MD_SIMD_INT k_safe  = simd_i32_min(
-                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()), maxneighs_m1_vec);
-                MD_SIMD_INT soa_idx = simd_i32_add(
-                    simd_i32_mul(k_safe, nlocal_vec_soa), i_vec_soa);
-                MD_SIMD_INT j       = simd_i32_gather(
-                    soa_idx, neighbor->neighbors, sizeof(int));
+                MD_SIMD_INT k_safe = simd_i32_min(
+                    simd_i32_add(simd_i32_broadcast(k), simd_i32_seq()),
+                    maxneighs_m1_vec);
+                MD_SIMD_INT soa_idx = simd_i32_add(simd_i32_mul(k_safe, nlocal_vec_soa),
+                    i_vec_soa);
+                MD_SIMD_INT j       = simd_i32_gather(soa_idx,
+                    neighbor->neighbors,
+                    sizeof(int));
 #else
                 MD_SIMD_INT j = simd_i32_mask_load(&neighs[k], mask_numneighs);
 #endif
 
 #ifdef ATOM_POSITION_AOS
-                MD_SIMD_INT j3           = simd_i32_add(simd_i32_add(j, j), j);
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp, simd_real_gather(j3,
-                                                &(atom->x[0]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT dely       = simd_real_sub(ytmp, simd_real_gather(j3,
-                                                &(atom->x[1]),
-                                                sizeof(MD_FLOAT)));
-                MD_SIMD_FLOAT delz       = simd_real_sub(ztmp, simd_real_gather(j3,
-                                                &(atom->x[2]),
-                                                sizeof(MD_FLOAT)));
-#else
-                MD_SIMD_FLOAT delx       = simd_real_sub(xtmp,
-                                     simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(j, j), j);
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
-                                     simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT)));
                 MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
-                                     simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
+                    simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT)));
+#else
+                MD_SIMD_FLOAT delx = simd_real_sub(xtmp,
+                    simd_real_gather(j, atom->x, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT dely = simd_real_sub(ytmp,
+                    simd_real_gather(j, atom->y, sizeof(MD_FLOAT)));
+                MD_SIMD_FLOAT delz = simd_real_sub(ztmp,
+                    simd_real_gather(j, atom->z, sizeof(MD_FLOAT)));
 #endif
                 MD_SIMD_FLOAT rsq        = simd_real_fma(delx,
                     delx,
@@ -910,12 +920,18 @@ double computeForceLJHalfNeigh_simd_compress(
                 }
 
                 while (cnt >= VECTOR_WIDTH) {
-                    MD_SIMD_INT jv    = simd_i32_load(buf_j);
-                    MD_SIMD_FLOAT dvx = simd_real_load(buf_delx);
-                    MD_SIMD_FLOAT dvy = simd_real_load(buf_dely);
-                    MD_SIMD_FLOAT dvz = simd_real_load(buf_delz);
-                    MD_SIMD_FLOAT force = ljforce_compressed(
-                        atom, jv, dvx, dvy, dvz, c48_vec, c05_vec, LJ_EXTRA_ARGS);
+                    MD_SIMD_INT jv      = simd_i32_load(buf_j);
+                    MD_SIMD_FLOAT dvx   = simd_real_load(buf_delx);
+                    MD_SIMD_FLOAT dvy   = simd_real_load(buf_dely);
+                    MD_SIMD_FLOAT dvz   = simd_real_load(buf_delz);
+                    MD_SIMD_FLOAT force = ljforce_compressed(atom,
+                        jv,
+                        dvx,
+                        dvy,
+                        dvz,
+                        c48_vec,
+                        c05_vec,
+                        LJ_EXTRA_ARGS);
 
                     MD_SIMD_FLOAT fx_tmp = simd_real_mul(dvx, force);
                     MD_SIMD_FLOAT fy_tmp = simd_real_mul(dvy, force);
@@ -932,9 +948,18 @@ double computeForceLJHalfNeigh_simd_compress(
                         param->method ? all_true : j_local_mask);
 #ifdef ATOM_POSITION_AOS
                     MD_SIMD_INT jv3 = simd_i32_add(simd_i32_add(jv, jv), jv);
-                    simd_real_masked_scatter_sub(&atom->fx[0], jv3, fx_tmp, j_update_mask);
-                    simd_real_masked_scatter_sub(&atom->fx[1], jv3, fy_tmp, j_update_mask);
-                    simd_real_masked_scatter_sub(&atom->fx[2], jv3, fz_tmp, j_update_mask);
+                    simd_real_masked_scatter_sub(&atom->fx[0],
+                        jv3,
+                        fx_tmp,
+                        j_update_mask);
+                    simd_real_masked_scatter_sub(&atom->fx[1],
+                        jv3,
+                        fy_tmp,
+                        j_update_mask);
+                    simd_real_masked_scatter_sub(&atom->fx[2],
+                        jv3,
+                        fz_tmp,
+                        j_update_mask);
 #else
                     simd_real_masked_scatter_sub(atom->fx, jv, fx_tmp, j_update_mask);
                     simd_real_masked_scatter_sub(atom->fy, jv, fy_tmp, j_update_mask);
@@ -960,12 +985,18 @@ double computeForceLJHalfNeigh_simd_compress(
 
             if (cnt > 0) {
                 MD_SIMD_MASK epilogue_mask = simd_mask_from_u32((1u << cnt) - 1u);
-                MD_SIMD_INT jv    = simd_i32_load(buf_j);
-                MD_SIMD_FLOAT dvx = simd_real_load(buf_delx);
-                MD_SIMD_FLOAT dvy = simd_real_load(buf_dely);
-                MD_SIMD_FLOAT dvz = simd_real_load(buf_delz);
-                MD_SIMD_FLOAT force = ljforce_compressed(
-                    atom, jv, dvx, dvy, dvz, c48_vec, c05_vec, LJ_EXTRA_ARGS);
+                MD_SIMD_INT jv             = simd_i32_load(buf_j);
+                MD_SIMD_FLOAT dvx          = simd_real_load(buf_delx);
+                MD_SIMD_FLOAT dvy          = simd_real_load(buf_dely);
+                MD_SIMD_FLOAT dvz          = simd_real_load(buf_delz);
+                MD_SIMD_FLOAT force        = ljforce_compressed(atom,
+                    jv,
+                    dvx,
+                    dvy,
+                    dvz,
+                    c48_vec,
+                    c05_vec,
+                    LJ_EXTRA_ARGS);
 
                 MD_SIMD_FLOAT fx_tmp = simd_real_mul(dvx, force);
                 MD_SIMD_FLOAT fy_tmp = simd_real_mul(dvy, force);

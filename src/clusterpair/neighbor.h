@@ -29,14 +29,14 @@
 #define NBNXN_INTERACTION_MASK_DIAG_J8_1 0x0080c0e0U
 
 #ifdef NBLIST_AOS
-#define NBLIST_DATA_LAYOUT          "AoS"
-#define neighs(l, i, j, M, nbr)    (l)[(i) * (nbr)->maxneighs + (j)]
+#define NBLIST_DATA_LAYOUT      "AoS"
+#define neighs(l, i, j, M, nbr) (l)[(i) * (nbr)->maxneighs + (j)]
 #elif defined(NBLIST_CSR)
-#define NBLIST_DATA_LAYOUT          "CSR"
-#define neighs(l, i, j, M, nbr)    (l)[(nbr)->neigh_start[(i)] + (j)]
+#define NBLIST_DATA_LAYOUT      "CSR"
+#define neighs(l, i, j, M, nbr) (l)[(nbr)->neigh_start[(i)] + (j)]
 #else
-#define NBLIST_DATA_LAYOUT          "SoA"
-#define neighs(l, i, j, M, nbr)    (l)[(j) * (M) + (i)]
+#define NBLIST_DATA_LAYOUT      "SoA"
+#define neighs(l, i, j, M, nbr) (l)[(j) * (M) + (i)]
 #endif
 /* Shell list and build-phase scratch always use padded AOS layout */
 #define neighshell(nblist, i, j, N)       nblist[(i) * (N) + (j)]

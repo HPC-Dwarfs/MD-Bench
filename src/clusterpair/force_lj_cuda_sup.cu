@@ -215,7 +215,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
         MD_FLOAT* cj_f = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
 #else
-        fcj_buf         = float3 { 0.0f, 0.0f, 0.0f };
+        fcj_buf = float3 { 0.0f, 0.0f, 0.0f };
 #endif
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM

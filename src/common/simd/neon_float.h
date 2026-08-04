@@ -149,15 +149,15 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
 // the scalar-fallback style already used by simd_i32_gather() in this file.
 static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 {
-    int32_t val0        = (vgetq_lane_u32(mask, 0) != 0) ? ptr[0] : 0;
-    int32_t val1        = (vgetq_lane_u32(mask, 1) != 0) ? ptr[1] : 0;
-    int32_t val2        = (vgetq_lane_u32(mask, 2) != 0) ? ptr[2] : 0;
-    int32_t val3        = (vgetq_lane_u32(mask, 3) != 0) ? ptr[3] : 0;
+    int32_t val0       = (vgetq_lane_u32(mask, 0) != 0) ? ptr[0] : 0;
+    int32_t val1       = (vgetq_lane_u32(mask, 1) != 0) ? ptr[1] : 0;
+    int32_t val2       = (vgetq_lane_u32(mask, 2) != 0) ? ptr[2] : 0;
+    int32_t val3       = (vgetq_lane_u32(mask, 3) != 0) ? ptr[3] : 0;
     MD_SIMD_INT result = vdupq_n_s32(0);
-    result              = vsetq_lane_s32(val0, result, 0);
-    result              = vsetq_lane_s32(val1, result, 1);
-    result              = vsetq_lane_s32(val2, result, 2);
-    result              = vsetq_lane_s32(val3, result, 3);
+    result             = vsetq_lane_s32(val0, result, 0);
+    result             = vsetq_lane_s32(val1, result, 1);
+    result             = vsetq_lane_s32(val2, result, 2);
+    result             = vsetq_lane_s32(val3, result, 3);
     return result;
 }
 
@@ -166,15 +166,15 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 // and plain C indexing (base[idx]) already applies that element stride.
 static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
-    int32_t idx0        = vgetq_lane_s32(vidx, 0);
-    int32_t idx1        = vgetq_lane_s32(vidx, 1);
-    int32_t idx2        = vgetq_lane_s32(vidx, 2);
-    int32_t idx3        = vgetq_lane_s32(vidx, 3);
+    int32_t idx0       = vgetq_lane_s32(vidx, 0);
+    int32_t idx1       = vgetq_lane_s32(vidx, 1);
+    int32_t idx2       = vgetq_lane_s32(vidx, 2);
+    int32_t idx3       = vgetq_lane_s32(vidx, 3);
     MD_SIMD_INT result = vdupq_n_s32(0);
-    result              = vsetq_lane_s32(base[idx0], result, 0);
-    result              = vsetq_lane_s32(base[idx1], result, 1);
-    result              = vsetq_lane_s32(base[idx2], result, 2);
-    result              = vsetq_lane_s32(base[idx3], result, 3);
+    result             = vsetq_lane_s32(base[idx0], result, 0);
+    result             = vsetq_lane_s32(base[idx1], result, 1);
+    result             = vsetq_lane_s32(base[idx2], result, 2);
+    result             = vsetq_lane_s32(base[idx3], result, 3);
     return result;
 }
 

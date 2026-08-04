@@ -17,7 +17,8 @@
 #include <force.h>
 #include <neighbor.h>
 #ifdef NBLIST_CSR
-#error "main-stub is not supported with NBLIST_DATA_LAYOUT=CSR (neighbor list initialization requires two-pass build)"
+#error                                                                                   \
+    "main-stub is not supported with NBLIST_DATA_LAYOUT=CSR (neighbor list initialization requires two-pass build)"
 #endif
 #include <parameter.h>
 #include <pbc.h>
@@ -58,13 +59,13 @@ void init(Parameter* param)
     param->mass        = 1.0;
     param->half_neigh  = 0;
     // Unused
-    param->dt            = 0.005;
-    param->dtforce       = 0.5 * param->dt;
-    param->nstat         = 100;
-    param->temp          = 1.44;
-    param->reneigh_every = 20;
-    param->proc_freq     = 2.4;
-    param->eam_file      = NULL;
+    param->dt               = 0.005;
+    param->dtforce          = 0.5 * param->dt;
+    param->nstat            = 100;
+    param->temp             = 1.44;
+    param->reneigh_every    = 20;
+    param->proc_freq        = 2.4;
+    param->eam_file         = NULL;
     param->super_clustering = 0;
 }
 
@@ -74,7 +75,7 @@ void createNeighbors(
     const int maxneighs      = nneighs * nreps;
     const int ncj            = get_ncj_from_nci(atom->Nclusters_local);
     const unsigned int imask = NBNXN_INTERACTION_MASK_ALL;
-    neighbor->maxneighs = maxneighs;
+    neighbor->maxneighs      = maxneighs;
     neighbor->numneigh = (int*)allocate(ALIGNMENT, atom->Nclusters_max * sizeof(int));
     neighbor->numneigh_masked       = (int*)allocate(ALIGNMENT,
         atom->Nclusters_max * sizeof(int));
@@ -103,10 +104,10 @@ void createNeighbors(
             if (pattern == P_RAND) {
                 int found = 0;
                 do {
-                    int cj                                                = rand() % ncj;
-                    neighs(neighbor->neighbors, ci, k, nbM, neighbor)       = cj;
+                    int cj                                            = rand() % ncj;
+                    neighs(neighbor->neighbors, ci, k, nbM, neighbor) = cj;
                     neighs(neighbor->neighbors_imask, ci, k, nbM, neighbor) = imask;
-                    found                                                  = 0;
+                    found                                                   = 0;
                     for (int l = 0; l < k; l++) {
                         if (neighs(neighbor->neighbors, ci, l, nbM, neighbor) == cj) {
                             found = 1;
@@ -299,8 +300,8 @@ int main(int argc, const char* argv[])
             ci_t[cii]                = rand() % atom->ntypes;
             // All types share the same LJ parameters here, so the geometric
             // combination rule's per-atom sqrt(epsilon)/sigma^3 are uniform too.
-            ci_sqrt_eps[cii]         = sqrt(param.epsilon);
-            ci_sigma3[cii]           = sqrt(param.sigma6);
+            ci_sqrt_eps[cii] = sqrt(param.epsilon);
+            ci_sigma3[cii]   = sqrt(param.sigma6);
             atom->Nlocal++;
         }
 

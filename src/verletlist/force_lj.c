@@ -61,7 +61,7 @@ double computeForceLJFullNeigh(
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -168,7 +168,7 @@ double computeForceLJHalfNeigh(
 // Pragma required to vectorize the inner loop
 #pragma omp simd reduction(+ : fix, fiy, fiz)
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -254,7 +254,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 #endif
 
         for (int k = 0; k < numneigh; k++) {
-            int jatom = neighshell(neighbor->neighshell, i, k, neighbor->maxneighs);
+            int jatom     = neighshell(neighbor->neighshell, i, k, neighbor->maxneighs);
             MD_FLOAT delx = xtmp - atom_x(jatom);
             MD_FLOAT dely = ytmp - atom_y(jatom);
             MD_FLOAT delz = ztmp - atom_z(jatom);

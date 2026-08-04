@@ -11,7 +11,8 @@
 #include <likwid-marker.h>
 //---
 #ifdef NBLIST_CSR
-#error "main-stub is not supported with NBLIST_DATA_LAYOUT=CSR (neighbor list initialization requires two-pass build)"
+#error                                                                                   \
+    "main-stub is not supported with NBLIST_DATA_LAYOUT=CSR (neighbor list initialization requires two-pass build)"
 #endif
 //---
 #include <allocate.h>
@@ -105,7 +106,7 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
                 neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor) = j;
             } else {
                 neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor) = j;
-                j = (j + 1) % m;
+                j                                                         = (j + 1) % m;
             }
         }
 
@@ -115,11 +116,7 @@ void createNeighbors(Atom* atom, Neighbor* neighbor, int pattern, int nneighs, i
                     i,
                     r * nneighs + k,
                     atom->Nlocal,
-                    neighbor) = neighs(neighbor->neighbors,
-                    i,
-                    k,
-                    atom->Nlocal,
-                    neighbor);
+                    neighbor) = neighs(neighbor->neighbors, i, k, atom->Nlocal, neighbor);
             }
         }
 
@@ -250,13 +247,13 @@ int main(int argc, const char* argv[])
             growAtom(atom);
         }
 
-        atom->type[atom->Nlocal] = rand() % atom->ntypes;
-        atom_x(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
-        atom_y(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
-        atom_z(atom->Nlocal)     = (MD_FLOAT)(i)*0.00001;
-        atom_vx(atom->Nlocal)    = 0.0;
-        atom_vy(atom->Nlocal)    = 0.0;
-        atom_vz(atom->Nlocal)    = 0.0;
+        atom->type[atom->Nlocal]         = rand() % atom->ntypes;
+        atom_x(atom->Nlocal)             = (MD_FLOAT)(i) * 0.00001;
+        atom_y(atom->Nlocal)             = (MD_FLOAT)(i) * 0.00001;
+        atom_z(atom->Nlocal)             = (MD_FLOAT)(i) * 0.00001;
+        atom_vx(atom->Nlocal)            = 0.0;
+        atom_vy(atom->Nlocal)            = 0.0;
+        atom_vz(atom->Nlocal)            = 0.0;
         atom->sqrt_epsilon[atom->Nlocal] = sqrt(param.epsilon);
         atom->sigma3[atom->Nlocal]       = sqrt(param.sigma6);
         atom->Nlocal++;

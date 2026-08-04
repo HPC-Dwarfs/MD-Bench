@@ -86,35 +86,35 @@ void initParameter(Parameter* param)
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     param->ntypes = 1;
 #else
-    param->ntypes           = 4;
+    param->ntypes = 4;
 #endif
-    param->epsilon_per_type = NULL;
-    param->sigma_per_type   = NULL;
-    param->ntimes           = 200;
-    param->dt               = 0.005;
-    param->nx               = 32;
-    param->ny               = 32;
-    param->nz               = 32;
-    param->pbc_x            = 1;
-    param->pbc_y            = 1;
-    param->pbc_z            = 1;
-    param->cutforce         = 2.5;
-    param->skin             = 0.3;
-    param->outer_skin       = 0.0;
-    param->cutneigh         = param->cutforce + param->skin + param->outer_skin;
-    param->temp             = 1.44;
-    param->nstat            = 100;
-    param->mass             = 1.0;
-    param->dtforce          = 0.5 * param->dt;
-    param->reneigh_every       = 20;
+    param->epsilon_per_type     = NULL;
+    param->sigma_per_type       = NULL;
+    param->ntimes               = 200;
+    param->dt                   = 0.005;
+    param->nx                   = 32;
+    param->ny                   = 32;
+    param->nz                   = 32;
+    param->pbc_x                = 1;
+    param->pbc_y                = 1;
+    param->pbc_z                = 1;
+    param->cutforce             = 2.5;
+    param->skin                 = 0.3;
+    param->outer_skin           = 0.0;
+    param->cutneigh             = param->cutforce + param->skin + param->outer_skin;
+    param->temp                 = 1.44;
+    param->nstat                = 100;
+    param->mass                 = 1.0;
+    param->dtforce              = 0.5 * param->dt;
+    param->reneigh_every        = 20;
     param->displacement_reneigh = 0;
     param->resort_every         = 400;
-    param->prune_every      = 5;
-    param->x_out_every      = 20;
-    param->v_out_every      = 5;
-    param->half_neigh       = 0;
-    param->proc_freq        = 2.4;
-    param->lj_table_points  = 1000;
+    param->prune_every          = 5;
+    param->x_out_every          = 20;
+    param->v_out_every          = 5;
+    param->half_neigh           = 0;
+    param->proc_freq            = 2.4;
+    param->lj_table_points      = 1000;
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
     param->super_clustering = 1;
 #else

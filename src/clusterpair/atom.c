@@ -1243,12 +1243,12 @@ bool needsReneigh(Atom* atom, Parameter* param)
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
         int base = CI_VECTOR3_BASE_INDEX(ci);
         for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
-            MD_FLOAT dx = atom->cl_x[base + CL_X_INDEX_3D(cii)]
-                        - atom->cl_x_ref[base + CL_X_INDEX_3D(cii)];
-            MD_FLOAT dy = atom->cl_x[base + CL_Y_INDEX_3D(cii)]
-                        - atom->cl_x_ref[base + CL_Y_INDEX_3D(cii)];
-            MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)]
-                        - atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
+            MD_FLOAT dx = atom->cl_x[base + CL_X_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_X_INDEX_3D(cii)];
+            MD_FLOAT dy = atom->cl_x[base + CL_Y_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_Y_INDEX_3D(cii)];
+            MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
             MD_FLOAT d = dx * dx + dy * dy + dz * dz;
             if (d > max_sq) max_sq = d;
         }

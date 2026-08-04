@@ -29,8 +29,8 @@
 // step differs.
 #ifdef __SIMD_NEIGHBOR__
 #include <simd.h>
-#if !defined(__ISA_AVX512__) && !defined(__ISA_AVX2__) && !defined(__ISA_NEON__) \
-    && !defined(__ISA_SVE__) && !defined(__ISA_SVE2__)
+#if !defined(__ISA_AVX512__) && !defined(__ISA_AVX2__) && !defined(__ISA_NEON__) &&      \
+    !defined(__ISA_SVE__) && !defined(__ISA_SVE2__)
 #error "USE_SIMD_NEIGHBOR requires SIMD=AVX2/AVX512/NEON/SVE/SVE2 (needs " \
     "simd_mask_not/simd_mask_i32_cond_eq, not implemented for SSE/AVX so far)"
 #endif
@@ -101,7 +101,7 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     neighbor->neighbors      = NULL;
     neighbor->neigh_start    = NULL;
     is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
-    method = param->method;
+    method       = param->method;
     if (method == halfShell || method == eightShell) {
         param->half_neigh = 1;
         shellMethod       = 1;
@@ -334,10 +334,8 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max                                 \
-                                                     : new_maxneighs)                    \
-    reduction(|                                                                          \
-              : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
+    reduction(| : resize_local)
         for (int i = 0; i < atom->Nlocal; i++) {
             int n         = 0;
             MD_FLOAT xtmp = atom_x(i);
@@ -390,7 +388,9 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
             free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
-            memset(neighbor->neighbors, 0, atom->Nmax * neighbor->maxneighs * sizeof(int));
+            memset(neighbor->neighbors,
+                0,
+                atom->Nmax * neighbor->maxneighs * sizeof(int));
             is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
         }
     }
@@ -409,10 +409,8 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max                                 \
-                                                     : new_maxneighs)                    \
-    reduction(|                                                                          \
-              : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
+    reduction(| : resize_local)
         for (int i = 0; i < atom->Nlocal; i++) {
             int n         = 0;
             MD_FLOAT xtmp = atom_x(i);
@@ -474,9 +472,15 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
 
 #ifdef ATOM_POSITION_AOS
                     MD_SIMD_INT j3   = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
-                    MD_SIMD_FLOAT xj = simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT yj = simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT zj = simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT xj = simd_real_gather(j3,
+                        &(atom->x[0]),
+                        sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT yj = simd_real_gather(j3,
+                        &(atom->x[1]),
+                        sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT zj = simd_real_gather(j3,
+                        &(atom->x[2]),
+                        sizeof(MD_FLOAT));
 #else
                     MD_SIMD_FLOAT xj = simd_real_gather(jvec, atom->x, sizeof(MD_FLOAT));
                     MD_SIMD_FLOAT yj = simd_real_gather(jvec, atom->y, sizeof(MD_FLOAT));
@@ -485,23 +489,27 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                     MD_SIMD_FLOAT delx = simd_real_sub(xtmp_vec, xj);
                     MD_SIMD_FLOAT dely = simd_real_sub(ytmp_vec, yj);
                     MD_SIMD_FLOAT delz = simd_real_sub(ztmp_vec, zj);
-                    MD_SIMD_FLOAT rsq  = simd_real_fma(
-                        delx, delx, simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
+                    MD_SIMD_FLOAT rsq  = simd_real_fma(delx,
+                        delx,
+                        simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
 
-                    MD_SIMD_MASK keep = simd_mask_and(
-                        bound_mask, simd_mask_not(simd_mask_i32_cond_eq(jvec, ivec)));
+                    MD_SIMD_MASK keep = simd_mask_and(bound_mask,
+                        simd_mask_not(simd_mask_i32_cond_eq(jvec, ivec)));
                     if (neighbor->half_neigh) {
-                        keep = simd_mask_and(
-                            keep, simd_mask_not(simd_mask_i32_cond_lt(jvec, ivec)));
+                        keep = simd_mask_and(keep,
+                            simd_mask_not(simd_mask_i32_cond_lt(jvec, ivec)));
                     }
 
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
                     MD_SIMD_FLOAT cutoff_vec = cutoff_vec_single;
 #else
-                    MD_SIMD_INT type_j_vec = simd_i32_gather(jvec, atom->type, sizeof(int));
-                    MD_SIMD_INT tij        = simd_i32_add(tbase_i, type_j_vec);
-                    MD_SIMD_FLOAT cutoff_vec =
-                        simd_real_gather(tij, atom->cutneighsq, sizeof(MD_FLOAT));
+                    MD_SIMD_INT type_j_vec   = simd_i32_gather(jvec,
+                        atom->type,
+                        sizeof(int));
+                    MD_SIMD_INT tij          = simd_i32_add(tbase_i, type_j_vec);
+                    MD_SIMD_FLOAT cutoff_vec = simd_real_gather(tij,
+                        atom->cutneighsq,
+                        sizeof(MD_FLOAT));
 #endif
                     keep = simd_mask_and(keep, simd_mask_cond_lt(rsq, cutoff_vec));
 
@@ -512,8 +520,11 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                         while (bits) {
                             int lane = __builtin_ctz(bits);
                             bits &= bits - 1;
-                            neighs(neighbor->neighbors, i, n, atom->Nlocal, neighbor) =
-                                tmp_j[lane];
+                            neighs(neighbor->neighbors,
+                                i,
+                                n,
+                                atom->Nlocal,
+                                neighbor) = tmp_j[lane];
                             n++;
                         }
                     }
@@ -535,7 +546,9 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
             free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
-            memset(neighbor->neighbors, 0, atom->Nmax * neighbor->maxneighs * sizeof(int));
+            memset(neighbor->neighbors,
+                0,
+                atom->Nmax * neighbor->maxneighs * sizeof(int));
             is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
         }
     }
@@ -554,11 +567,11 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
 #ifdef _OPENMP
     max_threads = omp_get_max_threads();
 #endif
-    int** t_buf    = (int**)malloc(max_threads * sizeof(int*));
-    int*  t_cap    = (int*)malloc(max_threads * sizeof(int));
-    int*  t_pos    = (int*)malloc(max_threads * sizeof(int));
-    int*  t_owner  = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
-    int   init_cap = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
+    int** t_buf  = (int**)malloc(max_threads * sizeof(int*));
+    int* t_cap   = (int*)malloc(max_threads * sizeof(int));
+    int* t_pos   = (int*)malloc(max_threads * sizeof(int));
+    int* t_owner = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
+    int init_cap = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
     for (int t = 0; t < max_threads; t++) {
         t_cap[t] = init_cap;
         t_pos[t] = 0;
@@ -568,21 +581,21 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
 #pragma omp parallel
     {
 #ifdef _OPENMP
-        int tid = omp_get_thread_num();
+        int tid         = omp_get_thread_num();
 #pragma omp single
         actual_nthreads = omp_get_num_threads();
 #else
         int tid = 0;
 #endif
 
-#define CSR_APPEND(jval)                                                       \
-    do {                                                                       \
-        if (t_pos[tid] + n >= t_cap[tid]) {                                    \
-            t_cap[tid] *= 2;                                                   \
-            t_buf[tid]  = (int*)realloc(t_buf[tid], t_cap[tid] * sizeof(int)); \
-        }                                                                      \
-        t_buf[tid][t_pos[tid] + n] = (jval);                                   \
-        n++;                                                                   \
+#define CSR_APPEND(jval)                                                                 \
+    do {                                                                                 \
+        if (t_pos[tid] + n >= t_cap[tid]) {                                              \
+            t_cap[tid] *= 2;                                                             \
+            t_buf[tid] = (int*)realloc(t_buf[tid], t_cap[tid] * sizeof(int));            \
+        }                                                                                \
+        t_buf[tid][t_pos[tid] + n] = (jval);                                             \
+        n++;                                                                             \
     } while (0)
 
 #pragma omp for schedule(static)
@@ -611,7 +624,7 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                     MD_FLOAT delz = ztmp - atom_z(j);
                     MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-                    int type_j        = atom->type[j];
+                    int type_j = atom->type[j];
                     const MD_FLOAT cutoff =
                         atom->cutneighsq[type_i * atom->ntypes + type_j];
 #else
@@ -629,14 +642,14 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
     }
 
     int* t_offsets = (int*)allocate(ALIGNMENT, (actual_nthreads + 1) * sizeof(int));
-    t_offsets[0] = 0;
+    t_offsets[0]   = 0;
     for (int t = 0; t < actual_nthreads; t++)
         t_offsets[t + 1] = t_offsets[t] + t_pos[t];
     int total = t_offsets[actual_nthreads];
 
     if (neighbor->neighbors) free(neighbor->neighbors);
-    neighbor->neighbors = (int*)allocate(
-        ALIGNMENT, (MAX(1, total) + VECTOR_WIDTH) * sizeof(int));
+    neighbor->neighbors = (int*)allocate(ALIGNMENT,
+        (MAX(1, total) + VECTOR_WIDTH) * sizeof(int));
     memset(neighbor->neighbors + total, 0, VECTOR_WIDTH * sizeof(int));
 
     for (int i = 0; i < Nlocal; i++)
@@ -653,7 +666,8 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
     if (new_max != neighbor->maxneighs) {
         neighbor->maxneighs = new_max;
         free(is_inner_buf);
-        is_inner_buf = (int*)allocate(ALIGNMENT, MAX(1, neighbor->maxneighs) * sizeof(int));
+        is_inner_buf = (int*)allocate(ALIGNMENT,
+            MAX(1, neighbor->maxneighs) * sizeof(int));
     }
 
     free(t_owner);
@@ -677,11 +691,11 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
 #ifdef _OPENMP
     max_threads = omp_get_max_threads();
 #endif
-    int** t_buf    = (int**)malloc(max_threads * sizeof(int*));
-    int*  t_cap    = (int*)malloc(max_threads * sizeof(int));
-    int*  t_pos    = (int*)malloc(max_threads * sizeof(int));
-    int*  t_owner  = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
-    int   init_cap = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
+    int** t_buf  = (int**)malloc(max_threads * sizeof(int*));
+    int* t_cap   = (int*)malloc(max_threads * sizeof(int));
+    int* t_pos   = (int*)malloc(max_threads * sizeof(int));
+    int* t_owner = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
+    int init_cap = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
     for (int t = 0; t < max_threads; t++) {
         t_cap[t] = init_cap;
         t_pos[t] = 0;
@@ -691,21 +705,21 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
 #pragma omp parallel
     {
 #ifdef _OPENMP
-        int tid = omp_get_thread_num();
+        int tid         = omp_get_thread_num();
 #pragma omp single
         actual_nthreads = omp_get_num_threads();
 #else
         int tid = 0;
 #endif
 
-#define CSR_APPEND(jval)                                                       \
-    do {                                                                       \
-        if (t_pos[tid] + n >= t_cap[tid]) {                                    \
-            t_cap[tid] *= 2;                                                   \
-            t_buf[tid]  = (int*)realloc(t_buf[tid], t_cap[tid] * sizeof(int)); \
-        }                                                                      \
-        t_buf[tid][t_pos[tid] + n] = (jval);                                   \
-        n++;                                                                   \
+#define CSR_APPEND(jval)                                                                 \
+    do {                                                                                 \
+        if (t_pos[tid] + n >= t_cap[tid]) {                                              \
+            t_cap[tid] *= 2;                                                             \
+            t_buf[tid] = (int*)realloc(t_buf[tid], t_cap[tid] * sizeof(int));            \
+        }                                                                                \
+        t_buf[tid][t_pos[tid] + n] = (jval);                                             \
+        n++;                                                                             \
     } while (0)
 
 #pragma omp for schedule(static)
@@ -769,13 +783,16 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                     MD_SIMD_INT jvec = simd_i32_mask_load(&loc_bin[m], bound_mask);
 
 #ifdef ATOM_POSITION_AOS
-                    MD_SIMD_INT j3 = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
-                    MD_SIMD_FLOAT xj =
-                        simd_real_gather(j3, &(atom->x[0]), sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT yj =
-                        simd_real_gather(j3, &(atom->x[1]), sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT zj =
-                        simd_real_gather(j3, &(atom->x[2]), sizeof(MD_FLOAT));
+                    MD_SIMD_INT j3   = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
+                    MD_SIMD_FLOAT xj = simd_real_gather(j3,
+                        &(atom->x[0]),
+                        sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT yj = simd_real_gather(j3,
+                        &(atom->x[1]),
+                        sizeof(MD_FLOAT));
+                    MD_SIMD_FLOAT zj = simd_real_gather(j3,
+                        &(atom->x[2]),
+                        sizeof(MD_FLOAT));
 #else
                     MD_SIMD_FLOAT xj = simd_real_gather(jvec, atom->x, sizeof(MD_FLOAT));
                     MD_SIMD_FLOAT yj = simd_real_gather(jvec, atom->y, sizeof(MD_FLOAT));
@@ -788,20 +805,23 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                         delx,
                         simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
 
-                    MD_SIMD_MASK keep = simd_mask_and(
-                        bound_mask, simd_mask_not(simd_mask_i32_cond_eq(jvec, ivec)));
+                    MD_SIMD_MASK keep = simd_mask_and(bound_mask,
+                        simd_mask_not(simd_mask_i32_cond_eq(jvec, ivec)));
                     if (neighbor->half_neigh) {
-                        keep = simd_mask_and(
-                            keep, simd_mask_not(simd_mask_i32_cond_lt(jvec, ivec)));
+                        keep = simd_mask_and(keep,
+                            simd_mask_not(simd_mask_i32_cond_lt(jvec, ivec)));
                     }
 
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
                     MD_SIMD_FLOAT cutoff_vec = cutoff_vec_single;
 #else
-                    MD_SIMD_INT type_j_vec = simd_i32_gather(jvec, atom->type, sizeof(int));
-                    MD_SIMD_INT tij        = simd_i32_add(tbase_i, type_j_vec);
-                    MD_SIMD_FLOAT cutoff_vec =
-                        simd_real_gather(tij, atom->cutneighsq, sizeof(MD_FLOAT));
+                    MD_SIMD_INT type_j_vec   = simd_i32_gather(jvec,
+                        atom->type,
+                        sizeof(int));
+                    MD_SIMD_INT tij          = simd_i32_add(tbase_i, type_j_vec);
+                    MD_SIMD_FLOAT cutoff_vec = simd_real_gather(tij,
+                        atom->cutneighsq,
+                        sizeof(MD_FLOAT));
 #endif
                     keep = simd_mask_and(keep, simd_mask_cond_lt(rsq, cutoff_vec));
 
@@ -824,14 +844,14 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
     }
 
     int* t_offsets = (int*)allocate(ALIGNMENT, (actual_nthreads + 1) * sizeof(int));
-    t_offsets[0] = 0;
+    t_offsets[0]   = 0;
     for (int t = 0; t < actual_nthreads; t++)
         t_offsets[t + 1] = t_offsets[t] + t_pos[t];
     int total = t_offsets[actual_nthreads];
 
     if (neighbor->neighbors) free(neighbor->neighbors);
-    neighbor->neighbors = (int*)allocate(
-        ALIGNMENT, (MAX(1, total) + VECTOR_WIDTH) * sizeof(int));
+    neighbor->neighbors = (int*)allocate(ALIGNMENT,
+        (MAX(1, total) + VECTOR_WIDTH) * sizeof(int));
     memset(neighbor->neighbors + total, 0, VECTOR_WIDTH * sizeof(int));
 
     for (int i = 0; i < Nlocal; i++)
@@ -848,7 +868,8 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
     if (new_max != neighbor->maxneighs) {
         neighbor->maxneighs = new_max;
         free(is_inner_buf);
-        is_inner_buf = (int*)allocate(ALIGNMENT, MAX(1, neighbor->maxneighs) * sizeof(int));
+        is_inner_buf = (int*)allocate(ALIGNMENT,
+            MAX(1, neighbor->maxneighs) * sizeof(int));
     }
 
     free(t_owner);
@@ -905,15 +926,12 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
             for (int hi = 0; hi < numneighs; hi++) {
                 if (is_inner[hi]) {
                     if (hi != lo) {
-                        int t_j  = neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
-                        neighs(neighbor->neighbors,
-                            i,
-                            lo,
-                            nlocal,
-                            neighbor) = neighs(neighbor->neighbors, i, hi, nlocal, neighbor);
+                        int t_j = neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
+                        neighs(neighbor->neighbors, i, lo, nlocal, neighbor) =
+                            neighs(neighbor->neighbors, i, hi, nlocal, neighbor);
                         neighs(neighbor->neighbors, i, hi, nlocal, neighbor) = t_j;
-                        is_inner[hi]                                         = is_inner[lo];
-                        is_inner[lo]                                         = 1;
+                        is_inner[hi] = is_inner[lo];
+                        is_inner[lo] = 1;
                     }
                     lo++;
                 }

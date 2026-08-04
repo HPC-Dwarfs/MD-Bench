@@ -68,7 +68,7 @@ double computeForceLJTableFullNeigh(
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -166,7 +166,7 @@ double computeForceLJTableHalfNeigh(
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);

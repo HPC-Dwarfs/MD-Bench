@@ -93,11 +93,12 @@ static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
     // core AVX512F lane shuffle (0x4e swaps the two 256-bit halves), then finish with
     // the same 256 -> 128 -> scalar reduction used by the AVX2 float backend.
     __m512 swapped = _mm512_shuffle_f32x4(a, a, 0x4e);
-    __m256 sum256  = _mm256_add_ps(_mm512_castps512_ps256(a), _mm512_castps512_ps256(swapped));
+    __m256 sum256  = _mm256_add_ps(_mm512_castps512_ps256(a),
+        _mm512_castps512_ps256(swapped));
     __m128 t0      = _mm_add_ps(_mm256_castps256_ps128(sum256),
         _mm256_extractf128_ps(sum256, 0x1));
-    t0 = _mm_add_ps(t0, _mm_permute_ps(t0, _MM_SHUFFLE(1, 0, 3, 2)));
-    t0 = _mm_add_ss(t0, _mm_permute_ps(t0, _MM_SHUFFLE(0, 3, 2, 1)));
+    t0             = _mm_add_ps(t0, _mm_permute_ps(t0, _MM_SHUFFLE(1, 0, 3, 2)));
+    t0             = _mm_add_ss(t0, _mm_permute_ps(t0, _MM_SHUFFLE(0, 3, 2, 1)));
     return _mm_cvtss_f32(t0);
 }
 
