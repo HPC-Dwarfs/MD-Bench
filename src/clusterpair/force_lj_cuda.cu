@@ -888,15 +888,16 @@ extern "C" void copyForceToGPU(Atom* atom)
 extern "C" void growClustersCUDA(Atom* atom)
 {
     if (cuda_cl_x) {
-        cuda_cl_x   = (MD_FLOAT*)reallocateGPU(cuda_cl_x,
-            atom->Nclusters_max * CLUSTER_M * ATOM_DIM * sizeof(MD_FLOAT));
-        cuda_cl_v   = (MD_FLOAT*)reallocateGPU(cuda_cl_v,
-            atom->Nclusters_max * CLUSTER_M * 3 * sizeof(MD_FLOAT));
-        cuda_cl_f   = (MD_FLOAT*)reallocateGPU(cuda_cl_f,
-            atom->Nclusters_max * CLUSTER_M * 3 * sizeof(MD_FLOAT));
-        cuda_natoms = (int*)reallocateGPU(cuda_natoms, atom->Nclusters_max * sizeof(int));
+        cuda_cl_x = (MD_FLOAT*)reallocateGPU(cuda_cl_x,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM * sizeof(MD_FLOAT));
+        cuda_cl_v = (MD_FLOAT*)reallocateGPU(cuda_cl_v,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
+        cuda_cl_f = (MD_FLOAT*)reallocateGPU(cuda_cl_f,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
+        cuda_natoms = (int*)reallocateGPU(cuda_natoms,
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
         cuda_jclusters_natoms = (int*)reallocateGPU(cuda_jclusters_natoms,
-            atom->Nclusters_max * sizeof(int));
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
         cuda_numneigh         = (int*)reallocateGPU(cuda_numneigh,
             atom->Nclusters_max * sizeof(int));
         cuda_numneigh_inner   = (int*)reallocateGPU(cuda_numneigh_inner,
@@ -905,17 +906,17 @@ extern "C" void growClustersCUDA(Atom* atom)
         free(natoms);
         free(ngatoms);
 
-        natoms  = (int*)allocate(ALIGNMENT, atom->Nclusters_max * sizeof(int));
-        ngatoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * sizeof(int));
+        natoms  = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+        ngatoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,
-            atom->Nclusters_max * CLUSTER_M * sizeof(int));
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
 #endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         cuda_cl_sqrt_epsilon = (MD_FLOAT*)reallocateGPU(cuda_cl_sqrt_epsilon,
-            atom->Nclusters_max * CLUSTER_M * sizeof(MD_FLOAT));
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
         cuda_cl_sigma3       = (MD_FLOAT*)reallocateGPU(cuda_cl_sigma3,
-            atom->Nclusters_max * CLUSTER_M * sizeof(MD_FLOAT));
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 #endif
     }
 }

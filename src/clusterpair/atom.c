@@ -914,6 +914,33 @@ void growClusters(Atom* atom, int super_clustering)
             atom->iclusters[ci * SCLUSTER_SIZE].bbmaxz = 0.0;
         }
     }
+#else
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        int ci_vec_base = ci * CLUSTER_M * SCLUSTER_SIZE * 3;
+        for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE * 3; idx++) {
+            atom->cl_x[ci_vec_base + idx] = 0.0;
+            atom->cl_f[ci_vec_base + idx] = 0.0;
+            atom->cl_v[ci_vec_base + idx] = 0.0;
+        }
+    }
+
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        int ci_sca_base = ci * CLUSTER_M * SCLUSTER_SIZE;
+        for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE; idx++) {
+            atom->cl_t[ci_sca_base + idx] = 0;
+        }
+    }
+
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        atom->cluster_bin[ci]                      = 0;
+        atom->iclusters[ci * SCLUSTER_SIZE].natoms = 0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminx = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxx = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminy = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxy = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminz = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxz = 0.0;
+    }
 #endif
 
     if (super_clustering) {

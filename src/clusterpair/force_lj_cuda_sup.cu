@@ -242,12 +242,12 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 MD_FLOAT sqrt_eps_i =
-                    cuda_cl_sqrt_epsilon[sci_sca_base + ci * CLUSTER_N + cii];
-                MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + ci * CLUSTER_N + cii];
+                    cuda_cl_sqrt_epsilon[sci_sca_base + sci_ci * CLUSTER_N + cii];
+                MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + sci_ci * CLUSTER_N + cii];
                 MD_FLOAT sigma6   = sigma3_i * sigma3_j;
                 MD_FLOAT epsilon  = sqrt_eps_i * sqrt_eps_j;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
-                int type_i          = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
+                int type_i          = cuda_cl_t[sci_sca_base + sci_ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
                 MD_FLOAT sigma6     = atom_sigma6[type_index];
@@ -449,12 +449,12 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 MD_FLOAT sqrt_eps_i =
-                    cuda_cl_sqrt_epsilon[sci_sca_base + ci * CLUSTER_N + cii];
-                MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + ci * CLUSTER_N + cii];
+                    cuda_cl_sqrt_epsilon[sci_sca_base + sci_ci * CLUSTER_N + cii];
+                MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + sci_ci * CLUSTER_N + cii];
                 MD_FLOAT sigma6   = sigma3_i * sigma3_j;
                 MD_FLOAT epsilon  = sqrt_eps_i * sqrt_eps_j;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
-                int type_i          = cuda_cl_t[sci_sca_base + ci * CLUSTER_N + cii];
+                int type_i          = cuda_cl_t[sci_sca_base + sci_ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
                 MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
                 MD_FLOAT sigma6     = atom_sigma6[type_index];
