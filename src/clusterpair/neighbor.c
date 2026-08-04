@@ -863,9 +863,9 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
         const int padded_nbN    = neighbor->maxneighs;
         const int nbM           = atom->Nclusters_local;
         int* soa_neighbors      = (int*)allocate(ALIGNMENT,
-            (size_t)nbM * padded_nbN * sizeof(int));
+            (size_t)nmax * padded_nbN * sizeof(int));
         unsigned int* soa_imask = (unsigned int*)allocate(ALIGNMENT,
-            (size_t)nbM * padded_nbN * sizeof(unsigned int));
+            (size_t)nmax * padded_nbN * sizeof(unsigned int));
 
         for (int ci = 0; ci < nbM; ci++) {
             int nn = neighbor->numneigh[ci];
@@ -1152,7 +1152,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
         const int padded_nbN = neighbor->maxneighs;
         const int nbM        = atom->Nclusters_local;
         int* soa_neighbors   = (int*)allocate(ALIGNMENT,
-            (size_t)nbM * padded_nbN * sizeof(int));
+            (size_t)nmax * padded_nbN * sizeof(int));
 
         for (int sci = 0; sci < nbM; sci++) {
             int nn = neighbor->numneigh[sci];
