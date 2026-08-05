@@ -19,7 +19,7 @@ static inline MD_SIMD_FLOAT simd_real_broadcast(float value) { return svdup_f32(
 static inline MD_SIMD_FLOAT simd_real_zero(void) { return svdup_f32(0.0f); }
 static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
-    return svsub_f32_z(svptrue_b32(), a, b);
+    return svsub_f32_x(svptrue_b32(), a, b);
 }
 
 static inline MD_SIMD_FLOAT simd_real_load(const float* ptr)
@@ -43,18 +43,18 @@ static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
 
 static inline MD_SIMD_FLOAT simd_real_add(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
-    return svadd_f32_z(svptrue_b32(), a, b);
+    return svadd_f32_x(svptrue_b32(), a, b);
 }
 
 static inline MD_SIMD_FLOAT simd_real_mul(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
-    return svmul_f32_z(svptrue_b32(), a, b);
+    return svmul_f32_x(svptrue_b32(), a, b);
 }
 
 static inline MD_SIMD_FLOAT simd_real_fma(
     MD_SIMD_FLOAT a, MD_SIMD_FLOAT b, MD_SIMD_FLOAT c)
 {
-    return svmad_f32_z(svptrue_b32(), a, b, c);
+    return svmad_f32_x(svptrue_b32(), a, b, c);
 }
 
 static inline MD_SIMD_MASK simd_mask_from_u32(uint32_t a)
@@ -98,7 +98,7 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 static inline MD_SIMD_FLOAT simd_real_reciprocal(MD_SIMD_FLOAT a)
 {
     MD_SIMD_FLOAT reciprocal = svrecpe_f32(a);
-    reciprocal = svmul_f32_z(svptrue_b32(), reciprocal, svrecps_f32(reciprocal, a));
+    reciprocal = svmul_f32_x(svptrue_b32(), reciprocal, svrecps_f32(reciprocal, a));
     return reciprocal;
 }
 
