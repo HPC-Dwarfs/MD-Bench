@@ -227,6 +227,10 @@ ifeq ($(strip $(USE_SIMD_KERNEL)),true)
     ifeq ($(strip $(SIMD_COMPRESS)),true)
         DEFINES += -D__SIMD_COMPRESS__
     endif
+    # SVE/SVE2 are vector-length-agnostic; use the single-loop VLA kernel there instead of the fixed-width main+tail split.
+    ifneq ($(filter $(strip $(ISA))-$(strip $(SIMD)),ARM-SVE ARM-SVE2),)
+        DEFINES += -D__SIMD_VLA__
+    endif
 endif
 
 ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)

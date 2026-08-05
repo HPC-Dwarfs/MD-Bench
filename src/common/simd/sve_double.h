@@ -218,6 +218,9 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 // Create sequence [0, 1, 2, ...] for SVE
 static inline MD_SIMD_INT simd_i32_seq(void) { return svindex_s64(0, 1); }
 
+// Single whilelt instruction -- the idiomatic SVE way to predicate a loop's remaining trip count, used by the VLA kernels.
+static inline MD_SIMD_MASK simd_mask_from_remaining(int remaining) { return svwhilelt_b64(0, remaining); }
+
 // Integer multiply (for type indices)
 static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 {

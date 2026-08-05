@@ -38,6 +38,12 @@ void initForce(Parameter* param)
         } else {
             computeForce = computeForceLJFullNeigh_simd_compress;
         }
+#elif defined(__SIMD_VLA__)
+        if (param->half_neigh || param->method) {
+            computeForce = computeForceLJHalfNeigh_simd_vla;
+        } else {
+            computeForce = computeForceLJFullNeigh_simd_vla;
+        }
 #else
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJHalfNeigh_simd;

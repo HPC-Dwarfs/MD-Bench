@@ -2121,7 +2121,7 @@ double computeForceLJ2xnFullNeigh(
                 atom->cl_sigma3[ci_sca_base + 0]);
             MD_SIMD_FLOAT sigma3_i1 = simd_real_broadcast(
                 atom->cl_sigma3[ci_sca_base + 1]);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             int ci_sca_base    = CI_SCALAR_BASE_INDEX(ci);
             int* ci_t          = &atom->cl_t[ci_sca_base];
             MD_SIMD_INT tbase0 = simd_i32_broadcast(ci_t[0] * atom->ntypes);
@@ -2135,7 +2135,7 @@ double computeForceLJ2xnFullNeigh(
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2191,7 +2191,7 @@ double computeForceLJ2xnFullNeigh(
 
                 MD_SIMD_FLOAT eps0 = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
                 MD_SIMD_FLOAT eps1 = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
@@ -2282,7 +2282,7 @@ double computeForceLJ2xnFullNeigh(
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2319,7 +2319,7 @@ double computeForceLJ2xnFullNeigh(
 
                 MD_SIMD_FLOAT eps0 = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
                 MD_SIMD_FLOAT eps1 = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
@@ -2501,7 +2501,7 @@ double computeForceLJ2xnHalfNeigh(
                 atom->cl_sigma3[ci_sca_base + 0]);
             MD_SIMD_FLOAT sigma3_i1 = simd_real_broadcast(
                 atom->cl_sigma3[ci_sca_base + 1]);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             int ci_sca_base    = CI_SCALAR_BASE_INDEX(ci);
             int* ci_t          = &atom->cl_t[ci_sca_base];
             MD_SIMD_INT tbase0 = simd_i32_broadcast(ci_t[0] * atom->ntypes);
@@ -2516,7 +2516,7 @@ double computeForceLJ2xnHalfNeigh(
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2568,7 +2568,7 @@ double computeForceLJ2xnHalfNeigh(
                 MD_SIMD_FLOAT sigma6_1    = simd_real_mul(sigma3_i1, sigma3_j);
                 MD_SIMD_FLOAT eps0        = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
                 MD_SIMD_FLOAT eps1        = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
@@ -2668,7 +2668,7 @@ double computeForceLJ2xnHalfNeigh(
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -2700,7 +2700,7 @@ double computeForceLJ2xnHalfNeigh(
                 MD_SIMD_FLOAT sigma6_1    = simd_real_mul(sigma3_i1, sigma3_j);
                 MD_SIMD_FLOAT eps0        = simd_real_mul(sqrt_eps_i0, sqrt_eps_j);
                 MD_SIMD_FLOAT eps1        = simd_real_mul(sqrt_eps_i1, sqrt_eps_j);
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 MD_SIMD_INT tj_tmp = simd_i32_load(cj_t);
                 MD_SIMD_INT tvec0  = simd_i32_add(tbase0, tj_tmp);
                 MD_SIMD_INT tvec1  = simd_i32_add(tbase1, tj_tmp);
