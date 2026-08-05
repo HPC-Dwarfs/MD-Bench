@@ -140,6 +140,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_data_layout.sh
 	@echo "===>  RUNNING  test_mpi"
 	@bash tests/test_mpi.sh
+	@echo "===>  RUNNING  test_openmp"
+	@bash tests/test_openmp.sh
 	@echo "===>  RUNNING  test_displacement_reneigh"
 	@bash tests/test_displacement_reneigh.sh
 
