@@ -206,7 +206,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
         int cj = neighs(cuda_neighs, sci, k, Nclusters_local, maxneighs);
         /* Resolve a ghost cj to its real mirror before ordering, else a
          * periodic-boundary pair gets counted from both sides. */
-        int order_cj = (cj < ncj_local) ? cj : cuda_border_map[cj - ncj_local];
+        int order_cj       = (cj < ncj_local) ? cj : cuda_border_map[cj - ncj_local];
         unsigned int imask = neighs(cuda_neighs_imask,
             sci,
             k,
@@ -248,9 +248,10 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 MD_FLOAT sqrt_eps_i =
                     cuda_cl_sqrt_epsilon[sci_sca_base + sci_ci * CLUSTER_N + cii];
-                MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + sci_ci * CLUSTER_N + cii];
-                MD_FLOAT sigma6   = sigma3_i * sigma3_j;
-                MD_FLOAT epsilon  = sqrt_eps_i * sqrt_eps_j;
+                MD_FLOAT sigma3_i =
+                    cuda_cl_sigma3[sci_sca_base + sci_ci * CLUSTER_N + cii];
+                MD_FLOAT sigma6  = sigma3_i * sigma3_j;
+                MD_FLOAT epsilon = sqrt_eps_i * sqrt_eps_j;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
                 int type_i          = cuda_cl_t[sci_sca_base + sci_ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;
@@ -455,9 +456,10 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 MD_FLOAT sqrt_eps_i =
                     cuda_cl_sqrt_epsilon[sci_sca_base + sci_ci * CLUSTER_N + cii];
-                MD_FLOAT sigma3_i = cuda_cl_sigma3[sci_sca_base + sci_ci * CLUSTER_N + cii];
-                MD_FLOAT sigma6   = sigma3_i * sigma3_j;
-                MD_FLOAT epsilon  = sqrt_eps_i * sqrt_eps_j;
+                MD_FLOAT sigma3_i =
+                    cuda_cl_sigma3[sci_sca_base + sci_ci * CLUSTER_N + cii];
+                MD_FLOAT sigma6  = sigma3_i * sigma3_j;
+                MD_FLOAT epsilon = sqrt_eps_i * sqrt_eps_j;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
                 int type_i          = cuda_cl_t[sci_sca_base + sci_ci * CLUSTER_N + cii];
                 int type_index      = type_i * ntypes + type_j;

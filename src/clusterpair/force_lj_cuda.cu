@@ -888,13 +888,14 @@ extern "C" void copyForceToGPU(Atom* atom)
 extern "C" void growClustersCUDA(Atom* atom)
 {
     if (cuda_cl_x) {
-        cuda_cl_x = (MD_FLOAT*)reallocateGPU(cuda_cl_x,
-            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM * sizeof(MD_FLOAT));
-        cuda_cl_v = (MD_FLOAT*)reallocateGPU(cuda_cl_v,
+        cuda_cl_x             = (MD_FLOAT*)reallocateGPU(cuda_cl_x,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM *
+                sizeof(MD_FLOAT));
+        cuda_cl_v             = (MD_FLOAT*)reallocateGPU(cuda_cl_v,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-        cuda_cl_f = (MD_FLOAT*)reallocateGPU(cuda_cl_f,
+        cuda_cl_f             = (MD_FLOAT*)reallocateGPU(cuda_cl_f,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-        cuda_natoms = (int*)reallocateGPU(cuda_natoms,
+        cuda_natoms           = (int*)reallocateGPU(cuda_natoms,
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
         cuda_jclusters_natoms = (int*)reallocateGPU(cuda_jclusters_natoms,
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
@@ -906,8 +907,10 @@ extern "C" void growClustersCUDA(Atom* atom)
         free(natoms);
         free(ngatoms);
 
-        natoms  = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-        ngatoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+        natoms  = (int*)allocate(ALIGNMENT,
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+        ngatoms = (int*)allocate(ALIGNMENT,
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
