@@ -167,8 +167,9 @@ Supports `outer_skin = <value>` to enable double-cutoff pruning (outer cutoff =
 `cutforce + skin + outer_skin`; default 0.0 disables it).
 - `-f <string>`: force field (`lj`, `eam`, `lj_table`), default `lj`. For
 anything different than `lj` you also need to provide a specific parameter file.
-`lj_table` uses tabulated cubic Hermite spline interpolation and is only
-available for verletlist.
+`lj_table` uses tabulated cubic Hermite spline interpolation. It is available for
+`OPT_SCHEME=verletlist`, and for `OPT_SCHEME=clusterpair` only when built with the
+reference kernel (`USE_REFERENCE_KERNEL=true`).
 - `-i <string>`:  input file with atom positions (dump). MD-Bench supports
 Brookhaven protein data bank (.pdb), GROMACS GROMOS87 (.gro), and LAMMPS dump
 (.dmp) file formats
