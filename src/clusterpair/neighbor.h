@@ -12,6 +12,12 @@
 
 #ifndef __NEIGHBOR_H_
 #define __NEIGHBOR_H_
+// GPU kernels only receive a flat neighbor buffer plus maxneighs (no Neighbor*),
+// so the neighs() macro's AOS/CSR branches (which index through nbr->maxneighs /
+// nbr->neigh_start) cannot be used there; only the SoA branch works.
+#if defined(CUDA_TARGET) && (defined(NBLIST_AOS) || defined(NBLIST_CSR))
+#error "NBLIST_DATA_LAYOUT must be SOA (or auto) for GPU targets (NVCC/HIPCC)"
+#endif
 // Interaction masks from GROMACS, things to remember (maybe these confused just me):
 //   1. These are not "exclusion" masks as the name suggests in GROMACS, but rather
 //      interaction masks (1 = interaction, 0 = no interaction)
