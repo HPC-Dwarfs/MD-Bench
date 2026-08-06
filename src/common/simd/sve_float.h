@@ -97,9 +97,11 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 
 static inline MD_SIMD_FLOAT simd_real_reciprocal(MD_SIMD_FLOAT a)
 {
-    MD_SIMD_FLOAT reciprocal = svrecpe_f32(a);
-    reciprocal = svmul_f32_x(svptrue_b32(), reciprocal, svrecps_f32(reciprocal, a));
-    return reciprocal;
+    // svrecpe_f32(a) + one svrecps_f32 Newton-Raphson step was measured slower here (gather-bound kernel, div hides in memory stalls better than the dependency chain):
+    // MD_SIMD_FLOAT reciprocal = svrecpe_f32(a);
+    // reciprocal = svmul_f32_x(svptrue_b32(), reciprocal, svrecps_f32(reciprocal, a));
+    // return reciprocal;
+    return svdiv_f32_x(svptrue_b32(), svdup_f32(1.0f), a);
 }
 
 static inline float simd_real_incr_reduced_sum(
