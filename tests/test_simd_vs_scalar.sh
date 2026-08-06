@@ -14,6 +14,7 @@ TOOLCHAIN="${TOOLCHAIN:-GCC}"
 ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 DATA_TYPE="${DATA_TYPE:-DP}"
+LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
 
 cd "${ROOT_DIR}"
 
@@ -22,11 +23,11 @@ echo "Building SIMD kernel binary..."
 rm -rf build/ >/dev/null 2>&1 || true  # Force clean build directory
 make clean >/dev/null 2>&1 || true
 if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
+     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
      USE_SIMD_KERNEL=true >/dev/null 2>&1; then
   echo "ERROR: Failed to build SIMD binary" >&2
   make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
+       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
        USE_SIMD_KERNEL=true
   exit 1
 fi
@@ -37,7 +38,7 @@ else
   TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
 fi
 
-SIMD_BIN="./MDBench-VL-${TOOL_TAG}-${DATA_TYPE}"
+SIMD_BIN="./MDBench-VL-SIMD-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 
 # Rename SIMD binary to preserve it before building SCALAR variant
 if [[ ! -x "${SIMD_BIN}" ]]; then
@@ -52,16 +53,16 @@ echo "Building SCALAR kernel binary..."
 rm -rf build/ >/dev/null 2>&1 || true  # Force clean build directory
 make clean >/dev/null 2>&1 || true
 if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
+     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
      USE_SIMD_KERNEL=false >/dev/null 2>&1; then
   echo "ERROR: Failed to build SCALAR binary" >&2
   make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
+       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
        USE_SIMD_KERNEL=false
   exit 1
 fi
 
-SCALAR_BIN="./MDBench-VL-${TOOL_TAG}-${DATA_TYPE}"
+SCALAR_BIN="./MDBench-VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 # Rename to avoid confusion with SIMD binary
 if [[ ! -x "${SCALAR_BIN}" ]]; then
   echo "Binary '${SCALAR_BIN}' is not executable after SCALAR build" >&2

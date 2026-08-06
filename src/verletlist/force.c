@@ -16,16 +16,41 @@ void initForce(Parameter* param)
     case FF_EAM:
         computeForce = computeForceEam;
         break;
+    case FF_LJ_TABLE:
+#ifdef CUDA_TARGET
+        computeForce = computeForceLJTableCUDA;
+#else
+        if (param->half_neigh || param->method) {
+            computeForce = computeForceLJTableHalfNeigh;
+        } else {
+            computeForce = computeForceLJTableFullNeigh;
+        }
+#endif
+        break;
     case FF_LJ:
 #ifdef CUDA_TARGET
         computeForce = computeForceLJCUDA;
 #else
 #ifdef __SIMD_KERNEL__
+#ifdef __SIMD_COMPRESS__
+        if (param->half_neigh || param->method) {
+            computeForce = computeForceLJHalfNeigh_simd_compress;
+        } else {
+            computeForce = computeForceLJFullNeigh_simd_compress;
+        }
+#elif defined(__SIMD_VLA__)
+        if (param->half_neigh || param->method) {
+            computeForce = computeForceLJHalfNeigh_simd_vla;
+        } else {
+            computeForce = computeForceLJFullNeigh_simd_vla;
+        }
+#else
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJHalfNeigh_simd;
         } else {
             computeForce = computeForceLJFullNeigh_simd;
         }
+#endif
 #else
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJHalfNeigh;

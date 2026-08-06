@@ -51,11 +51,26 @@ static inline MD_SIMD_MASK simd_mask_from_u32(uint32_t a)
     return result;
 }
 
-static inline uint32_t simd_mask_to_u32(MD_SIMD_MASK mask) { return 0; }
+// Was previously stubbed to always return 0; nothing in the codebase called it
+// until the vectorized neighbor-list build needed a real bitmask to bit-scan.
+static inline uint32_t simd_mask_to_u32(MD_SIMD_MASK mask)
+{
+    uint32_t bits = 0;
+    if (vgetq_lane_u64(mask, 0)) bits |= 0x1;
+    if (vgetq_lane_u64(mask, 1)) bits |= 0x2;
+    return bits;
+}
 
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return vandq_u64(a, b);
+}
+
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    // No dedicated 64-bit-element vmvnq; bitwise NOT is width-independent, so
+    // reinterpret through the 32-bit view that vmvnq_u32 operates on.
+    return vreinterpretq_u64_u32(vmvnq_u32(vreinterpretq_u32_u64(a)));
 }
 
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
@@ -140,6 +155,19 @@ static inline MD_SIMD_INT simd_i32_load(const int* ptr)
 {
     return vmovl_s32(vld1_s32(ptr));
 }
+// NEON's vld1q has no alignment requirement, so unaligned is the same load.
+static inline MD_SIMD_INT simd_i32_loadu(const int* ptr)
+{
+    return vld1q_s64((int64_t*)ptr);
+}
+static inline void simd_i32_store(int* ptr, MD_SIMD_INT a)
+{
+    // a holds VECTOR_WIDTH 64-bit lanes; narrow back to the 32-bit int array,
+    // matching the scalar-extraction style already used by simd_i32_gather()
+    // and simd_real_masked_scatter_sub() in this file.
+    ptr[0] = (int)vgetq_lane_s64(a, 0);
+    ptr[1] = (int)vgetq_lane_s64(a, 1);
+}
 static inline MD_SIMD_INT simd_i32_broadcast(int value) { return vdupq_n_s64(value); }
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
@@ -172,6 +200,11 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
     // Compare 64-bit integers and convert to mask
     uint64x2_t cmp = vcltq_s64(a, b);
     return cmp;
+}
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return vceqq_s64(a, b);
 }
 
 // Masked integer load
@@ -287,4 +320,11 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
         "simd_i32_load_h_dual_scaled(): Not implemented for NEON with double precision!");
     exit(-1);
     return ret;
+}
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return vsqrtq_f64(v); }
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v) { return vcvtq_s64_f64(v); }
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v) { return vcvtq_f64_s64(v); }
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return vminq_s64(a, b);
 }

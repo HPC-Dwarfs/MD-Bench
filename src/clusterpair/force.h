@@ -19,10 +19,25 @@
 typedef double (*ComputeForceFunction)(Parameter*, Atom*, Neighbor*, Stats*);
 extern ComputeForceFunction computeForce;
 
-enum forcetype { FF_LJ = 0, FF_EAM };
+enum forcetype { FF_LJ = 0, FF_EAM, FF_LJ_TABLE };
 
 extern void initForce(Parameter*);
 extern double computeForceLJRef(Parameter*, Atom*, Neighbor*, Stats*);
+#ifdef USE_REFERENCE_KERNEL
+extern double computeForceLJTableRef(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
+#ifdef CLUSTERPAIR_KERNEL_4XN
+extern double computeForceLJTable4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJTable4xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
+#ifdef CLUSTERPAIR_KERNEL_2XNN
+extern double computeForceLJTable2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJTable2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
+#ifdef CUDA_TARGET
+extern double computeForceLJTableCuda(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJTableCudaSup(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
 extern double computeForceLJ4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ4xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);

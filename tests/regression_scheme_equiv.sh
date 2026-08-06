@@ -27,13 +27,13 @@ if [ "${SIMD}" = "NONE" ]; then
 else
   TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
 fi
-VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}"
+VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 VL_BIN="./MDBench-${VL_TAG}"
 
 echo "Building Cluster-pair binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."
 make clean >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
-CP_TAG="CP-${CLUSTER_PAIR_KERNEL}-${TOOL_TAG}-${DATA_TYPE}"
+CP_TAG="CP-${CLUSTER_PAIR_KERNEL}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 CP_BIN="./MDBench-${CP_TAG}"
 
 for bin in "${VL_BIN}" "${CP_BIN}"; do

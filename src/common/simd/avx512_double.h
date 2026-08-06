@@ -55,6 +55,7 @@ static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _kand_mask8(a, b);
 }
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a) { return _knot_mask8(a); }
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm512_cmp_pd_mask(a, b, _CMP_LT_OQ);
@@ -186,6 +187,10 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return _mm256_load_si256((const MD_SIMD_INT*)m);
 }
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return _mm256_loadu_si256((const MD_SIMD_INT*)m);
+}
 static inline void simd_i32_store(int* m, MD_SIMD_INT a)
 {
     _mm256_store_si256((MD_SIMD_INT*)m, a);
@@ -205,6 +210,10 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm256_cmp_epi32_mask(a, b, _MM_CMPINT_LT);
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_cmp_epi32_mask(a, b, _MM_CMPINT_EQ);
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)
@@ -257,4 +266,17 @@ static inline void simd_real_masked_scatter_sub(
             _Pragma("omp atomic") base[idx[i]] -= vals[i];
         }
     }
+}
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return _mm512_sqrt_pd(v); }
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v)
+{
+    return _mm512_cvttpd_epi32(v);
+}
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
+{
+    return _mm512_cvtepi32_pd(v);
+}
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_min_epi32(a, b);
 }

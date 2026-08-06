@@ -12,6 +12,12 @@
 
 #ifndef __NEIGHBOR_H_
 #define __NEIGHBOR_H_
+// GPU kernels only receive a flat neighbor buffer plus maxneighs (no Neighbor*),
+// so the neighs() macro's AOS/CSR branches (which index through nbr->maxneighs /
+// nbr->neigh_start) cannot be used there; only the SoA branch works.
+#if defined(CUDA_TARGET) && (defined(NBLIST_AOS) || defined(NBLIST_CSR))
+#error "NBLIST_DATA_LAYOUT must be SOA (or auto) for GPU targets (NVCC/HIPCC)"
+#endif
 // Interaction masks from GROMACS, things to remember (maybe these confused just me):
 //   1. These are not "exclusion" masks as the name suggests in GROMACS, but rather
 //      interaction masks (1 = interaction, 0 = no interaction)
@@ -29,12 +35,18 @@
 #define NBNXN_INTERACTION_MASK_DIAG_J8_1 0x0080c0e0U
 
 #ifdef NBLIST_AOS
-#define NBLIST_DATA_LAYOUT         "AoS"
-#define neighs(nblist, i, j, M, N) nblist[(i) * N + (j)]
+#define NBLIST_DATA_LAYOUT      "AoS"
+#define neighs(l, i, j, M, nbr) (l)[(i) * (nbr)->maxneighs + (j)]
+#elif defined(NBLIST_CSR)
+#define NBLIST_DATA_LAYOUT      "CSR"
+#define neighs(l, i, j, M, nbr) (l)[(nbr)->neigh_start[(i)] + (j)]
 #else
-#define NBLIST_DATA_LAYOUT         "SoA"
-#define neighs(nblist, i, j, M, N) nblist[(j) * M + (i)]
+#define NBLIST_DATA_LAYOUT      "SoA"
+#define neighs(l, i, j, M, nbr) (l)[(j) * (M) + (i)]
 #endif
+/* Shell list and build-phase scratch always use padded AOS layout */
+#define neighshell(nblist, i, j, N)       nblist[(i) * (N) + (j)]
+#define neighs_padded(nblist, i, j, M, N) nblist[(i) * (N) + (j)]
 
 typedef struct {
     int every;
@@ -46,6 +58,7 @@ typedef struct {
     int* numneigh_inner_masked;
     int half_neigh;
     int* neighbors;
+    int* neigh_start;
     unsigned int* neighbors_imask;
     // MPI
     int Nshell;

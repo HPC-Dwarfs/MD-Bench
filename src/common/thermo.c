@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <allocate.h>
 #include <force.h>
 #include <thermo.h>
 #include <util.h>
@@ -36,12 +37,12 @@ void setupThermo(Parameter* param, int natoms)
 {
     int maxstat = param->ntimes / param->nstat + 2;
 
-    steparr = (int*)malloc(maxstat * sizeof(int));
-    tmparr  = (MD_FLOAT*)malloc(maxstat * sizeof(MD_FLOAT));
-    engarr  = (MD_FLOAT*)malloc(maxstat * sizeof(MD_FLOAT));
-    prsarr  = (MD_FLOAT*)malloc(maxstat * sizeof(MD_FLOAT));
+    steparr = (int*)allocate(ALIGNMENT, maxstat * sizeof(int));
+    tmparr  = (MD_FLOAT*)allocate(ALIGNMENT, maxstat * sizeof(MD_FLOAT));
+    engarr  = (MD_FLOAT*)allocate(ALIGNMENT, maxstat * sizeof(MD_FLOAT));
+    prsarr  = (MD_FLOAT*)allocate(ALIGNMENT, maxstat * sizeof(MD_FLOAT));
 
-    if (param->force_field == FF_LJ) {
+    if (param->force_field == FF_LJ || param->force_field == FF_LJ_TABLE) {
         mvv2e     = 1.0;
         dof_boltz = (natoms * 3 - 3);
         t_scale   = mvv2e / dof_boltz;

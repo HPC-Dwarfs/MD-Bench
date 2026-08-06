@@ -1,7 +1,10 @@
 #CONFIGURE BUILD SYSTEM
-TAG = $(OPT_TAG)-$(TOOL_TAG)-$(DATA_TYPE)
-TARGET	   = MDBench-$(TAG)
-BUILD_DIR  = ./build/build-$(TAG)
+# Optional directory prefix for TARGET/BUILD_DIR (binary, objects, and generated .s files)
+PREFIX_DIR ?=
+override PREFIX_DIR := $(patsubst %/,%,$(strip $(PREFIX_DIR)))
+TAG = $(OPT_TAG)-$(TOOL_TAG)-$(DATA_TYPE)$(TAG_SUFFIX)
+TARGET     = $(if $(PREFIX_DIR),$(PREFIX_DIR)/,)MDBench-$(TAG)
+BUILD_DIR  = $(if $(PREFIX_DIR),$(PREFIX_DIR)/,)build/build-$(TAG)
 SRC_ROOT   = src
 SRC_DIR    = $(SRC_ROOT)/$(OPT_SCHEME)
 COMMON_DIR = $(SRC_ROOT)/common
@@ -121,6 +124,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/sim_copper_fcc_regression.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_energy_lj on $(TARGET)"
 	@bash tests/regression_energy_lj.sh ./$(TARGET)
+	@echo "===>  RUNNING  regression_lj_table on $(TARGET)"
+	@bash tests/regression_lj_table.sh ./$(TARGET)
 	@echo "===>  RUNNING  test_double_cutoff on $(TARGET)"
 	@bash tests/test_double_cutoff.sh ./$(TARGET)
 	@echo "===>  RUNNING  regression_scheme_equiv (geometric)"
@@ -135,8 +140,12 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_data_layout.sh
 	@echo "===>  RUNNING  test_mpi"
 	@bash tests/test_mpi.sh
+	@echo "===>  RUNNING  test_openmp"
+	@bash tests/test_openmp.sh
+	@echo "===>  RUNNING  test_displacement_reneigh"
+	@bash tests/test_displacement_reneigh.sh
 
-TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c
+TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c $(COMMON_DIR)/ljtable.c
 TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neighbor.c $(SRC_ROOT)/clusterpair/pbc.c $(SRC_ROOT)/clusterpair/integrate.c
 
 $(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS)

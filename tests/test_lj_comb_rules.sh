@@ -4,7 +4,7 @@
 # Tests:
 # 1. All configurations build and report correct LJ rule
 # 2. Same configuration produces consistent output across runs
-# 3. Single rule with 1 type == Geometric/None rules (same physics)
+# 3. Single rule with 1 type == Geometric/Full rules (same physics)
 
 set -e
 cd "$(dirname "$0")/.."
@@ -171,35 +171,35 @@ echo ""
 echo "--- Verletlist AVX512 ---"
 test_config verletlist AVX512 single
 test_config verletlist AVX512 geometric
-test_config verletlist AVX512 none yes
+test_config verletlist AVX512 full yes
 
 echo ""
 echo "--- Verletlist AVX2 ---"
 test_config verletlist AVX2 single
 test_config verletlist AVX2 geometric
-test_config verletlist AVX2 none yes
+test_config verletlist AVX2 full yes
 
 echo ""
 echo "--- Verletlist Scalar ---"
 test_config verletlist NONE single
 test_config verletlist NONE geometric
-test_config verletlist NONE none
+test_config verletlist NONE full
 
 echo ""
 echo "--- Clusterpair AVX512 ---"
 test_config clusterpair AVX512 single
 test_config clusterpair AVX512 geometric
-test_config clusterpair AVX512 none
+test_config clusterpair AVX512 full
 
 echo ""
 echo "--- Clusterpair AVX2 ---"
 test_config clusterpair AVX2 single
 test_config clusterpair AVX2 geometric
-test_config clusterpair AVX2 none
+test_config clusterpair AVX2 full
 
 echo ""
 echo "=== Output Consistency Tests ==="
-echo "(With 1 atom type, single/geometric/none should produce identical results)"
+echo "(With 1 atom type, single/geometric/full should produce identical results)"
 echo ""
 
 # Same scheme, different SIMD width should match
@@ -215,8 +215,8 @@ test_output_consistency "verletlist-AVX2-geometric" "verletlist-NONE-geometric" 
 # With 1 atom type, all rules should match (same physics)
 test_output_consistency "verletlist-NONE-single" "verletlist-NONE-geometric" \
     "VL scalar: single vs geometric"
-test_output_consistency "verletlist-NONE-geometric" "verletlist-NONE-none" \
-    "VL scalar: geometric vs none"
+test_output_consistency "verletlist-NONE-geometric" "verletlist-NONE-full" \
+    "VL scalar: geometric vs full"
 
 # Clusterpair consistency
 test_output_consistency "clusterpair-AVX512-single" "clusterpair-AVX2-single" \

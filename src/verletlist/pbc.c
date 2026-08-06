@@ -20,9 +20,11 @@ int *PBCx, *PBCy, *PBCz;
 #ifdef CUDA_TARGET
 UpdatePbcFunction updatePbc      = updatePbcCUDA;
 UpdatePbcFunction updateAtomsPbc = updateAtomsPbcCUDA;
+SetupPbcFunction setupPbc        = setupPbcCUDA;
 #else
 UpdatePbcFunction updatePbc      = updatePbcCPU;
 UpdatePbcFunction updateAtomsPbc = updateAtomsPbcCPU;
+SetupPbcFunction setupPbc        = setupPbcCPU;
 #endif
 
 static void growPbc(Atom*);
@@ -100,7 +102,7 @@ void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool doReneighbor)
     atom->sqrt_epsilon[atom->Nlocal + Nghost] = atom->sqrt_epsilon[i];                   \
     atom->sigma3[atom->Nlocal + Nghost]       = atom->sigma3[i]
 
-void setupPbc(Atom* atom, Parameter* param)
+void setupPbcCPU(Atom* atom, Parameter* param)
 {
     int* border_map   = atom->border_map;
     MD_FLOAT xprd     = param->xprd;

@@ -61,6 +61,10 @@ static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _mm256_and_ps(a, b);
 }
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return _mm256_xor_ps(a, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
+}
 
 static inline MD_SIMD_MASK simd_mask_from_u32(unsigned int a)
 {
@@ -162,6 +166,10 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return _mm256_load_si256((MD_SIMD_INT*)m);
 }
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return _mm256_loadu_si256((MD_SIMD_INT*)m);
+}
 static inline void simd_i32_store(int* m, MD_SIMD_INT a)
 {
     _mm256_store_si256((MD_SIMD_INT*)m, a);
@@ -253,4 +261,21 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
     // AVX2 returns vector mask; cast to float mask type
     __m256i imask = _mm256_cmpgt_epi32(b, a);
     return _mm256_castsi256_ps(imask);
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_castsi256_ps(_mm256_cmpeq_epi32(a, b));
+}
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return _mm256_sqrt_ps(v); }
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v)
+{
+    return _mm256_cvttps_epi32(v);
+}
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
+{
+    return _mm256_cvtepi32_ps(v);
+}
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_min_epi32(a, b);
 }

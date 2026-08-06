@@ -118,6 +118,7 @@ jobs:
           else
             OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
           fi
+          TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
 
           if [ "${{ matrix.simd }}" = "NONE" ]; then
             TOOL_TAG="${TOOLCHAIN}-${ISA}"
@@ -125,7 +126,7 @@ jobs:
             TOOL_TAG="${TOOLCHAIN}-${ISA}-${{ matrix.simd }}"
           fi
 
-          TAG="${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}"
+          TAG="${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}${TAG_SUFFIX}"
           BIN="./MDBench-${TAG}"
           echo "Using binary ${BIN}"
 
@@ -184,8 +185,9 @@ jobs:
           else
             OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
           fi
+          TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
           TOOL_TAG="${TOOLCHAIN}-${ISA}-${{ matrix.simd }}"
-          BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}"
+          BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}${TAG_SUFFIX}"
           echo "Using binary ${BIN}"
 
           chmod +x tests/sim_copper_fcc_regression.sh

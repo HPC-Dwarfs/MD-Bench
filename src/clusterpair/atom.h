@@ -4,6 +4,8 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
+#include <stdbool.h>
+
 #include <box.h>
 #include <parameter.h>
 #ifdef _MPI
@@ -68,6 +70,7 @@ typedef struct {
     int *PBCx, *PBCy, *PBCz;
     // Data in cluster format
     MD_FLOAT* cl_x;
+    MD_FLOAT* cl_x_ref;
     MD_FLOAT* cl_v;
     MD_FLOAT* cl_f;
     int* cl_t;
@@ -102,6 +105,8 @@ extern int readAtomDmp(Atom*, Parameter*);
 extern void growAtom(Atom*);
 extern void freeAtom(Atom*);
 extern void growClusters(Atom*, int);
+extern bool needsReneigh(Atom*, Parameter*);
+extern void storeReferencePositions(Atom*);
 
 int packGhost(Atom*, int, MD_FLOAT*, int*);
 int unpackGhost(Parameter*, Atom*, int, MD_FLOAT*);

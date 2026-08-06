@@ -72,8 +72,10 @@ void random_reset(int* seed, int ibase, double* coord)
 
 int str2ff(const char* string)
 {
-    if (strncmp(string, "lj", 2) == 0) return FF_LJ;
-    if (strncmp(string, "eam", 3) == 0) return FF_EAM;
+    // Exact (whole-token) matching: order-independent, no prefix collisions.
+    if (STR_EQ(string, "lj")) return FF_LJ;
+    if (STR_EQ(string, "lj_table")) return FF_LJ_TABLE;
+    if (STR_EQ(string, "eam")) return FF_EAM;
     return -1;
 }
 
@@ -81,6 +83,10 @@ const char* ff2str(int ff)
 {
     if (ff == FF_LJ) {
         return "lj";
+    }
+
+    if (ff == FF_LJ_TABLE) {
+        return "lj_table";
     }
 
     if (ff == FF_EAM) {

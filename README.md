@@ -106,7 +106,7 @@ utilisation and easier SIMD vectorization.
 to `AOS` for CPU builds and `SOA` for GPU builds.
 - `LJ_COMB_RULE`: Lennard-Jones combination rule. `single` uses a single atom type
 with broadcast global parameters (fastest, no type lookup). `geometric` uses
-per-type parameters with geometric combination (default). `none` uses a full
+per-type parameters with geometric combination (default). `full` uses a full
 type-pair matrix lookup (not supported in SIMD kernels).
 - `DEBUG`: Enable additional debug output
 - `SORT_ATOMS`: Resort atoms to ensure that atoms that are nearby are also close
@@ -163,8 +163,13 @@ list testcase with LJ force will be computed for 200 steps and a size of
 
 - `-p / --params <string>`: file to read parameters from (can be specified more
 than once). Default initialization sets parameters for default LJ testcase.
-*`-f <string>`: force field (lj, eam), default lj. For anything different than
-lj you also need to provide spcific parameter file.
+Supports `outer_skin = <value>` to enable double-cutoff pruning (outer cutoff =
+`cutforce + skin + outer_skin`; default 0.0 disables it).
+- `-f <string>`: force field (`lj`, `eam`, `lj_table`), default `lj`. For
+anything different than `lj` you also need to provide a specific parameter file.
+`lj_table` uses tabulated cubic Hermite spline interpolation. It is available for
+`OPT_SCHEME=verletlist`, and for `OPT_SCHEME=clusterpair` only when built with the
+reference kernel (`USE_REFERENCE_KERNEL=true`).
 - `-i <string>`:  input file with atom positions (dump). MD-Bench supports
 Brookhaven protein data bank (.pdb), GROMACS GROMOS87 (.gro), and LAMMPS dump
 (.dmp) file formats
@@ -231,6 +236,18 @@ Call MD-Bench as follows:
 
 ```shell=bash
 ./MDBench-<TAG> -i ./data/argon/input.gro  -p ./data/argon/mdbench_params.conf
+```
+
+### Tabulated Lennard-Jones potential (verletlist only)
+
+Uses cubic spline interpolation (GROMACS-style) instead of direct force computation.
+Only available with `OPT_SCHEME=verletlist`. Select the indexing mode at build
+time via `LJ_TABLE_INDEX=r` (default) or `LJ_TABLE_INDEX=rsq` (avoids sqrt,
+load-bound):
+
+```shell=bash
+make OPT_SCHEME=verletlist LJ_TABLE_INDEX=rsq
+./MDBench-<TAG> -f lj_table
 ```
 
 ## Citations

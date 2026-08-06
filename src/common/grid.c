@@ -22,7 +22,7 @@ void fixedPointIteration(double* x0, int nprocs, MD_FLOAT minx)
 {
     MD_FLOAT tolerance = 1e-3;
     MD_FLOAT alpha     = 0.5;
-    MD_FLOAT* fx       = (MD_FLOAT*)malloc(nprocs * sizeof(MD_FLOAT));
+    MD_FLOAT* fx       = (MD_FLOAT*)allocate(ALIGNMENT, nprocs * sizeof(MD_FLOAT));
     int maxIterations  = 100;
 
     for (int i = 0; i < maxIterations; i++) {
@@ -71,15 +71,15 @@ void staggeredBalance(Grid* grid, Atom* atom, Parameter* param, double newTime)
     MPI_Comm subComm[3];
     int color[3]  = { 0, 0, 0 };
     int id[3]     = { 0, 0, 0 };
-    double** load = (double**)malloc(3 * sizeof(double*));
+    double** load = (double**)allocate(ALIGNMENT, 3 * sizeof(double*));
 
     for (int dim = 0; dim < 3; dim++) {
-        load[dim] = (double*)malloc(nprocs[dim] * sizeof(double));
+        load[dim] = (double*)allocate(ALIGNMENT, nprocs[dim] * sizeof(double));
     }
 
     int maxprocs       = MAX(MAX(nprocs[0], nprocs[1]), nprocs[2]);
-    MD_FLOAT* cellSize = (MD_FLOAT*)malloc(maxprocs * sizeof(MD_FLOAT));
-    MD_FLOAT* limits   = (MD_FLOAT*)malloc(
+    MD_FLOAT* cellSize = (MD_FLOAT*)allocate(ALIGNMENT, maxprocs * sizeof(MD_FLOAT));
+    MD_FLOAT* limits   = (MD_FLOAT*)allocate(ALIGNMENT,
         2 * maxprocs * sizeof(MD_FLOAT)); // limits: (x0, x1), (x1, x2)... Repeat values
                                             // in between to perfom MPI_Scatter later
     MD_FLOAT t_sum[3]        = { 0, 0, 0 };
@@ -288,9 +288,9 @@ void nextBisectionLevel(Grid* grid,
     // Grow the send buffer
     if (atom->Nlocal >= grid->maxsend) {
         if (grid->buf_send) free(grid->buf_send);
-        grid->buf_send = (MD_FLOAT*)malloc(
+        grid->buf_send = (MD_FLOAT*)allocate(ALIGNMENT,
             atom->Nlocal * values_per_atom * sizeof(MD_FLOAT));
-        grid->maxsend = atom->Nlocal;
+        grid->maxsend  = atom->Nlocal;
     }
 
     // buffer particles to send
@@ -318,9 +318,9 @@ void nextBisectionLevel(Grid* grid,
     // Grow the recv buffer
     if (nrecv + nrecv2 >= grid->maxrecv) {
         if (grid->buf_recv) free(grid->buf_recv);
-        grid->buf_recv = (MD_FLOAT*)malloc(
+        grid->buf_recv = (MD_FLOAT*)allocate(ALIGNMENT,
             (nrecv + nrecv2) * values_per_atom * sizeof(MD_FLOAT));
-        grid->maxrecv = nrecv + nrecv2;
+        grid->maxrecv  = nrecv + nrecv2;
     }
 
     // communicate elements in the buffer

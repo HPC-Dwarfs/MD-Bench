@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <allocate.h>
 #include <atom.h>
 #include <force.h>
 #include <parameter.h>
@@ -87,31 +88,33 @@ void initParameter(Parameter* param)
 #else
     param->ntypes = 4;
 #endif
-    param->epsilon_per_type = NULL;
-    param->sigma_per_type   = NULL;
-    param->ntimes           = 200;
-    param->dt               = 0.005;
-    param->nx               = 32;
-    param->ny               = 32;
-    param->nz               = 32;
-    param->pbc_x            = 1;
-    param->pbc_y            = 1;
-    param->pbc_z            = 1;
-    param->cutforce            = 2.5;
-    param->skin                = 0.3;
-    param->outer_skin          = 0.0;
-    param->cutneigh            = param->cutforce + param->skin + param->outer_skin;
-    param->temp             = 1.44;
-    param->nstat            = 100;
-    param->mass             = 1.0;
-    param->dtforce          = 0.5 * param->dt;
-    param->reneigh_every    = 20;
-    param->resort_every     = 400;
-    param->prune_every      = 5;
-    param->x_out_every      = 20;
-    param->v_out_every      = 5;
-    param->half_neigh       = 0;
-    param->proc_freq        = 2.4;
+    param->epsilon_per_type     = NULL;
+    param->sigma_per_type       = NULL;
+    param->ntimes               = 200;
+    param->dt                   = 0.005;
+    param->nx                   = 32;
+    param->ny                   = 32;
+    param->nz                   = 32;
+    param->pbc_x                = 1;
+    param->pbc_y                = 1;
+    param->pbc_z                = 1;
+    param->cutforce             = 2.5;
+    param->skin                 = 0.3;
+    param->outer_skin           = 0.0;
+    param->cutneigh             = param->cutforce + param->skin + param->outer_skin;
+    param->temp                 = 1.44;
+    param->nstat                = 100;
+    param->mass                 = 1.0;
+    param->dtforce              = 0.5 * param->dt;
+    param->reneigh_every        = 20;
+    param->displacement_reneigh = 0;
+    param->resort_every         = 400;
+    param->prune_every          = 5;
+    param->x_out_every          = 20;
+    param->v_out_every          = 5;
+    param->half_neigh           = 0;
+    param->proc_freq            = 2.4;
+    param->lj_table_points      = 1000;
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
     param->super_clustering = 1;
 #else
@@ -122,6 +125,7 @@ void initParameter(Parameter* param)
     param->method        = 0;
     param->balance_every = param->reneigh_every;
     param->setup         = 1;
+    param->verbose       = 0;
 
 #ifdef _OPENMP
     // Use static scheduling as default
@@ -160,8 +164,8 @@ void readTypesFile(Parameter* param)
     }
 
     param->ntypes           = count;
-    param->epsilon_per_type = (MD_FLOAT*)malloc(count * sizeof(MD_FLOAT));
-    param->sigma_per_type   = (MD_FLOAT*)malloc(count * sizeof(MD_FLOAT));
+    param->epsilon_per_type = (MD_FLOAT*)allocate(ALIGNMENT, count * sizeof(MD_FLOAT));
+    param->sigma_per_type   = (MD_FLOAT*)allocate(ALIGNMENT, count * sizeof(MD_FLOAT));
 
     // Second pass: read values
     rewind(fp);
@@ -211,8 +215,7 @@ void readParameter(Parameter* param, const char* filename)
         char* tok = strtok(line, " \t\n\r");
         char* val = strtok(NULL, " \t\n\r");
 
-#define PARAM_NAME_LEN(p)   (sizeof(#p) / sizeof(#p[0]) - 1)
-#define PARAM_MATCH(tok, p) (strlen(tok) == PARAM_NAME_LEN(p) && strncmp(tok, #p, PARAM_NAME_LEN(p)) == 0)
+#define PARAM_MATCH(tok, p) STR_EQ((tok), #p)
 #define PARSE_PARAM(p, f)                                                                \
     if (PARAM_MATCH(tok, p)) {                                                           \
         param->p = f(val);                                                               \
@@ -258,15 +261,16 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(x_out_every);
             PARSE_INT(v_out_every);
             PARSE_INT(half_neigh);
+            PARSE_INT(lj_table_points);
             PARSE_INT(method);
             PARSE_INT(balance);
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
-
         }
     }
 
-    if (param->types_file != NULL && (explicit_epsilon || explicit_sigma || explicit_ntypes)) {
+    if (param->types_file != NULL &&
+        (explicit_epsilon || explicit_sigma || explicit_ntypes)) {
         fprintf(stderr,
             "Error: 'types_file' cannot be combined with 'epsilon', 'sigma', or 'ntypes'."
             " Per-type parameters must be specified exclusively in the types file.\n");
@@ -327,6 +331,11 @@ void printParameter(Parameter* param)
 #endif
     fprintf(stdout, "    Atom data layout:                  %s\n", POS_DATA_LAYOUT);
     fprintf(stdout, "    Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
+#ifdef __SIMD_NEIGHBOR__
+    fprintf(stdout, "    Neighbor-list build:               SIMD\n");
+#else
+    fprintf(stdout, "    Neighbor-list build:               Scalar\n");
+#endif
     fprintf(stdout, "    FP precision:                      %s\n", PRECISION_STRING);
 
     // System configuration
@@ -395,15 +404,14 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Timestep (dt):                     %.6e\n", param->dt);
     fprintf(stdout, "    Cutoff radius:                     %.6e\n", param->cutforce);
     fprintf(stdout, "    Skin distance:                     %.6e\n", param->skin);
-    fprintf(stdout,
-        "    Outer skin (additive):             %.6e\n",
-        param->outer_skin);
+    fprintf(stdout, "    Outer skin (additive):             %.6e\n", param->outer_skin);
     fprintf(stdout,
         "    Half neighbor-lists:               %s\n",
         param->half_neigh ? "yes" : "no");
+    fprintf(stdout, "    Reneighbor interval:               %d\n", param->reneigh_every);
     fprintf(stdout,
-        "    Reneighbor every:                  %d steps\n",
-        param->reneigh_every);
+        "    Displacement reneighbor:           %s\n",
+        param->displacement_reneigh ? "enabled" : "disabled");
     fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
 #ifdef SORT_ATOMS
     fprintf(stdout,
@@ -415,7 +423,7 @@ void printParameter(Parameter* param)
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
     fprintf(stdout, "    LJ combination rule:               geometric\n");
 #else
-    fprintf(stdout, "    LJ combination rule:               none\n");
+    fprintf(stdout, "    LJ combination rule:               full\n");
 #endif
     fprintf(stdout,
         "    Prune every:                       %d steps\n",

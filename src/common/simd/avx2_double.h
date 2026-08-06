@@ -131,9 +131,17 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
     // _mm256_cvtepi32_pd would convert -1 to -1.0 (0xBFF0...) rather than all-ones.
     return _mm256_castsi256_pd(_mm256_cvtepi32_epi64(_mm_cmplt_epi32(a, b)));
 }
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm256_castsi256_pd(_mm256_cvtepi32_epi64(_mm_cmpeq_epi32(a, b)));
+}
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _mm256_and_pd(a, b);
+}
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return _mm256_xor_pd(a, _mm256_castsi256_pd(_mm256_set1_epi64x(-1)));
 }
 // TODO: Initialize all diagonal cases and just select the proper one (all bits set or
 // diagonal) based on cond0
@@ -198,6 +206,10 @@ static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return _mm_load_si128((__m128i const*)m);
+}
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return _mm_loadu_si128((__m128i const*)m);
 }
 static inline void simd_i32_store(int* m, MD_SIMD_INT a)
 {
@@ -268,4 +280,17 @@ static inline void simd_real_masked_scatter_sub(
     if ((m >> 3) & 1) {
         _Pragma("omp atomic") base[idx[3]] -= vals[3];
     }
+}
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return _mm256_sqrt_pd(v); }
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v)
+{
+    return _mm256_cvttpd_epi32(v);
+}
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
+{
+    return _mm256_cvtepi32_pd(v);
+}
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm_min_epi32(a, b);
 }

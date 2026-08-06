@@ -5,6 +5,7 @@
  * license that can be found in the LICENSE file.
  */
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,7 @@ void initAtom(Atom* atom)
     atom->vy                    = NULL;
     atom->vz                    = NULL;
     atom->cl_x                  = NULL;
+    atom->cl_x_ref              = NULL;
     atom->cl_v                  = NULL;
     atom->cl_f                  = NULL;
     atom->cl_t                  = NULL;
@@ -874,6 +876,10 @@ void growClusters(Atom* atom, int super_clustering)
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
+    atom->cl_x_ref        = (MD_FLOAT*)reallocate(atom->cl_x_ref,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
     atom->cl_f            = (MD_FLOAT*)reallocate(atom->cl_f,
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
@@ -928,6 +934,33 @@ void growClusters(Atom* atom, int super_clustering)
             atom->iclusters[ci * SCLUSTER_SIZE].bbminz = 0.0;
             atom->iclusters[ci * SCLUSTER_SIZE].bbmaxz = 0.0;
         }
+    }
+#else
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        int ci_vec_base = ci * CLUSTER_M * SCLUSTER_SIZE * 3;
+        for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE * 3; idx++) {
+            atom->cl_x[ci_vec_base + idx] = 0.0;
+            atom->cl_f[ci_vec_base + idx] = 0.0;
+            atom->cl_v[ci_vec_base + idx] = 0.0;
+        }
+    }
+
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        int ci_sca_base = ci * CLUSTER_M * SCLUSTER_SIZE;
+        for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE; idx++) {
+            atom->cl_t[ci_sca_base + idx] = 0;
+        }
+    }
+
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        atom->cluster_bin[ci]                      = 0;
+        atom->iclusters[ci * SCLUSTER_SIZE].natoms = 0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminx = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxx = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminy = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxy = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminz = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxz = 0.0;
     }
 #endif
 
@@ -1249,4 +1282,34 @@ void copy(Atom* atom, int i, int j)
     atom_vy(i)    = atom_vy(j);
     atom_vz(i)    = atom_vz(j);
     atom->type[i] = atom->type[j];
+}
+
+bool needsReneigh(Atom* atom, Parameter* param)
+{
+    MD_FLOAT threshold = (MD_FLOAT)0.25 * param->skin * param->skin;
+    MD_FLOAT max_sq    = (MD_FLOAT)0.0;
+    for (int ci = 0; ci < atom->Nclusters_local; ci++) {
+        int base = CI_VECTOR3_BASE_INDEX(ci);
+        for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
+            MD_FLOAT dx = atom->cl_x[base + CL_X_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_X_INDEX_3D(cii)];
+            MD_FLOAT dy = atom->cl_x[base + CL_Y_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_Y_INDEX_3D(cii)];
+            MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
+            MD_FLOAT d = dx * dx + dy * dy + dz * dz;
+            if (d > max_sq) max_sq = d;
+        }
+    }
+#ifdef _MPI
+    MPI_Datatype type_float = (sizeof(MD_FLOAT) == 4) ? MPI_FLOAT : MPI_DOUBLE;
+    MPI_Allreduce(MPI_IN_PLACE, &max_sq, 1, type_float, MPI_MAX, MPI_COMM_WORLD);
+#endif
+    return max_sq > threshold;
+}
+
+void storeReferencePositions(Atom* atom)
+{
+    int n = atom->Nclusters_local * CLUSTER_M * SCLUSTER_SIZE * 3;
+    memcpy(atom->cl_x_ref, atom->cl_x, n * sizeof(MD_FLOAT));
 }

@@ -9,6 +9,10 @@
 #include <parameter.h>
 #include <tracing.h>
 
+#if defined(NBLIST_CSR) && (defined(MEM_TRACER) || defined(INDEX_TRACER))
+#error "Memory/index tracing is not supported with NBLIST_DATA_LAYOUT=CSR"
+#endif
+
 void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timestep)
 {
     MEM_TRACER_INIT;
@@ -34,8 +38,8 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
         DIST_TRACE(neighbor->neighbors, i, numneighs, Nlocal, neighbor->maxneighs);
 
         for (int k = 0; k < numneighs; k++) {
-            MEM_TRACE(neighs(neighbor->neighbors, i, k, Nlocal, neighbor->maxneighs),
-                'R');
+            MEM_TRACE(neighs(neighbor->neighbors, i, k, Nlocal, neighbor), 'R');
+            int j = neighs(neighbor->neighbors, i, k, Nlocal, neighbor);
             MEM_TRACE(atom_x(j), 'R');
             MEM_TRACE(atom_y(j), 'R');
             MEM_TRACE(atom_z(j), 'R');

@@ -24,9 +24,21 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     d_atom->cutforcesq = (MD_FLOAT*)allocateGPU(
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    d_atom->sqrt_epsilon = (MD_FLOAT*)allocateGPU(sizeof(MD_FLOAT) * atom->Nmax);
+    d_atom->sigma3       = (MD_FLOAT*)allocateGPU(sizeof(MD_FLOAT) * atom->Nmax);
+#endif
+#ifdef NBLIST_CSR
+    d_neighbor->neighbors   = NULL;
+    d_neighbor->neigh_start = (int*)allocateGPU(sizeof(int) * (atom->Nmax + 1));
+#else
     d_neighbor->neighbors = (int*)allocateGPU(
         sizeof(int) * atom->Nmax * neighbor->maxneighs);
-    d_neighbor->numneigh = (int*)allocateGPU(sizeof(int) * atom->Nmax);
+    d_neighbor->neigh_start = NULL;
+#endif
+    d_neighbor->numneigh       = (int*)allocateGPU(sizeof(int) * atom->Nmax);
+    d_neighbor->numneigh_inner = (int*)allocateGPU(sizeof(int) * atom->Nmax);
+    d_neighbor->maxneighs      = neighbor->maxneighs;
 
     memcpyToGPU(d_atom->x, atom->x, sizeof(MD_FLOAT) * atom->Nmax * 3);
     memcpyToGPU(d_atom->vx, atom->vx, sizeof(MD_FLOAT) * atom->Nmax * 3);
@@ -43,6 +55,10 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->cutforcesq,
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     memcpyToGPU(d_atom->type, atom->type, sizeof(int) * atom->Nmax);
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    memcpyToGPU(d_atom->sqrt_epsilon, atom->sqrt_epsilon, sizeof(MD_FLOAT) * atom->Nmax);
+    memcpyToGPU(d_atom->sigma3, atom->sigma3, sizeof(MD_FLOAT) * atom->Nmax);
+#endif
 
     DEBUG_MESSAGE("initDevice stop\n");
 }

@@ -8,6 +8,7 @@
 #define __UTIL_H_
 
 #include <stdio.h>
+#include <string.h>
 #ifndef MIN
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #endif
@@ -31,6 +32,10 @@
 #else
 #define PRECISION_STRING "double"
 #endif
+
+// Whole string matching (exact match)
+#define STR_EQ(s, lit)                                                                   \
+    (strncmp((s), "" lit "", sizeof(lit) - 1) == 0 && (s)[sizeof(lit) - 1] == '\0')
 
 enum { fullShell = 0, halfShell, eightShell, halfStencil };
 

@@ -55,6 +55,7 @@ MD_FLOAT* cuda_cl_x;
 MD_FLOAT* cuda_cl_v;
 MD_FLOAT* cuda_cl_f;
 int* cuda_neighbors;
+unsigned int* cuda_neighbors_imask;
 int* cuda_numneigh;
 int* cuda_numneigh_inner;
 int* cuda_natoms;
@@ -69,6 +70,10 @@ int* cuda_cl_t;
 MD_FLOAT* cuda_cutforcesq;
 MD_FLOAT* cuda_sigma6;
 MD_FLOAT* cuda_epsilon;
+#endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+MD_FLOAT* cuda_cl_sqrt_epsilon;
+MD_FLOAT* cuda_cl_sigma3;
 #endif
 }
 
@@ -101,20 +106,29 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->epsilon,
         atom->ntypes * atom->ntypes * sizeof(MD_FLOAT));
 #endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    cuda_cl_sqrt_epsilon = (MD_FLOAT*)allocateGPU(
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+    cuda_cl_sigma3 = (MD_FLOAT*)allocateGPU(
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+#endif
     cuda_natoms = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     cuda_jclusters_natoms = (int*)allocateGPU(
         atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
     cuda_border_map = (int*)allocateGPU(
         atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    cuda_PBCx      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    cuda_PBCy      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    cuda_PBCz      = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    cuda_numneigh       = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
+    cuda_PBCx     = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    cuda_PBCy     = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    cuda_PBCz     = (int*)allocateGPU(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    cuda_numneigh = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
     cuda_numneigh_inner = (int*)allocateGPU(atom->Nclusters_max * sizeof(int));
     cuda_neighbors      = (int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
-    natoms  = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    ngatoms = (int*)malloc(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    cuda_neighbors_imask = (unsigned int*)allocateGPU(
+        atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
+    natoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    ngatoms = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 }
 
 extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* neighbor)
@@ -134,6 +148,16 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         atom->cl_t,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
             sizeof(int));
+#endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    memcpyToGPU(cuda_cl_sqrt_epsilon,
+        atom->cl_sqrt_epsilon,
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+            sizeof(MD_FLOAT));
+    memcpyToGPU(cuda_cl_sigma3,
+        atom->cl_sigma3,
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+            sizeof(MD_FLOAT));
 #endif
 
     for (int ci = 0; ci < atom->Nclusters_local * SCLUSTER_SIZE; ci++) {
@@ -163,6 +187,9 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
     memcpyToGPU(cuda_neighbors,
         neighbor->neighbors,
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
+    memsetGPU(cuda_neighbors_imask,
+        0xff,
+        atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
 }
 
 extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
@@ -184,9 +211,14 @@ extern "C" void cudaDeviceFree(Parameter* param)
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
     GPUfree(cuda_cl_t);
 #endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    GPUfree(cuda_cl_sqrt_epsilon);
+    GPUfree(cuda_cl_sigma3);
+#endif
     GPUfree(cuda_numneigh);
     GPUfree(cuda_numneigh_inner);
     GPUfree(cuda_neighbors);
+    GPUfree(cuda_neighbors_imask);
     GPUfree(cuda_natoms);
     GPUfree(cuda_border_map);
     GPUfree(cuda_jclusters_natoms);
@@ -203,6 +235,10 @@ __global__ void computeForceLJCudaFullNeigh(
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq,
+    MD_FLOAT* cuda_cl_sqrt_epsilon,
+    MD_FLOAT* cuda_cl_sigma3,
 #else
     int* cuda_cl_t,
     MD_FLOAT* atom_cutforcesq,
@@ -238,7 +274,11 @@ __global__ void computeForceLJCudaFullNeigh(
     MD_FLOAT fiy   = (MD_FLOAT)0.0;
     MD_FLOAT fiz   = (MD_FLOAT)0.0;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    int ci_sca_base     = CI_SCALAR_BASE_INDEX(ci);
+    MD_FLOAT sqrt_eps_i = cuda_cl_sqrt_epsilon[ci_sca_base + cii];
+    MD_FLOAT sigma3_i   = cuda_cl_sigma3[ci_sca_base + cii];
+#elif LJ_COMB_RULE == LJ_COMB_FULL
     int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
     int type_i      = cuda_cl_t[ci_sca_base + cii];
 #endif
@@ -260,7 +300,11 @@ __global__ void computeForceLJCudaFullNeigh(
             MD_FLOAT delz = ztmp - cj_x[CL_Z_INDEX(cjj)];
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            int cj_sca_base  = CJ_SCALAR_BASE_INDEX(cj);
+            MD_FLOAT sigma6  = sigma3_i * cuda_cl_sigma3[cj_sca_base + cjj];
+            MD_FLOAT epsilon = sqrt_eps_i * cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
             int type_j          = cuda_cl_t[cj_sca_base + cjj];
             int type_index      = type_i * ntypes + type_j;
@@ -339,6 +383,10 @@ __global__ void computeForceLJCudaHalfNeigh(
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq,
+    MD_FLOAT* cuda_cl_sqrt_epsilon,
+    MD_FLOAT* cuda_cl_sigma3,
 #else
     int* cuda_cl_t,
     MD_FLOAT* atom_cutforcesq,
@@ -373,7 +421,11 @@ __global__ void computeForceLJCudaHalfNeigh(
     MD_FLOAT fiy   = 0;
     MD_FLOAT fiz   = 0;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+    int ci_sca_base     = CI_SCALAR_BASE_INDEX(ci);
+    MD_FLOAT sqrt_eps_i = cuda_cl_sqrt_epsilon[ci_sca_base + cii];
+    MD_FLOAT sigma3_i   = cuda_cl_sigma3[ci_sca_base + cii];
+#elif LJ_COMB_RULE == LJ_COMB_FULL
     int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
     int type_i      = cuda_cl_t[ci_sca_base + cii];
 #endif
@@ -395,7 +447,11 @@ __global__ void computeForceLJCudaHalfNeigh(
             MD_FLOAT delz = ztmp - cj_x[CL_Z_INDEX(cjj)];
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+            int cj_sca_base  = CJ_SCALAR_BASE_INDEX(cj);
+            MD_FLOAT sigma6  = sigma3_i * cuda_cl_sigma3[cj_sca_base + cjj];
+            MD_FLOAT epsilon = sqrt_eps_i * cuda_cl_sqrt_epsilon[cj_sca_base + cjj];
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             int cj_sca_base     = CJ_SCALAR_BASE_INDEX(cj);
             int type_j          = cuda_cl_t[cj_sca_base + cjj];
             int type_index      = type_i * ntypes + type_j;
@@ -666,16 +722,8 @@ __global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
         if (is_inner) {
             if (hi != lo) {
                 int t_cj = neighs(cuda_neighbors, ci, lo, Nclusters_local, maxneighs);
-                neighs(cuda_neighbors,
-                    ci,
-                    lo,
-                    Nclusters_local,
-                    maxneighs) = cj;
-                neighs(cuda_neighbors,
-                    ci,
-                    hi,
-                    Nclusters_local,
-                    maxneighs) = t_cj;
+                neighs(cuda_neighbors, ci, lo, Nclusters_local, maxneighs) = cj;
+                neighs(cuda_neighbors, ci, hi, Nclusters_local, maxneighs) = t_cj;
             }
             lo++;
         }
@@ -696,7 +744,8 @@ extern "C" void pruneNeighborCUDA(Parameter* param, Atom* atom, Neighbor* neighb
     }
 
     if (param->outer_skin <= 0.0) {
-        // Defensive: caller already guards on this, but mirror outer counts in case it does not.
+        // Defensive: caller already guards on this, but mirror outer counts in case it
+        // does not.
         memcpyOnGPU(cuda_numneigh_inner,
             cuda_numneigh,
             atom->Nclusters_local * sizeof(int));
@@ -732,6 +781,8 @@ extern "C" double computeForceLJCuda(
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
     MD_FLOAT sigma6     = param->sigma6;
     MD_FLOAT epsilon    = param->epsilon;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
 
     // memsetGPU(cuda_cl_f, 0, atom->Nclusters_local * CLUSTER_M * 3 * sizeof(MD_FLOAT));
@@ -750,6 +801,10 @@ extern "C" double computeForceLJCuda(
             cutforcesq,
             sigma6,
             epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+            cutforcesq,
+            cuda_cl_sqrt_epsilon,
+            cuda_cl_sigma3,
 #else
             cuda_cl_t,
             cuda_cutforcesq,
@@ -770,6 +825,10 @@ extern "C" double computeForceLJCuda(
             cutforcesq,
             sigma6,
             epsilon,
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+            cutforcesq,
+            cuda_cl_sqrt_epsilon,
+            cuda_cl_sigma3,
 #else
             cuda_cl_t,
             cuda_cutforcesq,
@@ -829,15 +888,17 @@ extern "C" void copyForceToGPU(Atom* atom)
 extern "C" void growClustersCUDA(Atom* atom)
 {
     if (cuda_cl_x) {
-        cuda_cl_x   = (MD_FLOAT*)reallocateGPU(cuda_cl_x,
-            atom->Nclusters_max * CLUSTER_M * ATOM_DIM * sizeof(MD_FLOAT));
-        cuda_cl_v   = (MD_FLOAT*)reallocateGPU(cuda_cl_v,
-            atom->Nclusters_max * CLUSTER_M * 3 * sizeof(MD_FLOAT));
-        cuda_cl_f   = (MD_FLOAT*)reallocateGPU(cuda_cl_f,
-            atom->Nclusters_max * CLUSTER_M * 3 * sizeof(MD_FLOAT));
-        cuda_natoms = (int*)reallocateGPU(cuda_natoms, atom->Nclusters_max * sizeof(int));
+        cuda_cl_x             = (MD_FLOAT*)reallocateGPU(cuda_cl_x,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM *
+                sizeof(MD_FLOAT));
+        cuda_cl_v             = (MD_FLOAT*)reallocateGPU(cuda_cl_v,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
+        cuda_cl_f             = (MD_FLOAT*)reallocateGPU(cuda_cl_f,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
+        cuda_natoms           = (int*)reallocateGPU(cuda_natoms,
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
         cuda_jclusters_natoms = (int*)reallocateGPU(cuda_jclusters_natoms,
-            atom->Nclusters_max * sizeof(int));
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
         cuda_numneigh         = (int*)reallocateGPU(cuda_numneigh,
             atom->Nclusters_max * sizeof(int));
         cuda_numneigh_inner   = (int*)reallocateGPU(cuda_numneigh_inner,
@@ -846,19 +907,29 @@ extern "C" void growClustersCUDA(Atom* atom)
         free(natoms);
         free(ngatoms);
 
-        natoms  = (int*)allocate(ALIGNMENT, atom->Nclusters_max * sizeof(int));
-        ngatoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * sizeof(int));
+        natoms  = (int*)allocate(ALIGNMENT,
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+        ngatoms = (int*)allocate(ALIGNMENT,
+            atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,
-            atom->Nclusters_max * CLUSTER_M * sizeof(int));
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
+#endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+        cuda_cl_sqrt_epsilon = (MD_FLOAT*)reallocateGPU(cuda_cl_sqrt_epsilon,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+        cuda_cl_sigma3       = (MD_FLOAT*)reallocateGPU(cuda_cl_sigma3,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 #endif
     }
 }
 
 extern void growNeighborCUDA(Atom* atom, Neighbor* neighbor)
 {
-    cuda_neighbors = (int*)reallocateGPU(cuda_neighbors,
+    cuda_neighbors       = (int*)reallocateGPU(cuda_neighbors,
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
+    cuda_neighbors_imask = (unsigned int*)reallocateGPU(cuda_neighbors_imask,
+        atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
 }
 
 /*

@@ -19,7 +19,7 @@ static inline MD_SIMD_FLOAT simd_real_broadcast(float value) { return svdup_f32(
 static inline MD_SIMD_FLOAT simd_real_zero(void) { return svdup_f32(0.0f); }
 static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
-    return svsub_f32_z(svptrue_b32(), a, b);
+    return svsub_f32_x(svptrue_b32(), a, b);
 }
 
 static inline MD_SIMD_FLOAT simd_real_load(const float* ptr)
@@ -43,18 +43,18 @@ static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
 
 static inline MD_SIMD_FLOAT simd_real_add(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
-    return svadd_f32_z(svptrue_b32(), a, b);
+    return svadd_f32_x(svptrue_b32(), a, b);
 }
 
 static inline MD_SIMD_FLOAT simd_real_mul(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
-    return svmul_f32_z(svptrue_b32(), a, b);
+    return svmul_f32_x(svptrue_b32(), a, b);
 }
 
 static inline MD_SIMD_FLOAT simd_real_fma(
     MD_SIMD_FLOAT a, MD_SIMD_FLOAT b, MD_SIMD_FLOAT c)
 {
-    return svmad_f32_z(svptrue_b32(), a, b, c);
+    return svmad_f32_x(svptrue_b32(), a, b, c);
 }
 
 static inline MD_SIMD_MASK simd_mask_from_u32(uint32_t a)
@@ -69,13 +69,12 @@ static inline MD_SIMD_MASK simd_mask_from_u32(uint32_t a)
 
 static inline uint32_t simd_mask_to_u32(MD_SIMD_MASK mask)
 {
-    svuint32_t seq    = svindex_u32(0, 1);
-    uint32_t result   = 0;
-    MD_SIMD_MASK next = svpnext_b32(svptrue_b32(), mask);
+    svuint32_t seq  = svindex_u32(0, 1);
+    uint32_t result = 0;
+    svbool_t next   = svpfalse_b();
 
-    while (svptest_any(svptrue_b32(), next)) {
-        result |= 1 << svaddv_u32(next, seq);
-        mask = svand_b_z(svptrue_b32(), mask, svnot_b_z(svptrue_b32(), next));
+    while (svptest_any(mask, next = svpnext_b32(mask, next))) {
+        result |= 1u << svaddv_u32(next, seq);
     }
 
     return result;
@@ -86,6 +85,11 @@ static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
     return svand_b_z(svptrue_b32(), a, b);
 }
 
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return svnot_b_z(svptrue_b32(), a);
+}
+
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return svcmplt_f32(svptrue_b32(), a, b);
@@ -93,56 +97,59 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 
 static inline MD_SIMD_FLOAT simd_real_reciprocal(MD_SIMD_FLOAT a)
 {
-    MD_SIMD_FLOAT reciprocal = svrecpe_f32(a);
-    reciprocal = svmul_f32_z(svptrue_b32(), reciprocal, svrecps_f32(reciprocal, a));
-    return reciprocal;
+    // svrecpe_f32(a) + one svrecps_f32 Newton-Raphson step was measured slower here (gather-bound kernel, div hides in memory stalls better than the dependency chain):
+    // MD_SIMD_FLOAT reciprocal = svrecpe_f32(a);
+    // reciprocal = svmul_f32_x(svptrue_b32(), reciprocal, svrecps_f32(reciprocal, a));
+    // return reciprocal;
+    return svdiv_f32_x(svptrue_b32(), svdup_f32(1.0f), a);
 }
 
 static inline float simd_real_incr_reduced_sum(
     float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1, MD_SIMD_FLOAT v2, MD_SIMD_FLOAT v3)
 {
-    /*
-    svbool_t    pg = svptrue_b32();
-    svfloat32_t _m, _s;
-    float32_t   sum[4];
+    svbool_t pg = svptrue_b32();
+    float sum[4];
     sum[0] = svadda_f32(pg, 0.0f, v0);
     sum[1] = svadda_f32(pg, 0.0f, v1);
     sum[2] = svadda_f32(pg, 0.0f, v2);
     sum[3] = svadda_f32(pg, 0.0f, v3);
-    pg     = svptrue_pat_b32(SV_VL4);
-    _m     = svld1_f32(pg, m);
-    _s     = svld1_f32(pg, sum);
+#if VECTOR_WIDTH >= 4
+    pg                 = svptrue_pat_b32(SV_VL4);
+    svfloat32_t _m     = svld1_f32(pg, m);
+    svfloat32_t _s     = svld1_f32(pg, sum);
     svst1_f32(pg, m, svadd_f32_x(pg, _m, _s));
     return svadda_f32(pg, 0.0f, _s);
-    */
-
-    MD_SIMD_FLOAT sum0 = svaddp_f32_m(svptrue_b32(), v0, v1);
-    MD_SIMD_FLOAT sum1 = svaddp_f32_m(svptrue_b32(), v2, v3);
-    MD_SIMD_FLOAT odd  = svuzp2_f32(sum0, sum1);
-    MD_SIMD_FLOAT even = svuzp1_f32(sum0, sum1);
-    MD_SIMD_FLOAT sum  = svaddp_f32_m(svptrue_b32(), even, odd);
-
-    MD_SIMD_FLOAT mem = svld1_f32(svptrue_b32(), m);
-    sum               = svadd_f32_m(svptrue_b32(), sum, mem);
-
-    svst1_f32(svptrue_b32(), m, sum);
-    return svaddv_f32(svptrue_b32(), sum);
+#else
+    float res = 0;
+    for (int i = 0; i < 4; i++) {
+        m[i] += sum[i];
+        res += sum[i];
+    }
+    return res;
+#endif
 }
 
 static inline float simd_real_incr_reduced_sum_j2(
      float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
 {
-
-    svfloat32_t sum0 = svaddp_f32_x(svptrue_b32(), v0, v1);
-    svfloat32_t even = svuzp1_f32(sum0, sum0); // [a+b, e+f, ...]
-    svfloat32_t odd  = svuzp2_f32(sum0, sum0);
-    svbool_t pg = svwhilelt_b32(0, 2);
-    MD_SIMD_FLOAT sum  = svaddp_f32_m(pg, even, odd);
-    MD_SIMD_FLOAT mem = svld1_f32(pg, m);
-    sum               = svadd_f32_m(pg, sum, mem);
-
-    svst1_f32(pg, m, sum);
-    return svaddv_f32(pg, sum);
+    svbool_t pg = svptrue_b32();
+    float sum[2];
+    sum[0] = svadda_f32(pg, 0.0f, v0);
+    sum[1] = svadda_f32(pg, 0.0f, v1);
+#if VECTOR_WIDTH >= 2
+    pg                 = svptrue_pat_b32(SV_VL2);
+    svfloat32_t _m     = svld1_f32(pg, m);
+    svfloat32_t _s     = svld1_f32(pg, sum);
+    svst1_f32(pg, m, svadd_f32_x(pg, _m, _s));
+    return svadda_f32(pg, 0.0f, _s);
+#else
+    float res = 0;
+    for (int i = 0; i < 2; i++) {
+        m[i] += sum[i];
+        res += sum[i];
+    }
+    return res;
+#endif
 }
 
 static inline MD_SIMD_FLOAT simd_real_masked_add(
@@ -199,9 +206,78 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
     return svadd_s32_x(svptrue_b32(), a, b);
 }
 
+static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svmul_s32_x(svptrue_b32(), a, b);
+}
+
+static inline MD_SIMD_INT simd_i32_seq(void) { return svindex_s32(0, 1); }
+
+// Single whilelt instruction -- the idiomatic SVE way to predicate a loop's remaining trip count, used by the VLA kernels.
+static inline MD_SIMD_MASK simd_mask_from_remaining(int remaining) { return svwhilelt_b32(0, remaining); }
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svcmplt_s32(svptrue_b32(), a, b);
+}
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svcmpeq_s32(svptrue_b32(), a, b);
+}
+
+// SVE natively supports predicated loads: inactive lanes are zeroed, matching
+// the semantics buildNeighborCPU()'s SIMD path relies on for its tail mask.
+static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
+{
+    return svld1_s32(mask, ptr);
+}
+
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    svint32_t offsets = svmul_n_s32_x(svptrue_b32(), vidx, scale);
+    return svld1_gather_s32offset_s32(svptrue_b32(), base, offsets);
+}
+
+// Horizontal sum reduction
+static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
+{
+    return svaddv_f32(svptrue_b32(), a);
+}
+
+// Masked scatter-subtract (for half-neighbor lists). SVE has no atomic
+// scatter, so fall back to a scalar loop
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    unsigned int m = simd_mask_to_u32(mask);
+    MD_FLOAT vals[VECTOR_WIDTH] __attribute__((aligned(64)));
+    int32_t idx[VECTOR_WIDTH] __attribute__((aligned(64)));
+    svst1_f32(svptrue_b32(), vals, v);
+    svst1_s32(svptrue_b32(), idx, vidx);
+
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        if ((m >> i) & 1) {
+#pragma omp atomic
+            base[idx[i]] -= vals[i];
+        }
+    }
+}
+
 static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return svld1_s32(svptrue_b32(), m);
+}
+
+// SVE's svld1 has no alignment requirement, so unaligned is the same load.
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return svld1_s32(svptrue_b32(), m);
+}
+
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    svst1_s32(svptrue_b32(), m, a);
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)
@@ -220,4 +296,20 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
         "simd_i32_load_h_dual_scaled(): Not implemented for SVE with single precision!");
     exit(-1);
     return ret;
+}
+static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v)
+{
+    return svsqrt_f32_x(svptrue_b32(), v);
+}
+static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v)
+{
+    return svcvt_s32_f32_x(svptrue_b32(), v);
+}
+static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
+{
+    return svcvt_f32_s32_x(svptrue_b32(), v);
+}
+static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return svmin_s32_x(svptrue_b32(), a, b);
 }

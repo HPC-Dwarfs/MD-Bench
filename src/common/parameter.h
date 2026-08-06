@@ -57,7 +57,7 @@ typedef struct {
 // Use -DLJ_COMB_RULE=<value> at compile time
 #define LJ_COMB_SINGLE 0 // Single atom type: broadcast global epsilon/sigma
 #define LJ_COMB_GEOM   1 // Geometric: sqrt(eps_i*eps_j), sigma3_i*sigma3_j
-#define LJ_COMB_NONE   2 // No rule: full type-pair matrix lookup
+#define LJ_COMB_FULL   2 // Full type-pair matrix lookup (no combination formula)
 
 // Default to geometric combination rule if not specified
 #ifndef LJ_COMB_RULE
@@ -70,7 +70,7 @@ typedef struct {
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
 #define LJ_COMB_RULE_NAME "geometric"
 #else
-#define LJ_COMB_RULE_NAME "none"
+#define LJ_COMB_RULE_NAME "full"
 #endif
 
 typedef struct {
@@ -93,6 +93,7 @@ typedef struct {
     int ntimes;
     int nstat;
     int reneigh_every;
+    int displacement_reneigh;
     int resort_every;
     int prune_every;
     int x_out_every;
@@ -112,11 +113,13 @@ typedef struct {
     double proc_freq;
     int super_clustering;
     char* eam_file;
+    int lj_table_points;
     // MPI implementation
     int balance;
     int method;
     int balance_every;
     int setup;
+    int verbose;
 } Parameter;
 
 void initParameter(Parameter*);

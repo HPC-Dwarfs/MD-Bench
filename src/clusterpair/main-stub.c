@@ -12,9 +12,14 @@
 //---
 #include <allocate.h>
 #include <atom.h>
+#include <device.h>
 #include <eam.h>
 #include <force.h>
 #include <neighbor.h>
+#ifdef NBLIST_CSR
+#error                                                                                   \
+    "main-stub is not supported with NBLIST_DATA_LAYOUT=CSR (neighbor list initialization requires two-pass build)"
+#endif
 #include <parameter.h>
 #include <pbc.h>
 #include <stats.h>
@@ -31,8 +36,13 @@
 #define P_FIX  1
 #define P_RAND 2
 
+extern void copyDataToCUDADevice(Parameter*, Atom*, Neighbor*);
+extern void copyDataFromCUDADevice(Parameter*, Atom*);
+extern void cudaDeviceFree(Parameter*);
+
 void init(Parameter* param)
 {
+    initParameter(param);
     param->input_file  = NULL;
     param->force_field = FF_LJ;
     param->epsilon     = 1.0;
@@ -49,27 +59,33 @@ void init(Parameter* param)
     param->mass        = 1.0;
     param->half_neigh  = 0;
     // Unused
-    param->dt            = 0.005;
-    param->dtforce       = 0.5 * param->dt;
-    param->nstat         = 100;
-    param->temp          = 1.44;
-    param->reneigh_every = 20;
-    param->proc_freq     = 2.4;
-    param->eam_file      = NULL;
+    param->dt               = 0.005;
+    param->dtforce          = 0.5 * param->dt;
+    param->nstat            = 100;
+    param->temp             = 1.44;
+    param->reneigh_every    = 20;
+    param->proc_freq        = 2.4;
+    param->eam_file         = NULL;
+    param->super_clustering = 0;
 }
 
 void createNeighbors(
     Atom* atom, Neighbor* neighbor, int pattern, int nneighs, int nreps, int masked)
 {
-    const int maxneighs       = nneighs * nreps;
-    const int ncj             = get_ncj_from_nci(atom->Nclusters_local);
-    const unsigned int imask  = NBNXN_INTERACTION_MASK_ALL;
-    neighbor->numneigh              = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->numneigh_masked       = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->numneigh_inner        = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->numneigh_inner_masked = (int*)malloc(atom->Nclusters_max * sizeof(int));
-    neighbor->neighbors = (int*)malloc(atom->Nclusters_max * maxneighs * sizeof(int));
-    neighbor->neighbors_imask = (unsigned int*)malloc(
+    const int maxneighs      = nneighs * nreps;
+    const int ncj            = get_ncj_from_nci(atom->Nclusters_local);
+    const unsigned int imask = NBNXN_INTERACTION_MASK_ALL;
+    neighbor->maxneighs      = maxneighs;
+    neighbor->numneigh = (int*)allocate(ALIGNMENT, atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_masked       = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_inner        = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * sizeof(int));
+    neighbor->numneigh_inner_masked = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * sizeof(int));
+    neighbor->neighbors             = (int*)allocate(ALIGNMENT,
+        atom->Nclusters_max * maxneighs * sizeof(int));
+    neighbor->neighbors_imask       = (unsigned int*)allocate(ALIGNMENT,
         atom->Nclusters_max * maxneighs * sizeof(unsigned int));
 
     if (pattern == P_RAND && ncj <= nneighs) {
@@ -82,28 +98,26 @@ void createNeighbors(
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
         int j         = (pattern == P_SEQ) ? CJ0_FROM_CI(ci) : 0;
         int m         = (pattern == P_SEQ) ? ncj : nneighs;
-        int k         = 0;
         const int nbM = atom->Nclusters_local;
-        const int nbN = neighbor->maxneighs;
 
         for (int k = 0; k < nneighs; k++) {
             if (pattern == P_RAND) {
                 int found = 0;
                 do {
-                    int cj                                             = rand() % ncj;
-                    neighs(neighbor->neighbors, ci, k, nbM, nbN)       = cj;
-                    neighs(neighbor->neighbors_imask, ci, k, nbM, nbN) = imask;
-                    found                                              = 0;
+                    int cj                                            = rand() % ncj;
+                    neighs(neighbor->neighbors, ci, k, nbM, neighbor) = cj;
+                    neighs(neighbor->neighbors_imask, ci, k, nbM, neighbor) = imask;
+                    found                                                   = 0;
                     for (int l = 0; l < k; l++) {
-                        if (neighs(neighbor->neighbors, ci, l, nbM, nbN) == cj) {
+                        if (neighs(neighbor->neighbors, ci, l, nbM, neighbor) == cj) {
                             found = 1;
                         }
                     }
                 } while (found == 1);
             } else {
-                neighs(neighbor->neighbors, ci, k, nbM, nbN)       = cj;
-                neighs(neighbor->neighbors_imask, ci, k, nbM, nbN) = imask;
-                j                                                  = (j + 1) % m;
+                neighs(neighbor->neighbors, ci, k, nbM, neighbor)       = j;
+                neighs(neighbor->neighbors_imask, ci, k, nbM, neighbor) = imask;
+                j                                                       = (j + 1) % m;
             }
         }
 
@@ -113,12 +127,12 @@ void createNeighbors(
                     ci,
                     r * nneighs + k,
                     nbM,
-                    nbN) = neighs(neighbor->neighbors, ci, k, nbM, nbN);
+                    neighbor) = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
                 neighs(neighbor->neighbors_imask,
                     ci,
                     r * nneighs + k,
                     nbM,
-                    nbN) = neighs(neighbor->neighbors_imask, ci, k, nbM, nbN);
+                    neighbor) = neighs(neighbor->neighbors_imask, ci, k, nbM, neighbor);
             }
         }
 
@@ -264,15 +278,17 @@ int main(int argc, const char* argv[])
     }
 
     while (atom->Nclusters_max < niclusters) {
-        growClusters(atom);
+        growClusters(atom, param.super_clustering);
     }
 
     for (int ci = 0; ci < niclusters; ++ci) {
-        int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
-        int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
-        MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
-        MD_FLOAT* ci_v  = &atom->cl_v[ci_vec_base];
-        int* ci_t       = &atom->cl_t[ci_sca_base];
+        int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
+        int ci_vec_base       = CI_VECTOR3_BASE_INDEX(ci);
+        MD_FLOAT* ci_x        = &atom->cl_x[ci_vec_base];
+        MD_FLOAT* ci_v        = &atom->cl_v[ci_vec_base];
+        int* ci_t             = &atom->cl_t[ci_sca_base];
+        MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[ci_sca_base];
+        MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[ci_sca_base];
 
         for (int cii = 0; cii < iclusters_natoms; ++cii) {
             ci_x[CL_X_INDEX_3D(cii)] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
@@ -282,6 +298,10 @@ int main(int argc, const char* argv[])
             ci_v[CL_Y_INDEX_3D(cii)] = 0.0;
             ci_v[CL_Z_INDEX_3D(cii)] = 0.0;
             ci_t[cii]                = rand() % atom->ntypes;
+            // All types share the same LJ parameters here, so the geometric
+            // combination rule's per-atom sqrt(epsilon)/sigma^3 are uniform too.
+            ci_sqrt_eps[cii] = sqrt(param.epsilon);
+            ci_sigma3[cii]   = sqrt(param.sigma6);
             atom->Nlocal++;
         }
 
@@ -321,11 +341,16 @@ int main(int argc, const char* argv[])
     }
 
     DEBUG_MESSAGE("Defining j-clusters...\n");
-    defineJClusters(atom);
+    defineJClusters(&param, atom);
     DEBUG_MESSAGE("Initializing neighbor lists...\n");
     initNeighbor(&neighbor, &param);
     DEBUG_MESSAGE("Creating neighbor lists...\n");
     createNeighbors(atom, &neighbor, pattern, nneighs, nreps, masked);
+    initDevice(&param, atom, &neighbor);
+#ifdef CUDA_TARGET
+    copyDataToCUDADevice(&param, atom, &neighbor);
+#endif
+    initForce(&param);
     DEBUG_MESSAGE("Computing forces...\n");
 
     double T_accum = 0.0;
@@ -334,36 +359,13 @@ int main(int argc, const char* argv[])
         traceAddresses(&param, atom, &neighbor, i + 1);
 #endif
 
-        if (param.force_field == FF_EAM) {
-            T_accum += computeForceEam(&param, atom, &neighbor, &stats);
-        } else {
-            if (param.half_neigh) {
-                if (VECTOR_WIDTH > CLUSTER_M * 2) {
-                    T_accum += computeForceLJ2xnnHalfNeigh(&param,
-                        atom,
-                        &neighbor,
-                        &stats);
-                } else {
-                    T_accum += computeForceLJ4xnHalfNeigh(&param,
-                        atom,
-                        &neighbor,
-                        &stats);
-                }
-            } else {
-                if (VECTOR_WIDTH > CLUSTER_M * 2) {
-                    T_accum += computeForceLJ2xnnFullNeigh(&param,
-                        atom,
-                        &neighbor,
-                        &stats);
-                } else {
-                    T_accum += computeForceLJ4xnFullNeigh(&param,
-                        atom,
-                        &neighbor,
-                        &stats);
-                }
-            }
-        }
+        T_accum += computeForce(&param, atom, &neighbor, &stats);
     }
+
+#ifdef CUDA_TARGET
+    copyDataFromCUDADevice(&param, atom);
+    cudaDeviceFree(&param);
+#endif
 
     double freq_hz                     = param.proc_freq * 1.e9;
     const double atoms_updates_per_sec = (double)(atom->Nlocal) / T_accum *
