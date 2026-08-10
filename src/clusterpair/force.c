@@ -34,6 +34,12 @@ void initForce(Parameter* param)
         } else {
             computeForce = computeForceLJ2xnnFullNeigh;
         }
+#elif defined(CLUSTERPAIR_KERNEL_2XN)
+         if (param->half_neigh) {
+             computeForce = computeForceLJ2xnHalfNeigh;
+         } else {
+             computeForce = computeForceLJ2xnFullNeigh;
+         }
 #elif defined(CLUSTERPAIR_KERNEL_GPU)
         if (param->super_clustering) {
             computeForce = computeForceLJCudaSup;
@@ -43,7 +49,7 @@ void initForce(Parameter* param)
 #endif
         break;
     case FF_LJ_TABLE:
-//#if defined(CLUSTERPAIR_KERNEL_REF)
+// #if defined(CLUSTERPAIR_KERNEL_REF)
 #if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJTableRef;
 #else

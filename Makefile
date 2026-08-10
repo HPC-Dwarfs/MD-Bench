@@ -1,7 +1,10 @@
 #CONFIGURE BUILD SYSTEM
-TAG = $(OPT_TAG)-$(TOOL_TAG)-$(DATA_TYPE)
-TARGET	   = MDBench-$(TAG)
-BUILD_DIR  = ./build/build-$(TAG)
+# Optional directory prefix for TARGET/BUILD_DIR (binary, objects, and generated .s files)
+PREFIX_DIR ?=
+override PREFIX_DIR := $(patsubst %/,%,$(strip $(PREFIX_DIR)))
+TAG = $(OPT_TAG)-$(TOOL_TAG)-$(DATA_TYPE)$(TAG_SUFFIX)
+TARGET     = $(if $(PREFIX_DIR),$(PREFIX_DIR)/,)MDBench-$(TAG)
+BUILD_DIR  = $(if $(PREFIX_DIR),$(PREFIX_DIR)/,)build/build-$(TAG)
 SRC_ROOT   = src
 SRC_DIR    = $(SRC_ROOT)/$(OPT_SCHEME)
 COMMON_DIR = $(SRC_ROOT)/common
@@ -141,6 +144,8 @@ test: $(TEST_BIN) $(TARGET)
 	@OPT_SCHEME=clusterpair bash tests/test_pairlist.sh
 	@echo "===>  RUNNING  test_mpi"
 	@bash tests/test_mpi.sh
+	@echo "===>  RUNNING  test_openmp"
+	@bash tests/test_openmp.sh
 	@echo "===>  RUNNING  test_displacement_reneigh"
 	@bash tests/test_displacement_reneigh.sh
 

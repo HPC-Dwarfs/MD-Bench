@@ -106,7 +106,7 @@ utilisation and easier SIMD vectorization.
 to `AOS` for CPU builds and `SOA` for GPU builds.
 - `LJ_COMB_RULE`: Lennard-Jones combination rule. `single` uses a single atom type
 with broadcast global parameters (fastest, no type lookup). `geometric` uses
-per-type parameters with geometric combination (default). `none` uses a full
+per-type parameters with geometric combination (default). `full` uses a full
 type-pair matrix lookup (not supported in SIMD kernels).
 - `DEBUG`: Enable additional debug output
 - `SORT_ATOMS`: Resort atoms to ensure that atoms that are nearby are also close
@@ -121,7 +121,7 @@ auto-vectorization
 Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 `gfx942` (MI300X).
 - `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme
-(`auto`/`4xN`/`2xNN`/`gpusimple`)
+(`auto`/`4xN`/`2xN`/`2xNN`/`gpusimple`/`supercluster`)
 - `SUPERCLUSTER_DATA_LAYOUT`: Data layout for super-clustering kernels
 (`AOS3`/`AOS4`/`SOA`)
 - `SUPERCLUSTER_INVERSE_THREAD_MAPPING`: Map `threadIdx.y` to `cii` and
@@ -167,8 +167,9 @@ Supports `outer_skin = <value>` to enable double-cutoff pruning (outer cutoff =
 `cutforce + skin + outer_skin`; default 0.0 disables it).
 - `-f <string>`: force field (`lj`, `eam`, `lj_table`), default `lj`. For
 anything different than `lj` you also need to provide a specific parameter file.
-`lj_table` uses tabulated cubic Hermite spline interpolation and is only
-available for verletlist.
+`lj_table` uses tabulated cubic Hermite spline interpolation. It is available for
+`OPT_SCHEME=verletlist`, and for `OPT_SCHEME=clusterpair` only when built with the
+reference kernel (`USE_REFERENCE_KERNEL=true`).
 - `-i <string>`:  input file with atom positions (dump). MD-Bench supports
 Brookhaven protein data bank (.pdb), GROMACS GROMOS87 (.gro), and LAMMPS dump
 (.dmp) file formats

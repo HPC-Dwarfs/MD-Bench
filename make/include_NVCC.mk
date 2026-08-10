@@ -25,8 +25,10 @@ ANSI_CFLAGS += -pedantic
 ANSI_CFLAGS += -Wextra
 
 #
-# A100 + Native
-CFLAGS   = -O3 -arch=sm_80 -march=native -ffast-math -funroll-loops --forward-unknown-to-host-compiler # -fopenmp
+# GPU architecture, overridable on the command line:
+#   make TOOLCHAIN=NVCC CUDA_ARCH=sm_90   (H200; sm_89 RTX 4060, sm_80 A100)
+CUDA_ARCH ?= sm_80
+CFLAGS   = -O3 -arch=$(CUDA_ARCH) -march=native -ffast-math -funroll-loops --forward-unknown-to-host-compiler # -fopenmp
 # A40 + Native
 #CFLAGS   = -O3 -arch=sm_86 -march=native -ffast-math -funroll-loops --forward-unknown-to-host-compiler # -fopenmp
 # Cascade Lake

@@ -123,6 +123,16 @@ static inline MD_FLOAT simd_real_incr_reduced_sum(
     return *((MD_FLOAT*)&a0);
 }
 
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    MD_FLOAT ret;
+    fprintf(stderr,
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX with double precision!");
+    exit(-1);
+    return ret;
+}
+
 static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MASK m)
 {
     return _mm256_and_pd(a, m);
@@ -221,6 +231,10 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return _mm_load_si128((__m128i const*)m);
 }
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return _mm_loadu_si128((__m128i const*)m);
+}
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm_add_epi32(a, b);
@@ -252,8 +266,8 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
     __m128i t1  = _mm_set1_epi32(m[1] * scale);
     __m128i ret = _mm256_inserti128_si256(_mm256_castsi128_si256(t0), t1, 1);
 #else
-    int i1 = m[0] * scale;
-    int i2 = m[1] * scale;
+    int i1      = m[0] * scale;
+    int i2      = m[1] * scale;
     __m128i ret = _mm_set_epi32(i2, i2, i1, i1);
 #endif
     return ret;

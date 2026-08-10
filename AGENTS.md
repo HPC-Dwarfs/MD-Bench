@@ -78,7 +78,7 @@ Key configuration options in `config.mk`:
 - `DATA_TYPE`: Precision (SP for single, DP for double)
 - `ATOM_DATA_LAYOUT`: Data layout (AOS for array-of-structures, SOA for structure-of-arrays)
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU and SOA for GPU
-- `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `none` for full pair matrix)
+- `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `full` for full pair matrix)
 - `ENABLE_MPI`: Enable MPI parallelization
 - `ENABLE_OPENMP`: Enable OpenMP parallelization
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds; **required, no default**. Common values: `gfx90a` (MI250X), `gfx940` (MI300A), `gfx942` (MI300X), `gfx1030` (RX 6800 XT)

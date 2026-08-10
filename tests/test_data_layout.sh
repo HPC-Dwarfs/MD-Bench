@@ -41,11 +41,11 @@ else
 fi
 if [ "${OPT_SCHEME}" = "verletlist" ]; then
   OPT_TAG="VL"
+  BIN_TAG="${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE:-geometric}"
 else
   OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
+  BIN_TAG="${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE:-geometric}"
 fi
-
-BIN_TAG="${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}"
 AOS_BIN="./MDBench-${BIN_TAG}"
 
 if [[ ! -x "${AOS_BIN}" ]]; then

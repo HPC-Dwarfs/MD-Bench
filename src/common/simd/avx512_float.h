@@ -68,6 +68,7 @@ static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _kand_mask16(a, b);
 }
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a) { return _knot_mask16(a); }
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm512_cmp_ps_mask(a, b, _CMP_LT_OQ);
@@ -92,11 +93,12 @@ static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
     // core AVX512F lane shuffle (0x4e swaps the two 256-bit halves), then finish with
     // the same 256 -> 128 -> scalar reduction used by the AVX2 float backend.
     __m512 swapped = _mm512_shuffle_f32x4(a, a, 0x4e);
-    __m256 sum256  = _mm256_add_ps(_mm512_castps512_ps256(a), _mm512_castps512_ps256(swapped));
+    __m256 sum256  = _mm256_add_ps(_mm512_castps512_ps256(a),
+        _mm512_castps512_ps256(swapped));
     __m128 t0      = _mm_add_ps(_mm256_castps256_ps128(sum256),
         _mm256_extractf128_ps(sum256, 0x1));
-    t0 = _mm_add_ps(t0, _mm_permute_ps(t0, _MM_SHUFFLE(1, 0, 3, 2)));
-    t0 = _mm_add_ss(t0, _mm_permute_ps(t0, _MM_SHUFFLE(0, 3, 2, 1)));
+    t0             = _mm_add_ps(t0, _mm_permute_ps(t0, _MM_SHUFFLE(1, 0, 3, 2)));
+    t0             = _mm_add_ss(t0, _mm_permute_ps(t0, _MM_SHUFFLE(0, 3, 2, 1)));
     return _mm_cvtss_f32(t0);
 }
 
@@ -109,6 +111,16 @@ static inline MD_FLOAT simd_real_incr_reduced_sum(
         "is not valid!\n");
     exit(-1);
     return 0.0;
+}
+
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    MD_FLOAT ret;
+    fprintf(stderr,
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX512 with float precision!");
+    exit(-1);
+    return ret;
 }
 
 static inline MD_SIMD_FLOAT simd_real_load_h_duplicate(const float* m)
@@ -167,6 +179,11 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
     return _mm512_add_epi32(a, b);
 }
 
+static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm512_mullo_epi32(a, b);
+}
+
 static inline MD_SIMD_INT simd_i32_zero(void) { return _mm512_setzero_si512(); }
 
 static inline MD_SIMD_INT simd_i32_seq(void)
@@ -182,6 +199,10 @@ static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm512_cmp_epi32_mask(a, b, _MM_CMPINT_LT);
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return _mm512_cmp_epi32_mask(a, b, _MM_CMPINT_EQ);
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)
@@ -199,6 +220,11 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
 static inline MD_SIMD_INT simd_i32_load(const int* m)
 {
     return _mm512_load_si512((const MD_SIMD_INT*)m);
+}
+
+static inline MD_SIMD_INT simd_i32_loadu(const int* m)
+{
+    return _mm512_loadu_si512((const MD_SIMD_INT*)m);
 }
 
 static inline void simd_i32_store(int* m, MD_SIMD_INT a)

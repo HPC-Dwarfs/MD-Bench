@@ -799,7 +799,7 @@ void growAtom(Atom* atom)
 #define REALLOC(p, t, ns, os)                                                            \
     ;                                                                                    \
     atom->p        = (t*)reallocate(atom->p, ALIGNMENT, ns, os);                         \
-    atom->d_atom.p = (t*)reallocateGPU(atom->d_atom.p, ns);
+    atom->d_atom.p = (t*)reallocateGPUKeep(atom->d_atom.p, ns, os);
 
 #ifdef ATOM_POSITION_AOS
     REALLOC(x, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT) * 3, nold * sizeof(MD_FLOAT) * 3);
@@ -1057,7 +1057,8 @@ bool needsReneigh(Atom* atom, Parameter* param)
         if (d > max_sq) max_sq = d;
     }
 #ifdef _MPI
-    MPI_Allreduce(MPI_IN_PLACE, &max_sq, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Datatype type_float = (sizeof(MD_FLOAT) == 4) ? MPI_FLOAT : MPI_DOUBLE;
+    MPI_Allreduce(MPI_IN_PLACE, &max_sq, 1, type_float, MPI_MAX, MPI_COMM_WORLD);
 #endif
     return max_sq > threshold;
 }

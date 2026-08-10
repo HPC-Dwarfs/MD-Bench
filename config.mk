@@ -35,11 +35,11 @@ SORT_ATOMS ?= false
 # Index variable for tabulated LJ forces (r/rsq)
 # r:   uniform grid in distance (matches GROMACS), needs a sqrt per pair
 # rsq: uniform grid in squared distance, avoids the sqrt (load-bound variant)
-LJ_TABLE_INDEX ?= r
-# LJ combination rule (single/geometric/none)
+LJ_TABLE_INDEX ?= rsq
+# LJ combination rule (single/geometric/full)
 # single: single atom type, broadcast global params (fastest, no type lookup)
 # geometric: per-type params with geometric combination (default)
-# none: full type-pair matrix lookup (not supported in SIMD kernels)
+# full: full type-pair matrix lookup (not supported in SIMD kernels)
 LJ_COMB_RULE ?= geometric
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
@@ -49,7 +49,7 @@ INDEX_TRACER ?= false
 COMPUTE_STATS ?= false
 
 # Configurations for clusterpair optimization scheme
-# Cluster pair kernel variant (auto/4xN/2xNN/gpusimple)
+# Cluster pair kernel variant (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 CLUSTER_PAIR_KERNEL ?= auto
 # Data layout for super-clustering kernels (AOS3/AOS4/SOA)
 SUPERCLUSTER_DATA_LAYOUT ?= AOS3
@@ -66,6 +66,10 @@ USE_SIMD_KERNEL ?= false
 # the expensive LJ force stage, instead of masking out failing lanes
 # (requires USE_SIMD_KERNEL=true; AVX2/AVX512 only for now)
 SIMD_COMPRESS ?= false
+# Use SIMD intrinsics to build the Verlet-list neighbor lists (true or false).
+# Independent of USE_SIMD_KERNEL, which only affects the force kernel.
+# (AVX512 only for now; not implemented for NBLIST_DATA_LAYOUT=CSR)
+USE_SIMD_NEIGHBOR ?= false
 # Enable XTC output (a GROMACS file format for trajectories)
 XTC_OUTPUT ?= false
 
@@ -188,10 +192,10 @@ ifeq ($(strip $(LJ_COMB_RULE)),single)
     DEFINES += -DLJ_COMB_RULE=0
 else ifeq ($(strip $(LJ_COMB_RULE)),geometric)
     DEFINES += -DLJ_COMB_RULE=1
-else ifeq ($(strip $(LJ_COMB_RULE)),none)
+else ifeq ($(strip $(LJ_COMB_RULE)),full)
     DEFINES += -DLJ_COMB_RULE=2
 else
-    $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, none)
+    $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, full)
 endif
 
 ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
@@ -237,6 +241,14 @@ ifeq ($(strip $(USE_SIMD_KERNEL)),true)
     ifeq ($(strip $(SIMD_COMPRESS)),true)
         DEFINES += -D__SIMD_COMPRESS__
     endif
+    # SVE/SVE2 are vector-length-agnostic; use the single-loop VLA kernel there instead of the fixed-width main+tail split.
+    ifneq ($(filter $(strip $(ISA))-$(strip $(SIMD)),ARM-SVE ARM-SVE2),)
+        DEFINES += -D__SIMD_VLA__
+    endif
+endif
+
+ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)
+    DEFINES += -D__SIMD_NEIGHBOR__
 endif
 
 ifeq ($(strip $(__SSE__)),true)
@@ -281,9 +293,16 @@ endif
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL
+    ifeq ($(strip $(USE_SIMD_KERNEL)),true)
+        OPT_TAG := $(OPT_TAG)-SIMD
+    endif
+    ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)
+        OPT_TAG := $(OPT_TAG)-NBSIMD
+    endif
 else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
 		OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
 endif
+TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
 
 ifeq ($(strip $(SIMD)),NONE)
 		TOOL_TAG = $(TOOLCHAIN)-$(ISA)
@@ -298,13 +317,17 @@ endif
 ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),auto)
         DEFINES += -DCLUSTERPAIR_KERNEL_AUTO
+    else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),supercluster)
+        DEFINES += -DCLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),gpusimple)
         DEFINES += -DCLUSTERPAIR_KERNEL_GPU_SIMPLE
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),4xN)
         DEFINES += -DCLUSTERPAIR_KERNEL_4XN
+    else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),2xN)
+        DEFINES += -DCLUSTERPAIR_KERNEL_2XN
     else ifeq ($(strip $(CLUSTER_PAIR_KERNEL)),2xNN)
         DEFINES += -DCLUSTERPAIR_KERNEL_2XNN
     else
-        $(error Invalid CLUSTER_PAIR_KERNEL, must be one of: auto, 4xN, 2xNN, gpusimple)
+        $(error Invalid CLUSTER_PAIR_KERNEL, must be one of: auto, 4xN, 2xNN, 2xN, gpusimple, supercluster)
     endif
 endif

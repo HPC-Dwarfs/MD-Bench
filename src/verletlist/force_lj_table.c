@@ -63,12 +63,12 @@ double computeForceLJTableFullNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
             const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             const int type_i = atom->type[i];
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -77,7 +77,7 @@ double computeForceLJTableFullNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -161,12 +161,12 @@ double computeForceLJTableHalfNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
             const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
             const int type_i = atom->type[i];
 #endif
 
             for (int k = 0; k < numneighs; k++) {
-                int j = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
+                int j         = neighs(neighbor->neighbors, i, k, nlocal, neighbor);
                 MD_FLOAT delx = xtmp - atom_x(j);
                 MD_FLOAT dely = ytmp - atom_y(j);
                 MD_FLOAT delz = ztmp - atom_z(j);
@@ -175,7 +175,7 @@ double computeForceLJTableHalfNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

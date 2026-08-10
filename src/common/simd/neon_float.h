@@ -50,12 +50,24 @@ static inline MD_SIMD_MASK simd_mask_from_u32(uint32_t a)
         3);
 }
 
-static inline uint32_t simd_mask_to_u32(MD_SIMD_MASK mask) { return 0; }
+// Was previously stubbed to always return 0; nothing in the codebase called it
+// until the vectorized neighbor-list build needed a real bitmask to bit-scan.
+static inline uint32_t simd_mask_to_u32(MD_SIMD_MASK mask)
+{
+    uint32_t bits = 0;
+    if (vgetq_lane_u32(mask, 0)) bits |= 0x1;
+    if (vgetq_lane_u32(mask, 1)) bits |= 0x2;
+    if (vgetq_lane_u32(mask, 2)) bits |= 0x4;
+    if (vgetq_lane_u32(mask, 3)) bits |= 0x8;
+    return bits;
+}
 
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return vandq_u32(a, b);
 }
+
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a) { return vmvnq_u32(a); }
 
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
@@ -87,6 +99,19 @@ static inline float simd_real_incr_reduced_sum(
     return vget_lane_f32(sum_low, 0);
 }
 
+static inline float simd_real_incr_reduced_sum_j2(
+     float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+ {
+    float32x4_t sum0 = vpaddq_f32(v0, v1); 
+    float32x2_t sum = vpadd_f32(vget_low_f32(sum0), vget_high_f32(sum0)); 
+ 
+     float32x2_t mem = vld1_f32(m); 
+     sum             = vadd_f32(sum, mem); 
+     vst1_f32(m, sum);  
+     
+     return vget_lane_f32(vpadd_f32(sum, sum), 0); 
+ }
+
 static inline MD_SIMD_FLOAT simd_real_masked_add(
     MD_SIMD_FLOAT a, MD_SIMD_FLOAT b, MD_SIMD_MASK m)
 {
@@ -101,10 +126,99 @@ static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MA
 }
 
 static inline MD_SIMD_INT simd_i32_load(const int* ptr) { return vld1q_s32(ptr); }
+// NEON's vld1q has no alignment requirement, so unaligned is the same load.
+static inline MD_SIMD_INT simd_i32_loadu(const int* ptr) { return vld1q_s32(ptr); }
+static inline void simd_i32_store(int* ptr, MD_SIMD_INT a) { vst1q_s32(ptr, a); }
 static inline MD_SIMD_INT simd_i32_broadcast(int value) { return vdupq_n_s32(value); }
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return vaddq_s32(a, b);
+}
+
+static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return vmulq_s32(a, b);
+}
+
+// Create sequence [0, 1, 2, 3] for NEON float (VECTOR_WIDTH=4)
+static inline MD_SIMD_INT simd_i32_seq(void)
+{
+    const int32_t seq[4] = { 0, 1, 2, 3 };
+    return vld1q_s32(seq);
+}
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return vcltq_s32(a, b);
+}
+
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return vceqq_s32(a, b);
+}
+
+// No native masked load on NEON; the ternary only reads ptr[i] when the lane
+// is active (C guarantees the untaken side of ?: is not evaluated), matching
+// the scalar-fallback style already used by simd_i32_gather() in this file.
+static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
+{
+    int32_t val0       = (vgetq_lane_u32(mask, 0) != 0) ? ptr[0] : 0;
+    int32_t val1       = (vgetq_lane_u32(mask, 1) != 0) ? ptr[1] : 0;
+    int32_t val2       = (vgetq_lane_u32(mask, 2) != 0) ? ptr[2] : 0;
+    int32_t val3       = (vgetq_lane_u32(mask, 3) != 0) ? ptr[3] : 0;
+    MD_SIMD_INT result = vdupq_n_s32(0);
+    result             = vsetq_lane_s32(val0, result, 0);
+    result             = vsetq_lane_s32(val1, result, 1);
+    result             = vsetq_lane_s32(val2, result, 2);
+    result             = vsetq_lane_s32(val3, result, 3);
+    return result;
+}
+
+// Gather integers (for multi-atom-type); scalar fallback, mirrors the neon_double.h
+// version. `scale` is unused here (as there): callers always pass sizeof(int),
+// and plain C indexing (base[idx]) already applies that element stride.
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    int32_t idx0       = vgetq_lane_s32(vidx, 0);
+    int32_t idx1       = vgetq_lane_s32(vidx, 1);
+    int32_t idx2       = vgetq_lane_s32(vidx, 2);
+    int32_t idx3       = vgetq_lane_s32(vidx, 3);
+    MD_SIMD_INT result = vdupq_n_s32(0);
+    result             = vsetq_lane_s32(base[idx0], result, 0);
+    result             = vsetq_lane_s32(base[idx1], result, 1);
+    result             = vsetq_lane_s32(base[idx2], result, 2);
+    result             = vsetq_lane_s32(base[idx3], result, 3);
+    return result;
+}
+
+// Horizontal sum reduction
+static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a) { return vaddvq_f32(a); }
+
+// Masked scatter-subtract (for half-neighbor lists)
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    MD_FLOAT vals[4] __attribute__((aligned(16)));
+    int32_t idx[4] __attribute__((aligned(16)));
+    vst1q_f32(vals, v);
+    vst1q_s32(idx, vidx);
+
+    if (vgetq_lane_u32(mask, 0)) {
+#pragma omp atomic
+        base[idx[0]] -= vals[0];
+    }
+    if (vgetq_lane_u32(mask, 1)) {
+#pragma omp atomic
+        base[idx[1]] -= vals[1];
+    }
+    if (vgetq_lane_u32(mask, 2)) {
+#pragma omp atomic
+        base[idx[2]] -= vals[2];
+    }
+    if (vgetq_lane_u32(mask, 3)) {
+#pragma omp atomic
+        base[idx[3]] -= vals[3];
+    }
 }
 
 static inline MD_SIMD_FLOAT simd_real_gather(

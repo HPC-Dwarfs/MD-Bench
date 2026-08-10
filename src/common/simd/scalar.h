@@ -264,6 +264,8 @@ static inline MD_SIMD_INT simd_i32_load(const int* m)
     return result;
 }
 
+static inline MD_SIMD_INT simd_i32_loadu(const int* m) { return simd_i32_load(m); }
+
 static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     MD_SIMD_INT result;

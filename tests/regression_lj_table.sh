@@ -25,10 +25,12 @@ fi
 NSTEPS="${NSTEPS:-100}"
 RELTOL="${RELTOL:-1e-3}"
 
-# Skip gracefully on builds that do not implement the tabulated kernel yet
-# (e.g. the clusterpair scheme): the binary exits with "Unknown force field".
+# Skip gracefully on builds that do not implement the tabulated kernel yet:
+# verletlist builds without table support exit with "Unknown force field",
+# while clusterpair builds using a non-reference (SIMD/GPU) kernel exit with
+# "Tabulated force fields for SIMD/GPU cases not yet implemented".
 probe="$("${BIN}" -f lj_table -n 0 -nx 4 -ny 4 -nz 4 2>&1 || true)"
-if echo "${probe}" | grep -qi "Unknown force field"; then
+if echo "${probe}" | grep -qiE "Unknown force field|not yet implemented"; then
     echo "SKIP: '${BIN}' does not support -f lj_table (tabulated kernel not built)"
     exit 0
 fi

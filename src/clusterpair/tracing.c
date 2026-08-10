@@ -38,8 +38,8 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
         DIST_TRACE(neighbor->neighbors, i, numneighs, Nlocal, neighbor->maxneighs);
 
         for (int k = 0; k < numneighs; k++) {
-            MEM_TRACE(neighs(neighbor->neighbors, i, k, Nlocal, neighbor),
-                'R');
+            MEM_TRACE(neighs(neighbor->neighbors, i, k, Nlocal, neighbor), 'R');
+            int j = neighs(neighbor->neighbors, i, k, Nlocal, neighbor);
             MEM_TRACE(atom_x(j), 'R');
             MEM_TRACE(atom_y(j), 'R');
             MEM_TRACE(atom_z(j), 'R');

@@ -39,6 +39,10 @@ extern double computeForceLJFullNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*)
 extern double computeForceLJHalfNeigh_simd_compress(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJFullNeigh_simd_compress(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
+#ifdef __SIMD_VLA__
+extern double computeForceLJHalfNeigh_simd_vla(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJFullNeigh_simd_vla(Parameter*, Atom*, Neighbor*, Stats*);
+#endif
 #endif
 
 #ifdef CUDA_TARGET

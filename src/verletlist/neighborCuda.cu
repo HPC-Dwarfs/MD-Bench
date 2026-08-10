@@ -178,23 +178,27 @@ __global__ void compute_neighborhood(DeviceAtom a,
     int type_i = atom->type[i];
 #endif
     for (int k = 0; k < nstencil; k++) {
-        int jbin     = ibin + stencil[k];
+        // __ldg: stencil/bins/x/type are read-only here, but the compiler cannot
+        // prove they don't alias the neighbor-list writes, so it won't use the
+        // read-only cache on its own (same as the force kernel)
+        int jbin     = ibin + __ldg(&stencil[k]);
         int* loc_bin = &bins[jbin * atoms_per_bin];
+        int bincnt   = __ldg(&bincount[jbin]);
 
-        for (int m = 0; m < bincount[jbin]; m++) {
-            int j = loc_bin[m];
+        for (int m = 0; m < bincnt; m++) {
+            int j = __ldg(&loc_bin[m]);
             if (j == i || (halfneigh && (j < i))) {
                 continue;
             }
 
-            MD_FLOAT delx = xtmp - atom_x(j);
-            MD_FLOAT dely = ytmp - atom_y(j);
-            MD_FLOAT delz = ztmp - atom_z(j);
+            MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
+            MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
+            MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_j            = atom->type[j];
-            const MD_FLOAT cutoff = atom->cutneighsq[type_i * ntypes + type_j];
+            int type_j            = __ldg(&atom->type[j]);
+            const MD_FLOAT cutoff = __ldg(&atom->cutneighsq[type_i * ntypes + type_j]);
 #else
             const MD_FLOAT cutoff = cutneighsq;
 #endif
@@ -330,10 +334,8 @@ __global__ void fill_neighborhood_csr(DeviceAtom a,
 /* Double-cutoff prune: partition each atom's neighbor list in place so the inner
  * neighbors (within the force cutoff + skin) come first, and record their count in
  * numneigh_inner. One thread per local atom; lists are independent so no atomics. */
-__global__ void prune_neighborhood(DeviceAtom a,
-    DeviceNeighbor neigh,
-    int nlocal,
-    MD_FLOAT cutsq)
+__global__ void prune_neighborhood(
+    DeviceAtom a, DeviceNeighbor neigh, int nlocal, MD_FLOAT cutsq)
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= nlocal) {
@@ -357,8 +359,11 @@ __global__ void prune_neighborhood(DeviceAtom a,
 
         if (rsq < cutsq) {
             if (hi != lo) {
-                neighs(neighbor->neighbors, i, hi, nlocal, neighbor) =
-                    neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
+                neighs(neighbor->neighbors,
+                    i,
+                    hi,
+                    nlocal,
+                    neighbor) = neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
                 neighs(neighbor->neighbors, i, lo, nlocal, neighbor) = j;
             }
             lo++;
@@ -529,12 +534,12 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     cuda_assert("count_neighborhood", cudaDeviceSynchronize());
 
     /* Prefix sum on the host. */
-    int Nlocal = atom->Nlocal;
+    int Nlocal         = atom->Nlocal;
     int* h_numneigh    = (int*)malloc(Nlocal * sizeof(int));
     int* h_neigh_start = (int*)malloc((Nlocal + 1) * sizeof(int));
     memcpyFromGPU(h_numneigh, d_neighbor->numneigh, Nlocal * sizeof(int));
-    h_neigh_start[0]        = 0;
-    neighbor->maxneighs     = 0;
+    h_neigh_start[0]    = 0;
+    neighbor->maxneighs = 0;
     for (int ii = 0; ii < Nlocal; ii++) {
         h_neigh_start[ii + 1] = h_neigh_start[ii] + h_numneigh[ii];
         if (h_numneigh[ii] > neighbor->maxneighs) {
@@ -547,9 +552,9 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     free(h_neigh_start);
 
     /* Allocate compact neighbors buffer for this build. */
-    d_neighbor->neighbors  = (int*)reallocateGPU(d_neighbor->neighbors,
+    d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
         MAX(1, total) * sizeof(int));
-    d_neighbor->maxneighs  = neighbor->maxneighs;
+    d_neighbor->maxneighs = neighbor->maxneighs;
 
     /* Pass 2: fill neighbors[] using the uploaded neigh_start[]. */
     fill_neighborhood_csr<<<num_blocks, num_threads_per_block>>>(atom->d_atom,

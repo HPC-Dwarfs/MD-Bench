@@ -18,6 +18,7 @@ TOOLCHAIN="${TOOLCHAIN:-GCC}"
 ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 DATA_TYPE="${DATA_TYPE:-DP}"
+LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
 
 cd "${ROOT_DIR}"
 
@@ -48,7 +49,7 @@ if [ "${SIMD}" = "NONE" ]; then
 else
   TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
 fi
-VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}"
+VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 
 # Step 1: Build serial (non-MPI) binary
 echo "Building serial (non-MPI) Verlet-list binary..."

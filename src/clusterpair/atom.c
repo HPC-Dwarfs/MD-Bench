@@ -702,6 +702,12 @@ void initMasks(Atom* atom)
         atom->masks_4xn_fn[cond0 * 4 + 1] = (unsigned int)(0xf - 0x2 * cond0);
         atom->masks_4xn_fn[cond0 * 4 + 2] = (unsigned int)(0xf - 0x4 * cond0);
         atom->masks_4xn_fn[cond0 * 4 + 3] = (unsigned int)(0xf - 0x8 * cond0);
+
+        atom->masks_2xn_hn[cond0 * 2 + 0] = (unsigned int)(0x3 - 0x1 * cond0);
+        atom->masks_2xn_hn[cond0 * 2 + 1] = (unsigned int)(0x3 - 0x3 * cond0);
+
+        atom->masks_2xn_fn[cond0 * 2 + 0] = (unsigned int)(0x3 - 0x1 * cond0);
+        atom->masks_2xn_fn[cond0 * 2 + 1] = (unsigned int)(0x3 - 0x2 * cond0);
     }
 #else
     for (unsigned int cond0 = 0; cond0 < 2; cond0++) {
@@ -766,6 +772,21 @@ void initMasks(Atom* atom)
             atom->masks_4xn_fn[cond0 * 8 + cond1 * 4 + 3] = (unsigned int)(0xff -
                                                                            0x8 * cond0 -
                                                                            0x80 * cond1);
+            
+            atom->masks_2xn_hn[cond0 * 4 + cond1 * 2 + 0] = (unsigned int)(0xf -
+                                                                           0x1 * cond0 -
+                                                                           0x7 * cond1);
+            atom->masks_2xn_hn[cond0 * 4 + cond1 * 2 + 1] = (unsigned int)(0xf -
+                                                                           0x3 * cond0 -
+                                                                           0xf * cond1);
+
+            atom->masks_2xn_fn[cond0 * 4 + cond1 * 2 + 0] = (unsigned int)(0xf -
+                                                                           0x1 * cond0 -
+                                                                           0x4 * cond1);
+            atom->masks_2xn_fn[cond0 * 4 + cond1 * 2 + 1] = (unsigned int)(0xf -
+                                                                           0x2 * cond0 -
+                                                                           0x8 * cond1);
+
 #else
             atom->masks_4xn_hn[cond0 * 8 + cond1 * 4 + 0] = (unsigned int)(0x3 -
                                                                            0x1 * cond0);
@@ -913,6 +934,33 @@ void growClusters(Atom* atom, int super_clustering)
             atom->iclusters[ci * SCLUSTER_SIZE].bbminz = 0.0;
             atom->iclusters[ci * SCLUSTER_SIZE].bbmaxz = 0.0;
         }
+    }
+#else
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        int ci_vec_base = ci * CLUSTER_M * SCLUSTER_SIZE * 3;
+        for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE * 3; idx++) {
+            atom->cl_x[ci_vec_base + idx] = 0.0;
+            atom->cl_f[ci_vec_base + idx] = 0.0;
+            atom->cl_v[ci_vec_base + idx] = 0.0;
+        }
+    }
+
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        int ci_sca_base = ci * CLUSTER_M * SCLUSTER_SIZE;
+        for (int idx = 0; idx < CLUSTER_M * SCLUSTER_SIZE; idx++) {
+            atom->cl_t[ci_sca_base + idx] = 0;
+        }
+    }
+
+    for (int ci = nold; ci < atom->Nclusters_max; ci++) {
+        atom->cluster_bin[ci]                      = 0;
+        atom->iclusters[ci * SCLUSTER_SIZE].natoms = 0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminx = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxx = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminy = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxy = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbminz = 0.0;
+        atom->iclusters[ci * SCLUSTER_SIZE].bbmaxz = 0.0;
     }
 #endif
 
@@ -1243,18 +1291,19 @@ bool needsReneigh(Atom* atom, Parameter* param)
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
         int base = CI_VECTOR3_BASE_INDEX(ci);
         for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
-            MD_FLOAT dx = atom->cl_x[base + CL_X_INDEX_3D(cii)]
-                        - atom->cl_x_ref[base + CL_X_INDEX_3D(cii)];
-            MD_FLOAT dy = atom->cl_x[base + CL_Y_INDEX_3D(cii)]
-                        - atom->cl_x_ref[base + CL_Y_INDEX_3D(cii)];
-            MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)]
-                        - atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
+            MD_FLOAT dx = atom->cl_x[base + CL_X_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_X_INDEX_3D(cii)];
+            MD_FLOAT dy = atom->cl_x[base + CL_Y_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_Y_INDEX_3D(cii)];
+            MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)] -
+                          atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
             MD_FLOAT d = dx * dx + dy * dy + dz * dz;
             if (d > max_sq) max_sq = d;
         }
     }
 #ifdef _MPI
-    MPI_Allreduce(MPI_IN_PLACE, &max_sq, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Datatype type_float = (sizeof(MD_FLOAT) == 4) ? MPI_FLOAT : MPI_DOUBLE;
+    MPI_Allreduce(MPI_IN_PLACE, &max_sq, 1, type_float, MPI_MAX, MPI_COMM_WORLD);
 #endif
     return max_sq > threshold;
 }

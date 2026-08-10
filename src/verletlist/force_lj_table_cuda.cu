@@ -63,7 +63,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
     const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
     const int type_i = atom->type[i];
 #endif
 
@@ -77,7 +77,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
         const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
         const int type_j          = atom->type[j];
         const int type_ij         = type_i * ntypes + type_j;
         const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -138,7 +138,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
     const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
     const int type_i = atom->type[i];
 #endif
 
@@ -152,7 +152,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
         const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_NONE
+#elif LJ_COMB_RULE == LJ_COMB_FULL
         const int type_j          = atom->type[j];
         const int type_ij         = type_i * ntypes + type_j;
         const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
