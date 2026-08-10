@@ -94,6 +94,11 @@ void copy(Atom*, int, int);
 #define atom_fx(i)      atom->fx[(i) * 3 + 0]
 #define atom_fy(i)      atom->fx[(i) * 3 + 1]
 #define atom_fz(i)      atom->fx[(i) * 3 + 2]
+// Same as above but taking an explicit pointer instead of the implicit
+// "atom" variable, so callers can pass a local restrict-qualified alias.
+#define atom_access_x(ptr, i) (ptr)[(i) * 3 + 0]
+#define atom_access_y(ptr, i) (ptr)[(i) * 3 + 1]
+#define atom_access_z(ptr, i) (ptr)[(i) * 3 + 2]
 #else
 #define POS_DATA_LAYOUT "SoA"
 #define atom_x(i)       atom->x[i]
@@ -108,6 +113,9 @@ void copy(Atom*, int, int);
 #define atom_fx(i)      atom->fx[i]
 #define atom_fy(i)      atom->fy[i]
 #define atom_fz(i)      atom->fz[i]
+#define atom_access_x(ptr, i) (ptr)[i]
+#define atom_access_y(ptr, i) (ptr)[i]
+#define atom_access_z(ptr, i) (ptr)[i]
 #endif
 
 #define buf_x(i) buf[3 * (i)]
