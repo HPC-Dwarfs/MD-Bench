@@ -21,11 +21,20 @@ void initForce(Parameter* param)
 #if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJRef;
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
-        if (param->half_neigh || param->method) {
-            computeForce = computeForceLJ4xnHalfNeigh;
-        } else {
-            computeForce = computeForceLJ4xnFullNeigh;
+        if (param->gmxbenchmark) {
+            if (param->half_neigh || param->method) {
+                computeForce = computeForceLJ4xnHalfNeighC6C12;
+            } else {
+                computeForce = computeForceLJ4xnFullNeighC6C12;
+            }
+        }else{
+            if (param->half_neigh || param->method) {
+                computeForce = computeForceLJ4xnHalfNeigh;
+            } else {
+                computeForce = computeForceLJ4xnFullNeigh;
+            }
         }
+
 #elif defined(CLUSTERPAIR_KERNEL_2XNN)
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJ2xnnHalfNeigh;

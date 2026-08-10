@@ -71,7 +71,11 @@ double setup(Parameter* param,
     initStats(stats);
     initNeighbor(neighbor, param);
     if (param->input_file == NULL) {
-        createAtom(atom, param);
+        if (param->gmxbenchmark) {
+            readAtomGmx(atom, param);
+        } else {
+            createAtom(atom, param);
+        }
     } else {
         readAtom(atom, param);
     }
@@ -312,6 +316,20 @@ int main(int argc, char** argv)
 
         if ((strcmp(argv[i], "-setup") == 0)) {
             param.setup = atoi(argv[++i]);
+            continue;
+        }
+        
+        if ((strcmp(argv[i], "-gmxbench") == 0)) {
+            param.gmxbenchmark = true;
+            if (param.input_file != NULL) {
+                free(param.input_file);
+                param.input_file = NULL;
+            }
+            continue;
+        }
+
+        if ((strcmp(argv[i], "-size") == 0)) {
+            param.size = atoi(argv[++i]);
             continue;
         }
 

@@ -44,6 +44,8 @@ extern double computeForceLJ2xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJ2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJ4xnFullNeighC6C12(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJ4xnHalfNeighC6C12(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
 #ifdef CUDA_TARGET

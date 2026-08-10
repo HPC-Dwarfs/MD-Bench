@@ -8,6 +8,7 @@
 #define __PARAMETER_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 // Portable vector types compatible with CUDA/HIP.
 // Skip our definitions whenever CUDA/HIP runtime headers are (or may be)
@@ -120,6 +121,8 @@ typedef struct {
     int balance_every;
     int setup;
     int verbose;
+    int size;
+    bool gmxbenchmark;
 } Parameter;
 
 void initParameter(Parameter*);

@@ -92,6 +92,10 @@ typedef struct {
     unsigned int masks_4xn_fn[16];
     // Info Subdomain
     Box mybox;
+    //gmx benchmark
+    MD_FLOAT* nonbondedParameters;
+    MD_FLOAT* c6;
+    MD_FLOAT* c12;
 } Atom;
 
 extern int get_ncj_from_nci(int nci);
@@ -99,6 +103,7 @@ extern void initAtom(Atom*);
 extern void initMasks(Atom*);
 extern void createAtom(Atom*, Parameter*);
 extern int readAtom(Atom*, Parameter*);
+extern int readAtomGmx(Atom*, Parameter*);
 extern int readAtomPdb(Atom*, Parameter*);
 extern int readAtomGro(Atom*, Parameter*);
 extern int readAtomDmp(Atom*, Parameter*);

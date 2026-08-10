@@ -126,7 +126,9 @@ void initParameter(Parameter* param)
     param->balance_every = param->reneigh_every;
     param->setup         = 1;
     param->verbose       = 0;
-
+    // gmx benchmark
+    param->gmxbenchmark  = false;
+    param->size          = 1;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
