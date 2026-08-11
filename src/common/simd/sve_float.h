@@ -27,12 +27,16 @@ static inline MD_SIMD_FLOAT simd_real_load(const float* ptr)
     return svld1_f32(svptrue_b32(), ptr);
 }
 
+// Every caller passes scale == sizeof(MD_FLOAT), so the index-scaled gather
+// form applies directly (see sve_double.h's simd_real_gather for the same
+// fix): it multiplies vidx by the destination element size (4 bytes for f32)
+// as part of the gather's addressing mode, avoiding a separate
+// svmul_n_s32_x to pre-compute byte offsets.
 static inline MD_SIMD_FLOAT simd_real_gather(
     MD_SIMD_INT vidx, MD_FLOAT* base, const int scale)
 {
-    svint32_t offsets = svmul_n_s32_x(svptrue_b32(), vidx, scale);
-    return svld1_gather_s32offset_f32(svptrue_b32(), base, offsets);
-    // return svld1_gather_s32index_f32(svptrue_b32(), base, vidx);
+    (void)scale;
+    return svld1_gather_s32index_f32(svptrue_b32(), base, vidx);
 }
 
 

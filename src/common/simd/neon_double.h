@@ -155,10 +155,14 @@ static inline MD_SIMD_INT simd_i32_load(const int* ptr)
 {
     return vmovl_s32(vld1_s32(ptr));
 }
-// NEON's vld1q has no alignment requirement, so unaligned is the same load.
+// NEON's vld1 has no alignment requirement, so unaligned is the same load.
+// Must widen (sign-extend) each 32-bit int to its own 64-bit lane, same as
+// simd_i32_load() above -- a raw vld1q_s64 reinterpret-casts pairs of
+// adjacent 32-bit ints as single 64-bit values instead, producing garbage
+// indices.
 static inline MD_SIMD_INT simd_i32_loadu(const int* ptr)
 {
-    return vld1q_s64((int64_t*)ptr);
+    return vmovl_s32(vld1_s32(ptr));
 }
 static inline void simd_i32_store(int* ptr, MD_SIMD_INT a)
 {
@@ -324,7 +328,10 @@ static inline MD_SIMD_INT simd_i32_load_h_dual_scaled(const int* m, int scale)
 static inline MD_SIMD_FLOAT simd_real_sqrt(MD_SIMD_FLOAT v) { return vsqrtq_f64(v); }
 static inline MD_SIMD_INT simd_i32_from_real(MD_SIMD_FLOAT v) { return vcvtq_s64_f64(v); }
 static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v) { return vcvtq_f64_s64(v); }
+// Base NEON has no native 64-bit integer min (vminq_s64 doesn't exist), so
+// compare-and-select instead.
 static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
 {
-    return vminq_s64(a, b);
+    uint64x2_t lt = vcltq_s64(a, b);
+    return vbslq_s64(lt, a, b);
 }
