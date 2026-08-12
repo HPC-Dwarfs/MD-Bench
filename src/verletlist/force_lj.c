@@ -58,8 +58,10 @@ double computeForceLJFullNeigh(
         MD_FLOAT* restrict fy_ptr = atom->fy;
         MD_FLOAT* restrict fz_ptr = atom->fz;
 #endif
+#if LJ_COMB_RULE == LJ_COMB_GEOM
         MD_FLOAT* restrict sqrt_epsilon_ptr = atom->sqrt_epsilon;
         MD_FLOAT* restrict sigma3_ptr       = atom->sigma3;
+#endif
         int* restrict neighbors_ptr         = neighbor->neighbors;
         int* restrict numneigh_inner_ptr    = neighbor->numneigh_inner;
 
