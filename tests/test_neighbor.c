@@ -1,5 +1,7 @@
 #include "test_runner.h"
 
+#include <math.h>
+
 #include <atom.h>
 #include <force.h>
 #include <neighbor.h>
@@ -40,6 +42,16 @@ static void build_small_system(Parameter* param, Atom* atom, Neighbor* neighbor)
     param->nz         = 4;
     param->ntimes     = 0;
     param->half_neigh = 0;
+
+    /* clusterpair/main.c::setup computes the lattice constant and box
+     * dimensions before initNeighbor() -- initNeighbor() caches xprd/yprd/zprd
+     * from param, so skipping this leaves them at 0, which propagates to a
+     * zero bin size, an infinite bin-inverse, and an overflowed stencil
+     * capacity in setupNeighbor(). */
+    param->lattice = pow(4.0 / param->rho, 1.0 / 3.0);
+    param->xprd    = param->nx * param->lattice;
+    param->yprd    = param->ny * param->lattice;
+    param->zprd    = param->nz * param->lattice;
 
     initAtom(atom);
     /* Neighbor setup does not require full force initialization. */

@@ -42,24 +42,38 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 
 #pragma omp parallel
     {
+        // restrict pointers so GCC can vectorize this loop at full width even
+        // when outlined for OpenMP (see atom_access_x/y/z in atom.h)
+#ifdef ATOM_POSITION_AOS
+        MD_FLOAT* restrict x_ptr = atom->x;
+        MD_FLOAT* y_ptr          = x_ptr;
+        MD_FLOAT* z_ptr          = x_ptr;
+#else
+        MD_FLOAT* restrict x_ptr = atom->x;
+        MD_FLOAT* restrict y_ptr = atom->y;
+        MD_FLOAT* restrict z_ptr = atom->z;
+#endif
+        int* restrict neighbors_ptr = neighbor->neighbors;
+        int* restrict numneigh_ptr  = neighbor->numneigh;
+
         LIKWID_MARKER_START("force");
 
 #pragma omp for
         for (int i = 0; i < Nlocal; i++) {
-            int numneighs = neighbor->numneigh[i];
-            MD_FLOAT xtmp = atom_x(i);
-            MD_FLOAT ytmp = atom_y(i);
-            MD_FLOAT ztmp = atom_z(i);
+            int numneighs = numneigh_ptr[i];
+            MD_FLOAT xtmp = atom_access_x(x_ptr, i);
+            MD_FLOAT ytmp = atom_access_y(y_ptr, i);
+            MD_FLOAT ztmp = atom_access_z(z_ptr, i);
             MD_FLOAT rhoi = 0;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
             const int type_i = atom->type[i];
 #endif
-#pragma ivdep
+#pragma omp simd reduction(+ : rhoi)
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs(neighbor->neighbors, i, k, Nlocal, neighbor);
-                MD_FLOAT delx = xtmp - atom_x(j);
-                MD_FLOAT dely = ytmp - atom_y(j);
-                MD_FLOAT delz = ztmp - atom_z(j);
+                int j         = neighs(neighbors_ptr, i, k, Nlocal, neighbor);
+                MD_FLOAT delx = xtmp - atom_access_x(x_ptr, j);
+                MD_FLOAT dely = ytmp - atom_access_y(y_ptr, j);
+                MD_FLOAT delz = ztmp - atom_access_z(z_ptr, j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
@@ -119,14 +133,33 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
 
 #pragma omp parallel
     {
+        // See the matching comment above
+#ifdef ATOM_POSITION_AOS
+        MD_FLOAT* restrict x_ptr  = atom->x;
+        MD_FLOAT* y_ptr           = x_ptr;
+        MD_FLOAT* z_ptr           = x_ptr;
+        MD_FLOAT* restrict fx_ptr = atom->fx;
+        MD_FLOAT* fy_ptr          = fx_ptr;
+        MD_FLOAT* fz_ptr          = fx_ptr;
+#else
+        MD_FLOAT* restrict x_ptr  = atom->x;
+        MD_FLOAT* restrict y_ptr  = atom->y;
+        MD_FLOAT* restrict z_ptr  = atom->z;
+        MD_FLOAT* restrict fx_ptr = atom->fx;
+        MD_FLOAT* restrict fy_ptr = atom->fy;
+        MD_FLOAT* restrict fz_ptr = atom->fz;
+#endif
+        int* restrict neighbors_ptr = neighbor->neighbors;
+        int* restrict numneigh_ptr  = neighbor->numneigh;
+
         LIKWID_MARKER_START("force");
 
 #pragma omp for
         for (int i = 0; i < Nlocal; i++) {
-            int numneighs = neighbor->numneigh[i];
-            MD_FLOAT xtmp = atom_x(i);
-            MD_FLOAT ytmp = atom_y(i);
-            MD_FLOAT ztmp = atom_z(i);
+            int numneighs = numneigh_ptr[i];
+            MD_FLOAT xtmp = atom_access_x(x_ptr, i);
+            MD_FLOAT ytmp = atom_access_y(y_ptr, i);
+            MD_FLOAT ztmp = atom_access_z(z_ptr, i);
             MD_FLOAT fix  = 0;
             MD_FLOAT fiy  = 0;
             MD_FLOAT fiz  = 0;
@@ -134,12 +167,12 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
             const int type_i = atom->type[i];
 #endif
 
-#pragma ivdep
+#pragma omp simd reduction(+ : fix, fiy, fiz)
             for (int k = 0; k < numneighs; k++) {
-                int j         = neighs(neighbor->neighbors, i, k, Nlocal, neighbor);
-                MD_FLOAT delx = xtmp - atom_x(j);
-                MD_FLOAT dely = ytmp - atom_y(j);
-                MD_FLOAT delz = ztmp - atom_z(j);
+                int j         = neighs(neighbors_ptr, i, k, Nlocal, neighbor);
+                MD_FLOAT delx = xtmp - atom_access_x(x_ptr, j);
+                MD_FLOAT dely = ytmp - atom_access_y(y_ptr, j);
+                MD_FLOAT delz = ztmp - atom_access_z(z_ptr, j);
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
                 const int type_j          = atom->type[j];
@@ -212,9 +245,9 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                 }
             }
 
-            atom_fx(i) = fix;
-            atom_fy(i) = fiy;
-            atom_fz(i) = fiz;
+            atom_access_x(fx_ptr, i) = fix;
+            atom_access_y(fy_ptr, i) = fiy;
+            atom_access_z(fz_ptr, i) = fiz;
             addStat(stats->total_force_neighs, numneighs);
             addStat(stats->total_force_iters,
                 (numneighs + VECTOR_WIDTH - 1) / VECTOR_WIDTH);

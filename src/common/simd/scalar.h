@@ -155,8 +155,8 @@ static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MA
 static inline MD_FLOAT simd_real_incr_reduced_sum(
     MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1, MD_SIMD_FLOAT v2, MD_SIMD_FLOAT v3)
 {
-    MD_FLOAT sum = 0;
-    MD_FLOAT partial_sums[4];
+    MD_FLOAT sum             = 0;
+    MD_FLOAT partial_sums[4] = { 0 };
 
     for (int i = 0; i < VECTOR_WIDTH; i++) {
         partial_sums[0] += v0.val[i];
