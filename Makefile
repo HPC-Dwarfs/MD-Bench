@@ -144,6 +144,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_openmp.sh
 	@echo "===>  RUNNING  test_displacement_reneigh"
 	@bash tests/test_displacement_reneigh.sh
+	@echo "===>  RUNNING  test_main_stub"
+	@bash tests/test_main_stub.sh
 
 TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c $(COMMON_DIR)/ljtable.c
 TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neighbor.c $(SRC_ROOT)/clusterpair/pbc.c $(SRC_ROOT)/clusterpair/integrate.c
