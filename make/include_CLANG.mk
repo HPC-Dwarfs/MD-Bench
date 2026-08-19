@@ -1,4 +1,4 @@
-CC = clang
+CC ?= clang
 LINKER = $(CC)
 
 OS := $(shell uname -s)
