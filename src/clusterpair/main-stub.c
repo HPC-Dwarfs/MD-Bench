@@ -59,14 +59,15 @@ void init(Parameter* param)
     param->mass        = 1.0;
     param->half_neigh  = 0;
     // Unused
-    param->dt               = 0.005;
-    param->dtforce          = 0.5 * param->dt;
-    param->nstat            = 100;
-    param->temp             = 1.44;
-    param->reneigh_every    = 20;
-    param->proc_freq        = 2.4;
-    param->eam_file         = NULL;
-    param->super_clustering = 0;
+    param->dt            = 0.005;
+    param->dtforce       = 0.5 * param->dt;
+    param->nstat         = 100;
+    param->temp          = 1.44;
+    param->reneigh_every = 20;
+    param->proc_freq     = 2.4;
+    param->eam_file      = NULL;
+    // param->super_clustering is left as set by initParameter(), which derives
+    // it from CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS; -sc can still override it.
 }
 
 void createNeighbors(
@@ -195,6 +196,10 @@ int main(int argc, const char* argv[])
             masked = 1;
             continue;
         }
+        if ((strcmp(argv[i], "-sc") == 0) || (strcmp(argv[i], "--super-clustering") == 0)) {
+            param.super_clustering = atoi(argv[++i]);
+            continue;
+        }
         if ((strcmp(argv[i], "-n") == 0) || (strcmp(argv[i], "--nsteps") == 0)) {
             param.ntimes = atoi(argv[++i]);
             continue;
@@ -237,6 +242,8 @@ int main(int argc, const char* argv[])
                    "(default 9)\n");
             printf("-nr <int>:            number of times neighbor lists should be "
                    "replicated (default 1)\n");
+            printf("-sc <0|1>:            override super-clustering (default: derived "
+                   "from the build's CLUSTER_PAIR_KERNEL)\n");
             printf("--freq <real>:        set CPU frequency (GHz) and display average "
                    "cycles per atom and neighbors\n");
             printf("--csv:                set output as CSV style\n");
@@ -328,6 +335,7 @@ int main(int argc, const char* argv[])
             CLUSTER_N,
             VECTOR_WIDTH);
         printf("Floating-point precision: %s\n", PRECISION_STRING);
+        printf("Super-clustering: %s\n", (param.super_clustering) ? "yes" : "no");
         printf("Pattern: %s\n", pattern_str);
         printf("Number of timesteps: %d\n", param.ntimes);
         printf("Number of i-clusters: %d\n", niclusters);
