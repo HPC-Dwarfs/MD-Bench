@@ -447,21 +447,30 @@ int readAtom_gro(Atom* atom, Parameter* param)
 
     while (!feof(fp) && read_atoms < atoms_to_read) {
         readline(line, fp);
-        char* label = strtok(line, " ");
-        int type    = type_str2int(strtok(NULL, " "));
-        int atom_id = atoi(strtok(NULL, " ")) - 1;
-        atom_id     = read_atoms;
+        char type_field[6];
+        memcpy(type_field, line + 10, 5);
+        type_field[5]     = '\0';
+        char* type_start  = type_field;
+        while (*type_start == ' ') type_start++;
+        int type          = type_str2int(type_start);
+        int atom_id       = read_atoms;
+        MD_FLOAT in_x    = atof(strtok(line + 20, " "));
+        MD_FLOAT in_y    = atof(strtok(NULL, " "));
+        MD_FLOAT in_z    = atof(strtok(NULL, " "));
+        MD_FLOAT in_vx   = atof(strtok(NULL, " "));
+        MD_FLOAT in_vy   = atof(strtok(NULL, " "));
+        MD_FLOAT in_vz   = atof(strtok(NULL, " "));
         while (atom_id + 1 >= atom->Nmax) {
             growAtom(atom);
         }
 
         atom->type[atom_id] = type;
-        atom_x(atom_id)     = atof(strtok(NULL, " "));
-        atom_y(atom_id)     = atof(strtok(NULL, " "));
-        atom_z(atom_id)     = atof(strtok(NULL, " "));
-        atom_vx(atom_id)    = atof(strtok(NULL, " "));
-        atom_vy(atom_id)    = atof(strtok(NULL, " "));
-        atom_vz(atom_id)    = atof(strtok(NULL, " "));
+        atom_x(atom_id)     = in_x;
+        atom_y(atom_id)     = in_y;
+        atom_z(atom_id)     = in_z;
+        atom_vx(atom_id)    = in_vx;
+        atom_vy(atom_id)    = in_vy;
+        atom_vz(atom_id)    = in_vz;
         atom->ntypes        = MAX(atom->type[atom_id] + 1, atom->ntypes);
         atom->Natoms++;
         atom->Nlocal++;
