@@ -284,7 +284,7 @@ __global__ void computeForceLJCudaFullNeigh(
 #endif
 
     for (int k = 0; k < numneighs; k++) {
-        int cj          = neighs(cuda_neighs, ci, k, Nclusters_local, maxneighs);
+        int cj          = neighs_gpu(cuda_neighs, ci, k, Nclusters_local, maxneighs);
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
         MD_FLOAT* cj_x  = &cuda_cl_x[cj_vec_base];
 
@@ -431,7 +431,7 @@ __global__ void computeForceLJCudaHalfNeigh(
 #endif
 
     for (int k = 0; k < numneighs; k++) {
-        int cj         = neighs(cuda_neighs, ci, k, Nclusters_local, maxneighs);
+        int cj         = neighs_gpu(cuda_neighs, ci, k, Nclusters_local, maxneighs);
         MD_FLOAT* cj_x = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
         MD_FLOAT* cj_f = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
 
@@ -700,7 +700,7 @@ __global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
     int lo              = 0;
 
     for (int hi = 0; hi < numneighs; hi++) {
-        int cj         = neighs(cuda_neighbors, ci, hi, Nclusters_local, maxneighs);
+        int cj         = neighs_gpu(cuda_neighbors, ci, hi, Nclusters_local, maxneighs);
         MD_FLOAT* cj_x = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
         int is_inner   = 0;
 
@@ -721,9 +721,9 @@ __global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
 
         if (is_inner) {
             if (hi != lo) {
-                int t_cj = neighs(cuda_neighbors, ci, lo, Nclusters_local, maxneighs);
-                neighs(cuda_neighbors, ci, lo, Nclusters_local, maxneighs) = cj;
-                neighs(cuda_neighbors, ci, hi, Nclusters_local, maxneighs) = t_cj;
+                int t_cj = neighs_gpu(cuda_neighbors, ci, lo, Nclusters_local, maxneighs);
+                neighs_gpu(cuda_neighbors, ci, lo, Nclusters_local, maxneighs) = cj;
+                neighs_gpu(cuda_neighbors, ci, hi, Nclusters_local, maxneighs) = t_cj;
             }
             lo++;
         }

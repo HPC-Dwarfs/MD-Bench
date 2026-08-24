@@ -203,11 +203,11 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     const int numneigh_sci = cuda_numneigh[sci];
     const int ncj_local    = Nclusters_local * SCLUSTER_SIZE;
     for (int k = slice; k < numneigh_sci; k += nslices) {
-        int cj = neighs(cuda_neighs, sci, k, Nclusters_local, maxneighs);
+        int cj = neighs_gpu(cuda_neighs, sci, k, Nclusters_local, maxneighs);
         /* Resolve a ghost cj to its real mirror before ordering, else a
          * periodic-boundary pair gets counted from both sides. */
         int order_cj       = (cj < ncj_local) ? cj : cuda_border_map[cj - ncj_local];
-        unsigned int imask = neighs(cuda_neighs_imask,
+        unsigned int imask = neighs_gpu(cuda_neighs_imask,
             sci,
             k,
             Nclusters_local,
@@ -421,8 +421,8 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
 
     const int numneigh_sci = cuda_numneigh[sci];
     for (int k = slice; k < numneigh_sci; k += nslices) {
-        int cj             = neighs(cuda_neighs, sci, k, Nclusters_local, maxneighs);
-        unsigned int imask = neighs(cuda_neighs_imask,
+        int cj             = neighs_gpu(cuda_neighs, sci, k, Nclusters_local, maxneighs);
+        unsigned int imask = neighs_gpu(cuda_neighs_imask,
             sci,
             k,
             Nclusters_local,
@@ -675,7 +675,7 @@ __global__ void cudaPruneNeighborSup(MD_FLOAT* cuda_cl_x,
     int lo              = 0;
 
     for (int hi = 0; hi < numneighs; hi++) {
-        int cj             = neighs(cuda_neighbors, sci, hi, Nclusters_local, maxneighs);
+        int cj             = neighs_gpu(cuda_neighbors, sci, hi, Nclusters_local, maxneighs);
         MD_FLOAT* cj_x     = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
         unsigned int imask = 0;
 
@@ -699,20 +699,20 @@ __global__ void cudaPruneNeighborSup(MD_FLOAT* cuda_cl_x,
             if (sub_hit) imask |= (1u << sci_ci);
         }
 
-        neighs(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) = imask;
+        neighs_gpu(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) = imask;
 
         if (imask != 0) {
             if (hi != lo) {
-                int t_cj = neighs(cuda_neighbors, sci, lo, Nclusters_local, maxneighs);
-                unsigned int t_im = neighs(cuda_neighbors_imask,
+                int t_cj = neighs_gpu(cuda_neighbors, sci, lo, Nclusters_local, maxneighs);
+                unsigned int t_im = neighs_gpu(cuda_neighbors_imask,
                     sci,
                     lo,
                     Nclusters_local,
                     maxneighs);
-                neighs(cuda_neighbors, sci, lo, Nclusters_local, maxneighs)       = cj;
-                neighs(cuda_neighbors, sci, hi, Nclusters_local, maxneighs)       = t_cj;
-                neighs(cuda_neighbors_imask, sci, lo, Nclusters_local, maxneighs) = imask;
-                neighs(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) = t_im;
+                neighs_gpu(cuda_neighbors, sci, lo, Nclusters_local, maxneighs)       = cj;
+                neighs_gpu(cuda_neighbors, sci, hi, Nclusters_local, maxneighs)       = t_cj;
+                neighs_gpu(cuda_neighbors_imask, sci, lo, Nclusters_local, maxneighs) = imask;
+                neighs_gpu(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) = t_im;
             }
             lo++;
         }
