@@ -135,9 +135,7 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
 {
     memcpyToGPU(cuda_cl_x,
         atom->cl_x,
-        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM * sizeof(MD_FLOAT));
-    //(atom->Nclusters_local*SCLUSTER_SIZE+atom->Nclusters_ghost) * CLUSTER_M  * ATOM_DIM
-    //* sizeof(MD_FLOAT));
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost + 1) * CLUSTER_M * ATOM_DIM * sizeof(MD_FLOAT));
     memcpyToGPU(cuda_cl_v,
         atom->cl_v,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 *
@@ -196,7 +194,7 @@ extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
 {
     memcpyFromGPU(atom->cl_x,
         cuda_cl_x,
-        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM * sizeof(MD_FLOAT));
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost + 1) * CLUSTER_M * ATOM_DIM * sizeof(MD_FLOAT));
     memcpyFromGPU(atom->cl_v,
         cuda_cl_v,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 *
@@ -875,14 +873,14 @@ extern "C" void copyForceFromGPU(Atom* atom)
 {
     memcpyFromGPU(atom->cl_f,
         cuda_cl_f,
-        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 * sizeof(MD_FLOAT));
 }
 
 extern "C" void copyForceToGPU(Atom* atom)
 {
     memcpyToGPU(cuda_cl_f,
         atom->cl_f,
-        atom->Nclusters_max * CLUSTER_N * 3 * sizeof(MD_FLOAT));
+        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 * sizeof(MD_FLOAT));
 }
 
 extern "C" void growClustersCUDA(Atom* atom)
