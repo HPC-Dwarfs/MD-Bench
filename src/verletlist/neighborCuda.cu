@@ -459,7 +459,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
 
     int nall = atom->Nlocal + atom->Nghost;
     if (nall > nmax) {
-        nmax = nall;
+        nmax = nall + nall / 20;
 #ifdef NBLIST_CSR
         d_neighbor->neigh_start = (int*)reallocateGPU(d_neighbor->neigh_start,
             (nmax + 1) * sizeof(int));
