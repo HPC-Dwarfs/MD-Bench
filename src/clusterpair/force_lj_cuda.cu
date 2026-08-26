@@ -605,7 +605,7 @@ extern "C" void cudaFinalIntegrate(Parameter* param, Atom* atom)
         cuda_cl_f,
         cuda_natoms,
         atom->Nclusters_local,
-        param->dt);
+        param->dtforce);
 
     cuda_assert("cudaFinalIntegrate", cudaPeekAtLastError());
     cuda_assert("cudaFinalIntegrate", cudaDeviceSynchronize());

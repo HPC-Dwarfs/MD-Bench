@@ -134,7 +134,7 @@ extern "C" void cudaFinalIntegrateSup(Parameter* param, Atom* atom)
     cudaFinalIntegrateSup_warp<<<grid_size, block_size>>>(cuda_cl_v,
         cuda_cl_f,
         atom->Nclusters_local,
-        param->dt);
+        param->dtforce);
 
     cuda_assert("cudaFinalIntegrateSup", cudaPeekAtLastError());
     cuda_assert("cudaFinalIntegrateSup", cudaDeviceSynchronize());
