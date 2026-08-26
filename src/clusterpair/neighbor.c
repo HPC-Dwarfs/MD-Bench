@@ -7,6 +7,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #include <allocate.h>
 #include <atom.h>
@@ -44,7 +47,17 @@ static int nmax;
 static int nstencil; // # of bins in stencil
 static int* stencil; // stencil list of bin offsets
 static MD_FLOAT binsizex, binsizey;
-static int* is_inner_buf; // reusable scratch for pruneNeighbor*, sized by maxneighs
+static int* is_inner_buf; // reusable scratch for pruneNeighbor*, one maxneighs-sized
+                           // slice per thread (indexed by omp_get_thread_num())
+
+static int max_threads(void)
+{
+#ifdef _OPENMP
+    return omp_get_max_threads();
+#else
+    return 1;
+#endif
+}
 
 static int coord2bin(MD_FLOAT, MD_FLOAT);
 static MD_FLOAT bindist(int, int);
@@ -79,7 +92,8 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     } else {
         neighbor->maxneighs = 200;
     }
-    is_inner_buf       = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
+    is_inner_buf       = (int*)allocate(ALIGNMENT,
+        (size_t)max_threads() * neighbor->maxneighs * sizeof(int));
     neighbor->numneigh = NULL;
     neighbor->numneigh_masked       = NULL;
     neighbor->numneigh_inner        = NULL;
@@ -827,7 +841,8 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                 nmax * neighbor->maxneighs * sizeof(int));
             neighbor->neighbors_imask = (unsigned int*)allocate(ALIGNMENT,
                 nmax * neighbor->maxneighs * sizeof(unsigned int));
-            is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
+            is_inner_buf = (int*)allocate(ALIGNMENT,
+                (size_t)max_threads() * neighbor->maxneighs * sizeof(int));
 #ifdef CUDA_TARGET
             growNeighborCUDA(atom, neighbor);
 #endif
@@ -876,7 +891,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
             neighbor->maxneighs = new_max;
             free(is_inner_buf);
             is_inner_buf = (int*)allocate(ALIGNMENT,
-                MAX(1, neighbor->maxneighs) * sizeof(int));
+                (size_t)max_threads() * MAX(1, neighbor->maxneighs) * sizeof(int));
         }
     }
 #elif !defined(NBLIST_AOS)
@@ -1007,8 +1022,10 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
         const int nbM     = atom->Nclusters_local;
         const int nbN     = neighbor->maxneighs;
         int new_maxneighs = neighbor->maxneighs;
-        resize            = 0;
+        int resize_local  = 0;
 
+#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
+    reduction(| : resize_local)
         for (int sci = 0; sci < atom->Nclusters_local; sci++) {
             const int sci_vec_base = SCI_VECTOR_BASE_INDEX(sci);
             int n                  = 0;
@@ -1161,13 +1178,15 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
 
             neighbor->numneigh[sci] = n;
             if (n >= neighbor->maxneighs) {
-                resize = 1;
+                resize_local = 1;
 
                 if (n >= new_maxneighs) {
                     new_maxneighs = n;
                 }
             }
         }
+
+        resize = resize_local;
 
         if (resize) {
             neighbor->maxneighs = new_maxneighs * 1.2;
@@ -1176,7 +1195,8 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             free(is_inner_buf);
             neighbor->neighbors = (int*)allocate(ALIGNMENT,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
-            is_inner_buf = (int*)allocate(ALIGNMENT, neighbor->maxneighs * sizeof(int));
+            is_inner_buf = (int*)allocate(ALIGNMENT,
+                (size_t)max_threads() * neighbor->maxneighs * sizeof(int));
         }
     }
 
@@ -1264,10 +1284,16 @@ void pruneNeighborCPU(Parameter* param, Atom* atom, Neighbor* neighbor)
 
     const MD_FLOAT cutsq = cutneigh_inner_sq;
     const int nbM        = atom->Nclusters_local;
+    const int maxneighs  = neighbor->maxneighs;
 
-    int* is_inner = is_inner_buf;
-
+#pragma omp parallel for schedule(runtime)
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
+        int tid = 0;
+#ifdef _OPENMP
+        tid = omp_get_thread_num();
+#endif
+        int* is_inner = &is_inner_buf[(size_t)tid * maxneighs];
+
         const int numneighs        = neighbor->numneigh[ci];
         const int numneighs_masked = neighbor->numneigh_masked[ci];
         int ci_vec_base            = CI_VECTOR3_BASE_INDEX(ci);
@@ -1489,10 +1515,16 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
 
     const MD_FLOAT cutsq = cutneigh_inner_sq;
     const int nbM        = atom->Nclusters_local;
+    const int maxneighs  = neighbor->maxneighs;
 
-    int* is_inner = is_inner_buf;
-
+#pragma omp parallel for schedule(runtime)
     for (int sci = 0; sci < atom->Nclusters_local; sci++) {
+        int tid = 0;
+#ifdef _OPENMP
+        tid = omp_get_thread_num();
+#endif
+        int* is_inner = &is_inner_buf[(size_t)tid * maxneighs];
+
         const int numneighs = neighbor->numneigh[sci];
 
         for (int k = 0; k < numneighs; k++) {

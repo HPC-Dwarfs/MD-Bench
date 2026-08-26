@@ -574,6 +574,33 @@ __global__ void cudaUpdatePbcSup_warp(MD_FLOAT* cuda_cl_x,
     }
 }
 
+/* fold ghost-cluster reaction forces back onto the real cluster they mirror,
+ * entirely on-device; a real cluster can be mirrored by several ghost
+ * clusters (one per PBC image), so the accumulation must be atomic */
+__global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
+    int* cuda_border_map,
+    int Nclusters_local,
+    int Nclusters_ghost)
+{
+    int cg = blockDim.x * blockIdx.x + threadIdx.x;
+    if (cg >= Nclusters_ghost) {
+        return;
+    }
+
+    int ncj           = Nclusters_local * SCLUSTER_SIZE;
+    int cj            = ncj + cg;
+    int cj_vec_base   = CJ_VECTOR3_BASE_INDEX(cj);
+    int bmap_vec_base = CJ_VECTOR3_BASE_INDEX(cuda_border_map[cg]);
+    MD_FLOAT* cj_f    = &cuda_cl_f[cj_vec_base];
+    MD_FLOAT* bmap_f  = &cuda_cl_f[bmap_vec_base];
+
+    for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
+        atomicAdd(&bmap_f[CL_X_INDEX_3D(cjj)], cj_f[CL_X_INDEX_3D(cjj)]);
+        atomicAdd(&bmap_f[CL_Y_INDEX_3D(cjj)], cj_f[CL_Y_INDEX_3D(cjj)]);
+        atomicAdd(&bmap_f[CL_Z_INDEX_3D(cjj)], cj_f[CL_Z_INDEX_3D(cjj)]);
+    }
+}
+
 extern "C" double computeForceLJCudaSup(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {

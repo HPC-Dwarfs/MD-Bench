@@ -50,6 +50,11 @@ extern __global__ void cudaUpdatePbcSup_warp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT param_yprd,
     MD_FLOAT param_zprd);
 
+extern __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
+    int* cuda_border_map,
+    int Nclusters_local,
+    int Nclusters_ghost);
+
 extern "C" {
 MD_FLOAT* cuda_cl_x;
 MD_FLOAT* cuda_cl_v;
@@ -680,6 +685,58 @@ extern "C" void updatePbcCUDA(Atom* atom, Parameter* param)
 
     cuda_assert("cudaUpdatePbc", cudaPeekAtLastError());
     cuda_assert("cudaUpdatePbc", cudaDeviceSynchronize());
+}
+
+/* fold ghost-cluster reaction forces back onto the real cluster they mirror,
+ * entirely on-device; a real cluster can be mirrored by several ghost
+ * clusters (one per PBC image), so the accumulation must be atomic */
+__global__ void cudaReverseGhostForces_warp(MD_FLOAT* cuda_cl_f,
+    int* cuda_border_map,
+    int* cuda_jclusters_natoms,
+    int Nclusters_local,
+    int Nclusters_ghost)
+{
+    unsigned int cg = blockDim.x * blockIdx.x + threadIdx.x;
+    if (cg >= Nclusters_ghost) {
+        return;
+    }
+
+    int ncj           = CJ0_FROM_CI(Nclusters_local);
+    const int cj      = ncj + cg;
+    int cj_vec_base   = CJ_VECTOR3_BASE_INDEX(cj);
+    int bmap_vec_base = CJ_VECTOR3_BASE_INDEX(cuda_border_map[cg]);
+    MD_FLOAT* cj_f     = &cuda_cl_f[cj_vec_base];
+    MD_FLOAT* bmap_f   = &cuda_cl_f[bmap_vec_base];
+
+    for (int cjj = 0; cjj < cuda_jclusters_natoms[cg]; cjj++) {
+        atomicAdd(&bmap_f[CL_X_INDEX_3D(cjj)], cj_f[CL_X_INDEX_3D(cjj)]);
+        atomicAdd(&bmap_f[CL_Y_INDEX_3D(cjj)], cj_f[CL_Y_INDEX_3D(cjj)]);
+        atomicAdd(&bmap_f[CL_Z_INDEX_3D(cjj)], cj_f[CL_Z_INDEX_3D(cjj)]);
+    }
+}
+
+extern "C" void reverseGhostForcesCUDA(Atom* atom, Parameter* param)
+{
+    const int N           = atom->Nclusters_ghost;
+    const int threads_num = 64;
+    dim3 block_size       = dim3(threads_num, 1, 1);
+    dim3 grid_size        = dim3((N + threads_num - 1) / threads_num, 1, 1);
+
+    if (param->super_clustering) {
+        cudaReverseGhostForcesSup_warp<<<grid_size, block_size>>>(cuda_cl_f,
+            cuda_border_map,
+            atom->Nclusters_local,
+            atom->Nclusters_ghost);
+    } else {
+        cudaReverseGhostForces_warp<<<grid_size, block_size>>>(cuda_cl_f,
+            cuda_border_map,
+            cuda_jclusters_natoms,
+            atom->Nclusters_local,
+            atom->Nclusters_ghost);
+    }
+
+    cuda_assert("cudaReverseGhostForces", cudaPeekAtLastError());
+    cuda_assert("cudaReverseGhostForces", cudaDeviceSynchronize());
 }
 
 __global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
