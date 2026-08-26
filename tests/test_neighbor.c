@@ -54,6 +54,10 @@ static void build_small_system(Parameter* param, Atom* atom, Neighbor* neighbor)
     param->zprd    = param->nz * param->lattice;
 
     initAtom(atom);
+    /* setupPbc()/growPbc() reallocate atom->border_map, which is only
+     * initialized to NULL by initPbc() -- without it, border_map is
+     * uninitialized stack garbage and growPbc() frees it, crashing. */
+    initPbc(atom);
     /* Neighbor setup does not require full force initialization. */
     initNeighbor(neighbor, param);
 
