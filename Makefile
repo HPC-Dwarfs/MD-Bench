@@ -124,8 +124,8 @@ else ifeq ($(strip $(TOOLCHAIN)),HIPCC)
 $(BUILD_DIR)/%.sass: $(BUILD_DIR)/%.o
 	$(info ===>  DUMP GCN ISA  $@)
 	$(Q)rm -rf $@.tmp
-	$(Q)roc-obj -o $@.tmp $<
-	$(Q)cat $@.tmp/*.s > $@ 2>/dev/null || : > $@
+	$(Q)roc-obj -d -o $@.tmp $< >/dev/null 2>&1; \
+	cat $@.tmp/*.s > $@ 2>/dev/null || : > $@
 	$(Q)rm -rf $@.tmp
 
 $(BUILD_DIR)/%-force.sass: $(BUILD_DIR)/%.sass
