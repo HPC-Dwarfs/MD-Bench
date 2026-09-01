@@ -9,27 +9,39 @@
 #include <pbc.h>
 #include <util.h>
 
-/* Local copy of the bounding box distance used in neighbor.c. */
-static MD_FLOAT getBoundingBoxDistanceSq_test(Atom* atom, int ci, int cj)
+/* Minimum squared distance between any real atom pair across the two
+ * clusters. A j-cluster's bounding box is only a coarse, NECESSARY-but-not-
+ * SUFFICIENT filter (it is the union bbox of up to two i-clusters when
+ * CLUSTER_M < CLUSTER_N, so it can span empty space with no atoms actually
+ * close to ci) -- buildNeighborCPU() falls back to this exact per-atom check
+ * whenever the bbox distance isn't already inside the conservative rbb_sq
+ * radius, so this is the real inclusion criterion, not the bbox distance. */
+static MD_FLOAT getMinAtomPairDistanceSq_test(Atom* atom, int ci, int cj)
 {
-    MD_FLOAT dl  = atom->iclusters[ci].bbminx - atom->jclusters[cj].bbmaxx;
-    MD_FLOAT dh  = atom->jclusters[cj].bbminx - atom->iclusters[ci].bbmaxx;
-    MD_FLOAT dm  = MAX(dl, dh);
-    MD_FLOAT dm0 = MAX(dm, 0.0);
-    MD_FLOAT d2  = dm0 * dm0;
+    int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
+    int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
+    MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
+    MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
+    MD_FLOAT min_d2 = INF;
 
-    dl  = atom->iclusters[ci].bbminy - atom->jclusters[cj].bbmaxy;
-    dh  = atom->jclusters[cj].bbminy - atom->iclusters[ci].bbmaxy;
-    dm  = MAX(dl, dh);
-    dm0 = MAX(dm, 0.0);
-    d2 += dm0 * dm0;
+    for (int ii = 0; ii < atom->iclusters[ci].natoms; ii++) {
+        MD_FLOAT xi = ci_x[CL_X_INDEX_3D(ii)];
+        MD_FLOAT yi = ci_x[CL_Y_INDEX_3D(ii)];
+        MD_FLOAT zi = ci_x[CL_Z_INDEX_3D(ii)];
 
-    dl  = atom->iclusters[ci].bbminz - atom->jclusters[cj].bbmaxz;
-    dh  = atom->jclusters[cj].bbminz - atom->iclusters[ci].bbmaxz;
-    dm  = MAX(dl, dh);
-    dm0 = MAX(dm, 0.0);
-    d2 += dm0 * dm0;
-    return d2;
+        for (int jj = 0; jj < atom->jclusters[cj].natoms; jj++) {
+            MD_FLOAT dx = xi - cj_x[CL_X_INDEX_3D(jj)];
+            MD_FLOAT dy = yi - cj_x[CL_Y_INDEX_3D(jj)];
+            MD_FLOAT dz = zi - cj_x[CL_Z_INDEX_3D(jj)];
+            MD_FLOAT d2 = dx * dx + dy * dy + dz * dz;
+
+            if (d2 < min_d2) {
+                min_d2 = d2;
+            }
+        }
+    }
+
+    return min_d2;
 }
 
 /* Build a small, deterministic system and its neighbor lists. */
@@ -54,6 +66,10 @@ static void build_small_system(Parameter* param, Atom* atom, Neighbor* neighbor)
     param->zprd    = param->nz * param->lattice;
 
     initAtom(atom);
+    /* setupPbc()/growPbc() reallocate atom->border_map, which is only
+     * initialized to NULL by initPbc() -- without it, border_map is
+     * uninitialized stack garbage and growPbc() frees it, crashing. */
+    initPbc(atom);
     /* Neighbor setup does not require full force initialization. */
     initNeighbor(neighbor, param);
 
@@ -89,8 +105,8 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
         return 0;
     }
 
-    /* For each i-cluster, ensure all bbox-close j-clusters are in the list,
-       and no far j-clusters are erroneously present. */
+    /* For each i-cluster, ensure every cj with a real atom pair within
+       cutneigh is in the list, and no cj lacking one is erroneously present. */
     for (int ci = 0; ci < nci; ++ci) {
         int numneigh = neighbor.numneigh[ci];
         ASSERT_TRUE(numneigh >= 0, "numneigh non-negative");
@@ -105,10 +121,10 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
             present[cj] = 1;
         }
 
-        /* Check completeness: every bbox-close cj must appear. */
+        /* Check completeness: every cj with a real close atom pair must appear. */
         int missing = 0;
         for (int cj = 0; cj < ncj_total; ++cj) {
-            MD_FLOAT d2 = getBoundingBoxDistanceSq_test(&atom, ci, cj);
+            MD_FLOAT d2 = getMinAtomPairDistanceSq_test(&atom, ci, cj);
             if (d2 < cutneighsq) {
                 if (!present[cj]) {
                     missing = 1;
@@ -117,12 +133,13 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
             }
         }
 
-        /* Check soundness: any listed neighbor should be reasonably close. */
+        /* Check soundness: any listed neighbor should have a real close atom
+           pair. */
         int spurious          = 0;
         const MD_FLOAT margin = (MD_FLOAT)1.01; /* tiny numerical slack */
         for (int cj = 0; cj < ncj_total && !spurious; ++cj) {
             if (present[cj]) {
-                MD_FLOAT d2 = getBoundingBoxDistanceSq_test(&atom, ci, cj);
+                MD_FLOAT d2 = getMinAtomPairDistanceSq_test(&atom, ci, cj);
                 if (d2 > margin * cutneighsq) {
                     spurious = 1;
                 }
