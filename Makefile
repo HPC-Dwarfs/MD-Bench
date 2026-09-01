@@ -21,8 +21,11 @@ ASM       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.
 OBJ       = $(filter-out $(BUILD_DIR)/main%, $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.c)))
 OBJ      += $(patsubst $(COMMON_DIR)/%.c, $(BUILD_DIR)/%.o,$(wildcard $(COMMON_DIR)/*.c))
 ifneq ($(filter $(strip $(TOOLCHAIN)), NVCC HIPCC),)
-OBJ      += $(patsubst $(COMMON_DIR)/%.cu, $(BUILD_DIR)/%.o,$(wildcard $(COMMON_DIR)/*.cu))
-OBJ      += $(patsubst $(SRC_DIR)/%.cu, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cu))
+CU_OBJS   = $(patsubst $(COMMON_DIR)/%.cu, $(BUILD_DIR)/%.o,$(wildcard $(COMMON_DIR)/*.cu))
+CU_OBJS  += $(patsubst $(SRC_DIR)/%.cu, $(BUILD_DIR)/%.o,$(wildcard $(SRC_DIR)/*.cu))
+OBJ      += $(CU_OBJS)
+SASS       = $(CU_OBJS:.o=.sass)
+FORCE_SASS = $(foreach o,$(CU_OBJS),$(if $(findstring force_lj_cuda,$o),$(o:.o=-force.sass)))
 endif
 SOURCES   =  $(wildcard $(SRC_DIR)/*.h $(SRC_DIR)/*.c $(COMMON_DIR)/*.c $(COMMON_DIR)/*.h)
 CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(OPTIONS) $(INCLUDES)
@@ -102,21 +105,40 @@ info:
 
 asm:  $(BUILD_DIR) $(ASM)
 
-# GPU machine-code dump for the compiled kernels: NVIDIA SASS (cuobjdump) or
-# AMD GCN/RDNA ISA (roc-obj, from the rocm-utils package).
+# GPU machine-code dump for the compiled kernels, one file per .cu source
+# (mirrors `asm`): NVIDIA SASS (cuobjdump) or AMD GCN/RDNA ISA (roc-obj, from
+# the rocm-utils package). `sass-force` additionally filters each dump down
+# to just the LJ force kernels (computeForceLJCuda*), for a quicker look at
+# the hot kernels without wading through integrate/pbc/prune/pack kernels.
 ifeq ($(strip $(TOOLCHAIN)),NVCC)
-sass: $(TARGET)
-	$(info ===>  DUMP SASS  $(TARGET).sass)
-	$(Q)cuobjdump --dump-sass $(TARGET) > $(TARGET).sass
+$(BUILD_DIR)/%.sass: $(BUILD_DIR)/%.o
+	$(info ===>  DUMP SASS  $@)
+	$(Q)cuobjdump --dump-sass $< > $@
+
+$(BUILD_DIR)/%-force.sass: $(BUILD_DIR)/%.o
+	$(info ===>  DUMP SASS (force kernels)  $@)
+	$(Q)fn=$$(cuobjdump --dump-sass $< 2>/dev/null | grep 'Function :' | grep -i ForceLJ | awk '{print $$3}' | sort -u | paste -sd,); \
+	if [ -n "$$fn" ]; then cuobjdump --function $$fn --dump-sass $< > $@; \
+	else echo "warning: no ForceLJ kernel found in $<" >&2; : > $@; fi
 else ifeq ($(strip $(TOOLCHAIN)),HIPCC)
-sass: $(TARGET)
-	$(info ===>  DUMP GCN ISA  $(TARGET).gcn)
-	$(Q)roc-obj -o $(BUILD_DIR)/roc-obj $(TARGET)
-	$(Q)cat $(BUILD_DIR)/roc-obj/*.s > $(TARGET).gcn
+$(BUILD_DIR)/%.sass: $(BUILD_DIR)/%.o
+	$(info ===>  DUMP GCN ISA  $@)
+	$(Q)rm -rf $@.tmp
+	$(Q)roc-obj -o $@.tmp $<
+	$(Q)cat $@.tmp/*.s > $@ 2>/dev/null || : > $@
+	$(Q)rm -rf $@.tmp
+
+$(BUILD_DIR)/%-force.sass: $(BUILD_DIR)/%.sass
+	$(info ===>  FILTER GCN ISA (force kernels)  $@)
+	$(Q)awk '/^[0-9a-f]+ </{keep=($$0 ~ /ForceLJ/)} keep' $< > $@
 else
-sass:
+sass sass-force:
 	$(error sass target requires TOOLCHAIN=NVCC or TOOLCHAIN=HIPCC)
 endif
+
+sass: $(BUILD_DIR) $(SASS)
+
+sass-force: $(BUILD_DIR) $(FORCE_SASS)
 
 tags:
 	$(info ===>  GENERATE  TAGS)
