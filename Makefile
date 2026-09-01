@@ -79,7 +79,7 @@ $(BUILD_DIR)/%.o:  %.s
 	$(info ===>  ASSEMBLE  $@)
 	$(Q)$(AS) $< -o $@
 
-.PHONY: clean distclean cleanall tags format info asm test
+.PHONY: clean distclean cleanall tags format info asm sass test
 
 clean:
 	$(info ===>  CLEAN)
@@ -101,6 +101,22 @@ info:
 	$(Q)$(CC) $(VERSION)
 
 asm:  $(BUILD_DIR) $(ASM)
+
+# GPU machine-code dump for the compiled kernels: NVIDIA SASS (cuobjdump) or
+# AMD GCN/RDNA ISA (roc-obj, from the rocm-utils package).
+ifeq ($(strip $(TOOLCHAIN)),NVCC)
+sass: $(TARGET)
+	$(info ===>  DUMP SASS  $(TARGET).sass)
+	$(Q)cuobjdump --dump-sass $(TARGET) > $(TARGET).sass
+else ifeq ($(strip $(TOOLCHAIN)),HIPCC)
+sass: $(TARGET)
+	$(info ===>  DUMP GCN ISA  $(TARGET).gcn)
+	$(Q)roc-obj -o $(BUILD_DIR)/roc-obj $(TARGET)
+	$(Q)cat $(BUILD_DIR)/roc-obj/*.s > $(TARGET).gcn
+else
+sass:
+	$(error sass target requires TOOLCHAIN=NVCC or TOOLCHAIN=HIPCC)
+endif
 
 tags:
 	$(info ===>  GENERATE  TAGS)
