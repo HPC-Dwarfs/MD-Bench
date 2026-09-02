@@ -31,10 +31,18 @@ ifeq ($(strip $(GPU_ARCH)),)
 $(error GPU_ARCH is not set. Please specify a supported AMD GPU target, e.g. 'make GPU_ARCH=gfx90a')
 endif
 
-CFLAGS   = -O3 --offload-arch=$(GPU_ARCH) -march=native -ffast-math -funroll-loops # -fopenmp
+# CPU-side routines that never touch the GPU (e.g. buildNeighbor()) are
+# still OpenMP-parallelized in source (#pragma omp, guarded by _OPENMP);
+# forward -fopenmp to the host compiler so those pragmas actually take
+# effect instead of silently compiling as serial code.
+ifeq ($(strip $(ENABLE_OPENMP)),true)
+OPENMP = -fopenmp
+endif
+
+CFLAGS   = -O3 --offload-arch=$(GPU_ARCH) -march=native -ffast-math -funroll-loops $(OPENMP)
 
 ASFLAGS  =  -masm=intel
-LFLAGS   =
+LFLAGS   = $(OPENMP)
 INCLUDES = $(LIKWID_INC) $(MPI_HOME) -I/opt/rocm/include
 DEFINES  += -D_GNU_SOURCE -DCUDA_TARGET=1 -DNO_ZMM_INTRIN #-DLIKWID_PERFMON
 LIBS     = -lm $(LIKWID_LIB) $(MPI_LIB) -lamdhip64 -lroctx64 #-llikwid

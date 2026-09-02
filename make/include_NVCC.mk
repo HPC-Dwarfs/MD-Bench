@@ -24,20 +24,30 @@ ANSI_CFLAGS += -std=c99
 ANSI_CFLAGS += -pedantic
 ANSI_CFLAGS += -Wextra
 
+# CPU-side routines that never touch the GPU (e.g. buildNeighbor()) are
+# still OpenMP-parallelized in source (#pragma omp, guarded by _OPENMP);
+# forward -fopenmp to the host compiler so those pragmas actually take
+# effect instead of silently compiling as serial code. -Xcompiler is used
+# (rather than relying on --forward-unknown-to-host-compiler) because nvcc's
+# own frontend rejects -fopenmp outright at link time.
+ifeq ($(strip $(ENABLE_OPENMP)),true)
+OPENMP = -Xcompiler -fopenmp
+endif
+
 #
 # GPU architecture, overridable on the command line:
 #   make TOOLCHAIN=NVCC CUDA_ARCH=sm_90   (H200; sm_89 RTX 4060, sm_80 A100)
 CUDA_ARCH ?= sm_80
-CFLAGS   = -O3 -arch=$(CUDA_ARCH) -march=native -ffast-math -funroll-loops --forward-unknown-to-host-compiler # -fopenmp
+CFLAGS   = -O3 -arch=$(CUDA_ARCH) -march=native -ffast-math -funroll-loops --forward-unknown-to-host-compiler $(OPENMP)
 # A40 + Native
-#CFLAGS   = -O3 -arch=sm_86 -march=native -ffast-math -funroll-loops --forward-unknown-to-host-compiler # -fopenmp
+#CFLAGS   = -O3 -arch=sm_86 -march=native -ffast-math -funroll-loops --forward-unknown-to-host-compiler $(OPENMP)
 # Cascade Lake
-#CFLAGS   = -O3 -march=cascadelake  -ffast-math -funroll-loops --forward-unknown-to-host-compiler # -fopenmp
+#CFLAGS   = -O3 -march=cascadelake  -ffast-math -funroll-loops --forward-unknown-to-host-compiler $(OPENMP)
 # For GROMACS kernels, we need at least sm_61 due to atomicAdd with doubles
 # TODO: Check if this is required for full neighbor-lists and just compile kernel for that case if not
-#CFLAGS   = -O3 -g -arch=sm_61 # -fopenmp
+#CFLAGS   = -O3 -g -arch=sm_61 $(OPENMP)
 ASFLAGS  =  -masm=intel
-LFLAGS   =
+LFLAGS   = $(OPENMP)
 DEFINES  += -D_GNU_SOURCE -DCUDA_TARGET=0 -DNO_ZMM_INTRIN  #-DLIKWID_PERFMON
 INCLUDES = $(MPI_HOME) $(LIKWID_INC)
 LIBS     = -lm -lcuda -lcudart $(LIKWID_LIB) $(MPI_LIB)#-llikwid
