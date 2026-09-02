@@ -804,10 +804,12 @@ void growAtom(Atom* atom)
     int nold           = atom->Nmax;
     atom->Nmax += DELTA;
 
+// atom->p is cudaMemcpy'd to/from the GPU (see device_spec.c, forceCuda.cu),
+// so it comes from pinned host memory when USE_PINNED_MEMORY is set.
 #undef REALLOC
 #define REALLOC(p, t, ns, os)                                                            \
     ;                                                                                    \
-    atom->p        = (t*)reallocate(atom->p, ALIGNMENT, ns, os);                         \
+    atom->p        = (t*)reallocateHostPinned(atom->p, ns, os);                          \
     atom->d_atom.p = (t*)reallocateGPUKeep(atom->d_atom.p, ns, os);
 
 #ifdef ATOM_POSITION_AOS
@@ -890,7 +892,7 @@ void freeAtom(Atom* atom)
 #undef FREE_ATOM
 #define FREE_ATOM(p)                                                                     \
     ;                                                                                    \
-    free(atom->p);                                                                       \
+    freeHostPinned(atom->p);                                                             \
     GPUfree(atom->d_atom.p);                                                             \
     atom->p        = NULL;                                                               \
     atom->d_atom.p = NULL;
