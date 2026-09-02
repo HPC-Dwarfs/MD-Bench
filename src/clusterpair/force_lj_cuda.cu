@@ -84,9 +84,6 @@ MD_FLOAT* cuda_cl_sigma3;
 
 extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
-    cuda_assert("cudaDeviceSetup", cudaDeviceReset());
-    cuda_assert("cudaDeviceSetup", cudaSetDevice(0));
-
     cuda_cl_x = (MD_FLOAT*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM * sizeof(MD_FLOAT));
     cuda_cl_v = (MD_FLOAT*)allocateGPU(
@@ -131,8 +128,10 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
     cuda_neighbors_imask = (unsigned int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
-    natoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    ngatoms = (int*)allocate(ALIGNMENT,
+    // natoms/ngatoms are staging buffers refilled and cudaMemcpy'd to the GPU
+    // every reneighbor step (copyDataToCUDADevice()), so pin them too.
+    natoms = (int*)allocateHostPinned(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    ngatoms = (int*)allocateHostPinned(
         atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 }
 
@@ -231,8 +230,8 @@ extern "C" void cudaDeviceFree(Parameter* param)
     GPUfree(cuda_PBCy);
     GPUfree(cuda_PBCz);
 
-    free(natoms);
-    free(ngatoms);
+    freeHostPinned(natoms);
+    freeHostPinned(ngatoms);
 }
 
 __global__ void computeForceLJCudaFullNeigh(

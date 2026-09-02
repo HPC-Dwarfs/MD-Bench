@@ -161,6 +161,11 @@ int main(int argc, const char* argv[])
     int nreps            = 1;
     int csv              = 0;
 
+#ifdef CUDA_TARGET
+    // Must run before growClusters() below allocates pinned host memory;
+    // see the matching call in main.c.
+    initDeviceContext();
+#endif
     LIKWID_MARKER_INIT;
     LIKWID_MARKER_REGISTER("force");
     DEBUG_MESSAGE("Initializing parameters...\n");

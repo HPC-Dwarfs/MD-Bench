@@ -10,6 +10,10 @@
 //---
 #include <device.h>
 
+extern "C" {
+#include <allocate.h>
+}
+
 void cuda_assert(const char* label, error_t err)
 {
     if (err != GPU_SUCCESS) {
@@ -19,6 +23,16 @@ void cuda_assert(const char* label, error_t err)
 }
 
 void GPUfree(void* any) { cuda_assert("GPUfree", GPU_FREE(any)); }
+
+// Establishes the CUDA context. Must run before any pinned host allocation
+// (allocateHostPinned() et al.), since those lazily create/register with the
+// device context too, and cudaDeviceReset() here would silently invalidate
+// any pinned memory registered before it ran.
+void initDeviceContext(void)
+{
+    cuda_assert("cudaDeviceSetup", cudaDeviceReset());
+    cuda_assert("cudaDeviceSetup", cudaSetDevice(0));
+}
 
 void* allocateGPU(size_t bytesize)
 {
@@ -90,4 +104,46 @@ void memcpyOnGPU(void* d_dst, void* d_src, size_t bytesize)
 void memsetGPU(void* d_ptr, int value, size_t bytesize)
 {
     cuda_assert("memsetGPU", GPU_MEMSET(d_ptr, value, bytesize));
+}
+
+// Host-side buffers that get cudaMemcpy'd to/from the GPU every reneighbor
+// step (see device.h). With USE_PINNED_MEMORY, use page-locked memory so
+// transfers are faster and immune to the OS migrating/unmapping pages that
+// go untouched by the CPU between reneighbor steps (observed as multi-second
+// stalls on NUMA-balanced systems). Without it, fall back to plain
+// allocate()/reallocate()/free(), same as everything else on the host side.
+void* allocateHostPinned(size_t bytesize)
+{
+#ifdef USE_PINNED_MEMORY
+    void* ptr;
+    cuda_assert("allocateHostPinned", GPU_MALLOC_HOST((void**)&ptr, bytesize));
+    return ptr;
+#else
+    return allocate(ALIGNMENT, bytesize);
+#endif
+}
+
+void* reallocateHostPinned(void* ptr, size_t new_bytesize, size_t old_bytesize)
+{
+#ifdef USE_PINNED_MEMORY
+    void* new_ptr = allocateHostPinned(new_bytesize);
+    if (ptr != NULL) {
+        memcpy(new_ptr, ptr, old_bytesize);
+        cuda_assert("reallocateHostPinned", GPU_FREE_HOST(ptr));
+    }
+    return new_ptr;
+#else
+    return reallocate(ptr, ALIGNMENT, new_bytesize, old_bytesize);
+#endif
+}
+
+void freeHostPinned(void* ptr)
+{
+#ifdef USE_PINNED_MEMORY
+    if (ptr != NULL) {
+        cuda_assert("freeHostPinned", GPU_FREE_HOST(ptr));
+    }
+#else
+    free(ptr);
+#endif
 }

@@ -13,6 +13,7 @@
 
 #include <allocate.h>
 #include <atom.h>
+#include <device.h>
 #include <force.h>
 #include <neighbor.h>
 #include <parameter.h>
@@ -996,14 +997,17 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
 #endif
 
     /* extend atom arrays if necessary */
+    // numneigh, numneigh_inner and neighbors are cudaMemcpy'd to the GPU
+    // every reneighbor step (copyDataToCUDADevice()), so they come from
+    // pinned host memory when USE_PINNED_MEMORY is set.
     if (atom->Nclusters_local > nmax) {
         nmax = atom->Nclusters_local;
-        if (neighbor->numneigh) free(neighbor->numneigh);
-        if (neighbor->numneigh_inner) free(neighbor->numneigh_inner);
-        if (neighbor->neighbors) free(neighbor->neighbors);
-        neighbor->numneigh       = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
-        neighbor->numneigh_inner = (int*)allocate(ALIGNMENT, nmax * sizeof(int));
-        neighbor->neighbors      = (int*)allocate(ALIGNMENT,
+        if (neighbor->numneigh) freeHostPinned(neighbor->numneigh);
+        if (neighbor->numneigh_inner) freeHostPinned(neighbor->numneigh_inner);
+        if (neighbor->neighbors) freeHostPinned(neighbor->neighbors);
+        neighbor->numneigh       = (int*)allocateHostPinned(nmax * sizeof(int));
+        neighbor->numneigh_inner = (int*)allocateHostPinned(nmax * sizeof(int));
+        neighbor->neighbors      = (int*)allocateHostPinned(
             nmax * neighbor->maxneighs * sizeof(int));
     }
 
@@ -1143,11 +1147,13 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
 
                             distance_check_out:
                                 if (is_neighbor) {
-                                    neighs_padded(neighbor->neighbors,
-                                        sci,
-                                        n,
-                                        nbM,
-                                        nbN) = cj;
+                                    if (n < neighbor->maxneighs) {
+                                        neighs_padded(neighbor->neighbors,
+                                            sci,
+                                            n,
+                                            nbM,
+                                            nbN) = cj;
+                                    }
                                     n++;
                                 }
                             }
@@ -1171,7 +1177,10 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             if (CLUSTER_N < VECTOR_WIDTH) {
                 while (n % (VECTOR_WIDTH / CLUSTER_N)) {
                     // Last cluster is always a dummy cluster
-                    neighs_padded(neighbor->neighbors, sci, n, nbM, nbN) = atom->dummy_cj;
+                    if (n < neighbor->maxneighs) {
+                        neighs_padded(neighbor->neighbors, sci, n, nbM, nbN) =
+                            atom->dummy_cj;
+                    }
                     n++;
                 }
             }
@@ -1191,9 +1200,9 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
         if (resize) {
             neighbor->maxneighs = new_maxneighs * 1.2;
             fprintf(stdout, "RESIZE %d\n", neighbor->maxneighs);
-            free(neighbor->neighbors);
+            freeHostPinned(neighbor->neighbors);
             free(is_inner_buf);
-            neighbor->neighbors = (int*)allocate(ALIGNMENT,
+            neighbor->neighbors = (int*)allocateHostPinned(
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
             is_inner_buf = (int*)allocate(ALIGNMENT,
                 (size_t)max_threads() * neighbor->maxneighs * sizeof(int));
@@ -1205,7 +1214,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
     {
         const int padded_nbN = neighbor->maxneighs;
         const int nbM        = atom->Nclusters_local;
-        int* soa_neighbors   = (int*)allocate(ALIGNMENT,
+        int* soa_neighbors   = (int*)allocateHostPinned(
             (size_t)nmax * padded_nbN * sizeof(int));
 
         for (int sci = 0; sci < nbM; sci++) {
@@ -1219,7 +1228,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             }
         }
 
-        free(neighbor->neighbors);
+        freeHostPinned(neighbor->neighbors);
         neighbor->neighbors = soa_neighbors;
     }
 #endif

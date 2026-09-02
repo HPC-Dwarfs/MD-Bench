@@ -50,6 +50,7 @@ extern void cuda_assert(const char* msg, error_t err);
 #endif
 
 extern void GPUfree(void*);
+extern void initDeviceContext(void);
 extern void initDevice(Parameter*, Atom*, Neighbor*);
 extern void* allocateGPU(size_t bytesize);
 extern void* reallocateGPU(void* ptr, size_t new_bytesize);
@@ -58,6 +59,18 @@ extern void memcpyToGPU(void* d_ptr, void* h_ptr, size_t bytesize);
 extern void memcpyFromGPU(void* h_ptr, void* d_ptr, size_t bytesize);
 extern void memcpyOnGPU(void* d_dst, void* d_src, size_t bytesize);
 extern void memsetGPU(void* d_ptr, int value, size_t bytesize);
+
+// Host-side buffers that get cudaMemcpy'd to/from the GPU every reneighbor
+// step (atom positions/velocities, per-type LJ params, neighbor lists).
+// With USE_PINNED_MEMORY these come from page-locked memory (GPU_MALLOC_HOST)
+// instead of allocate()'s regular pageable memory, for faster/more
+// predictable transfers; without it (or on non-CUDA builds) they fall back
+// to plain allocate()/reallocate()/free(). Alignment matches allocate()'s
+// ALIGNMENT convention implicitly, since pinned allocators already return
+// page-aligned memory.
+extern void* allocateHostPinned(size_t bytesize);
+extern void* reallocateHostPinned(void* ptr, size_t new_bytesize, size_t old_bytesize);
+extern void freeHostPinned(void* ptr);
 #ifdef __cplusplus
 }
 #endif

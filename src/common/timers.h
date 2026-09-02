@@ -34,6 +34,7 @@ typedef enum {
     INTEGRATE_FINAL,   // finalIntegrate()
     THERMO,            // computeThermo()
     RENEIGH_CHECK,     // needsReneigh() (displacement_reneigh only)
+    DEVICE_COPY,       // copyDataToCUDADevice()/copyDataFromCUDADevice() (CUDA_TARGET only)
     NUMTIMER
 } timertype;
 

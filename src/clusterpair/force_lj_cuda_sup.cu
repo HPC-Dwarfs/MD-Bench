@@ -8,6 +8,8 @@
 #define FULL_WARP_MASK 0xffffffffU
 #endif
 
+// Overridable via config.mk's SUPERCLUSTER_J_SLICES (-DGPU_J_SLICES=...);
+// this fallback only applies when compiling outside that build system.
 #ifndef GPU_J_SLICES
 #define GPU_J_SLICES 4
 #endif
