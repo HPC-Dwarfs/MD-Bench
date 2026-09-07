@@ -191,9 +191,19 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
     memcpyToGPU(cuda_neighbors,
         neighbor->neighbors,
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
-    memsetGPU(cuda_neighbors_imask,
-        0xff,
-        atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+
+    if (param->super_clustering) {
+        // Host build already computed the real per-sub-cluster imask
+        // (neighbor.c); don't overwrite it with an all-1s memset.
+        memcpyToGPU(cuda_neighbors_imask,
+            neighbor->neighbors_imask,
+            atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+    } else {
+        // Unused by the non-super GPU force kernel.
+        memsetGPU(cuda_neighbors_imask,
+            0xff,
+            atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+    }
 }
 
 extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)

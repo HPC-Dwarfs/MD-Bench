@@ -685,6 +685,12 @@ extern "C" double computeForceLJCudaSup(
     return E - S;
 }
 
+// One block per supercluster, CLUSTER_N x CLUSTER_M threads -- same shape as
+// computeForceLJCudaSup_*() -- instead of one thread per supercluster
+// serially checking all SCLUSTER_SIZE sub-clusters. Each thread owns one
+// (cii, cjj) pair and loops over sub-clusters; imask is reduced via shared
+// memory. Compaction stays single-threaded (tid 0): it's cheap bookkeeping,
+// not the part this rewrite parallelizes.
 __global__ void cudaPruneNeighborSup(MD_FLOAT* cuda_cl_x,
     int* cuda_numneigh,
     int* cuda_numneigh_inner,
@@ -694,60 +700,97 @@ __global__ void cudaPruneNeighborSup(MD_FLOAT* cuda_cl_x,
     int maxneighs,
     MD_FLOAT cutsq)
 {
-    unsigned int sci = blockDim.x * blockIdx.x + threadIdx.x;
+    __shared__ MD_FLOAT4 sh_sci_x[SCLUSTER_SIZE * CLUSTER_M];
+    __shared__ unsigned int sh_mask;
+    __shared__ int sh_lo;
+
+    int sci = blockIdx.x;
     if (sci >= Nclusters_local) {
         return;
     }
 
-    const int numneighs = cuda_numneigh[sci];
-    MD_FLOAT* sci_x     = &cuda_cl_x[SCI_VECTOR_BASE_INDEX(sci)];
-    int lo              = 0;
+    int cii = threadIdx.y;
+    int cjj = threadIdx.x;
+    int tid = cii * CLUSTER_N + cjj;
 
-    for (int hi = 0; hi < numneighs; hi++) {
-        int cj             = neighs_gpu(cuda_neighbors, sci, hi, Nclusters_local, maxneighs);
-        MD_FLOAT* cj_x     = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
-        unsigned int imask = 0;
+    MD_FLOAT* sci_x = &cuda_cl_x[SCI_VECTOR_BASE_INDEX(sci)];
 
-        for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
-            int sub_hit = 0;
-            for (int cii = 0; cii < CLUSTER_M && !sub_hit; cii++) {
-                int ai        = sci_ci * CLUSTER_M + cii;
-                MD_FLOAT xtmp = sci_x[CL_X_INDEX(ai)];
-                MD_FLOAT ytmp = sci_x[CL_Y_INDEX(ai)];
-                MD_FLOAT ztmp = sci_x[CL_Z_INDEX(ai)];
-                for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
-                    MD_FLOAT delx = xtmp - cj_x[CL_X_INDEX(cjj)];
-                    MD_FLOAT dely = ytmp - cj_x[CL_Y_INDEX(cjj)];
-                    MD_FLOAT delz = ztmp - cj_x[CL_Z_INDEX(cjj)];
-                    if (delx * delx + dely * dely + delz * delz < cutsq) {
-                        sub_hit = 1;
-                        break;
-                    }
-                }
-            }
-            if (sub_hit) imask |= (1u << sci_ci);
-        }
-
-        neighs_gpu(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) = imask;
-
-        if (imask != 0) {
-            if (hi != lo) {
-                int t_cj = neighs_gpu(cuda_neighbors, sci, lo, Nclusters_local, maxneighs);
-                unsigned int t_im = neighs_gpu(cuda_neighbors_imask,
-                    sci,
-                    lo,
-                    Nclusters_local,
-                    maxneighs);
-                neighs_gpu(cuda_neighbors, sci, lo, Nclusters_local, maxneighs)       = cj;
-                neighs_gpu(cuda_neighbors, sci, hi, Nclusters_local, maxneighs)       = t_cj;
-                neighs_gpu(cuda_neighbors_imask, sci, lo, Nclusters_local, maxneighs) = imask;
-                neighs_gpu(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) = t_im;
-            }
-            lo++;
-        }
+    for (int idx = tid; idx < SCLUSTER_SIZE * CLUSTER_M; idx += blockDim.x * blockDim.y) {
+        sh_sci_x[idx].x = sci_x[CL_X_INDEX(idx)];
+        sh_sci_x[idx].y = sci_x[CL_Y_INDEX(idx)];
+        sh_sci_x[idx].z = sci_x[CL_Z_INDEX(idx)];
     }
 
-    cuda_numneigh_inner[sci] = lo;
+    if (tid == 0) {
+        sh_lo = 0;
+    }
+    __syncthreads();
+
+    const int numneighs = cuda_numneigh[sci];
+
+    for (int hi = 0; hi < numneighs; hi++) {
+        if (tid == 0) {
+            sh_mask = 0;
+        }
+        __syncthreads();
+
+        int cj         = neighs_gpu(cuda_neighbors, sci, hi, Nclusters_local, maxneighs);
+        MD_FLOAT* cj_x = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
+        MD_FLOAT xjtmp = cj_x[CL_X_INDEX(cjj)];
+        MD_FLOAT yjtmp = cj_x[CL_Y_INDEX(cjj)];
+        MD_FLOAT zjtmp = cj_x[CL_Z_INDEX(cjj)];
+
+        unsigned int local_mask = 0;
+#pragma unroll
+        for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
+            int ai        = sci_ci * CLUSTER_M + cii;
+            MD_FLOAT delx = sh_sci_x[ai].x - xjtmp;
+            MD_FLOAT dely = sh_sci_x[ai].y - yjtmp;
+            MD_FLOAT delz = sh_sci_x[ai].z - zjtmp;
+            if (delx * delx + dely * dely + delz * delz < cutsq) {
+                local_mask |= (1u << sci_ci);
+            }
+        }
+
+        if (local_mask) {
+            atomicOr(&sh_mask, local_mask);
+        }
+        __syncthreads();
+
+        if (tid == 0) {
+            unsigned int imask = sh_mask;
+            neighs_gpu(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) = imask;
+
+            if (imask != 0) {
+                if (hi != sh_lo) {
+                    int t_cj = neighs_gpu(cuda_neighbors,
+                        sci,
+                        sh_lo,
+                        Nclusters_local,
+                        maxneighs);
+                    unsigned int t_im = neighs_gpu(cuda_neighbors_imask,
+                        sci,
+                        sh_lo,
+                        Nclusters_local,
+                        maxneighs);
+                    neighs_gpu(cuda_neighbors, sci, sh_lo, Nclusters_local, maxneighs) =
+                        cj;
+                    neighs_gpu(cuda_neighbors, sci, hi, Nclusters_local, maxneighs) =
+                        t_cj;
+                    neighs_gpu(cuda_neighbors_imask, sci, sh_lo, Nclusters_local, maxneighs) =
+                        imask;
+                    neighs_gpu(cuda_neighbors_imask, sci, hi, Nclusters_local, maxneighs) =
+                        t_im;
+                }
+                sh_lo++;
+            }
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        cuda_numneigh_inner[sci] = sh_lo;
+    }
 }
 
 extern "C" void pruneNeighborCUDASup(Parameter* param, Atom* atom, Neighbor* neighbor)
@@ -766,10 +809,8 @@ extern "C" void pruneNeighborCUDASup(Parameter* param, Atom* atom, Neighbor* nei
 
     const MD_FLOAT cut_inner = param->cutforce + param->skin;
     const MD_FLOAT cutsq     = cut_inner * cut_inner;
-    const int threads_num    = 64;
-    const int N              = atom->Nclusters_local;
-    dim3 block_size          = dim3(threads_num, 1, 1);
-    dim3 grid_size           = dim3((N + threads_num - 1) / threads_num, 1, 1);
+    dim3 block_size          = dim3(CLUSTER_N, CLUSTER_M, 1);
+    dim3 grid_size           = dim3(atom->Nclusters_local, 1, 1);
 
     cudaPruneNeighborSup<<<grid_size, block_size>>>(cuda_cl_x,
         cuda_numneigh,
