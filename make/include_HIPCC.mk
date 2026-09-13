@@ -41,7 +41,7 @@ endif
 
 CFLAGS   = -O3 --offload-arch=$(GPU_ARCH) -march=native -ffast-math -funroll-loops $(OPENMP)
 
-ASFLAGS  =  -masm=intel
+ASFLAGS  =  $(ASM_SYNTAX_FLAG)
 LFLAGS   = $(OPENMP)
 INCLUDES = $(LIKWID_INC) $(MPI_HOME) -I/opt/rocm/include
 DEFINES  += -D_GNU_SOURCE -DCUDA_TARGET=1 -DNO_ZMM_INTRIN #-DLIKWID_PERFMON

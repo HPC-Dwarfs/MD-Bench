@@ -2,6 +2,10 @@
 TOOLCHAIN ?= GCC
 # ISA of instruction code (X86/ARM)
 ISA ?= X86
+# Assembly syntax used when emitting .s files on X86 (intel/att), passed to the
+# compiler as -masm=<value>. Only affects the X86 toolchains (GCC/ICC/ICX/CLANG/
+# NVCC/HIPCC); ARM's assembler has no equivalent flag, so this is ignored there.
+ASM_SYNTAX ?= intel
 # Instruction set for instrinsic kernels (NONE/<X86-SIMD>/<ARM-SIMD>)
 # with X86-SIMD options: NONE/SSE/AVX/AVX_FMA/AVX2/AVX512
 # with ARM-SIMD options: NONE/NEON/SVE/SVE2 (SVE not width-agnostic yet!)
@@ -203,6 +207,14 @@ ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
     DEFINES += -DLJ_TABLE_RSQ
 else ifneq ($(strip $(LJ_TABLE_INDEX)),r)
     $(error Invalid LJ_TABLE_INDEX, must be one of: r, rsq)
+endif
+
+ifeq ($(strip $(ASM_SYNTAX)),intel)
+    ASM_SYNTAX_FLAG = -masm=intel
+else ifeq ($(strip $(ASM_SYNTAX)),att)
+    ASM_SYNTAX_FLAG = -masm=att
+else
+    $(error Invalid ASM_SYNTAX, must be one of: intel, att)
 endif
 
 ifeq ($(strip $(MEM_TRACER)),true)
