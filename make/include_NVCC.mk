@@ -46,7 +46,7 @@ CFLAGS   = -O3 -arch=$(CUDA_ARCH) -march=native -ffast-math -funroll-loops --for
 # For GROMACS kernels, we need at least sm_61 due to atomicAdd with doubles
 # TODO: Check if this is required for full neighbor-lists and just compile kernel for that case if not
 #CFLAGS   = -O3 -g -arch=sm_61 $(OPENMP)
-ASFLAGS  =  -masm=intel
+ASFLAGS  =  $(ASM_SYNTAX_FLAG)
 LFLAGS   = $(OPENMP)
 DEFINES  += -D_GNU_SOURCE -DCUDA_TARGET=0 -DNO_ZMM_INTRIN  #-DLIKWID_PERFMON
 INCLUDES = $(MPI_HOME) $(LIKWID_INC)

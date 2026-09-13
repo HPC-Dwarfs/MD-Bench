@@ -52,7 +52,7 @@ endif
 ifeq ($(strip $(SIMD)),NONE)
 OPTS += -fno-tree-loop-vectorize -fno-tree-vectorize -fno-tree-slp-vectorize
 endif
-ASFLAGS = -masm=intel
+ASFLAGS = $(ASM_SYNTAX_FLAG)
 endif
 
 CFLAGS = $(PROFILE) $(OPENMP) $(OPTS) -std=c11 $(ANSI_CFLAGS)
