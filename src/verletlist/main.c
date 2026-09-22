@@ -320,6 +320,10 @@ int main(int argc, char** argv)
             param.write_atom_file = strdup(argv[++i]);
             continue;
         }
+        if ((strcmp(argv[i], "--ntypes") == 0)) {
+            param.ntypes = atoi(argv[++i]);
+            continue;
+        }
         if ((strcmp(argv[i], "-setup") == 0)) {
             param.setup = atoi(argv[++i]);
             continue;
@@ -354,6 +358,7 @@ int main(int argc, char** argv)
                 printf("-r / --radius <real>:       set cutoff radius\n");
                 printf("-s / --skin <real>:         set skin (verlet buffer)\n");
                 printf("-w <file>:                  write input atoms to file\n");
+                printf("--ntypes <int>:             set number of atom types\n");
                 printf("--freq <real>:              processor frequency (GHz)\n");
                 printf("--vtk <string>:             VTK file for visualization\n");
                 printf(

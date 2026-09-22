@@ -315,6 +315,11 @@ int main(int argc, char** argv)
             continue;
         }
 
+        if ((strcmp(argv[i], "--ntypes") == 0)) {
+            param.ntypes = atoi(argv[++i]);
+            continue;
+        }
+
         if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
             printf("MD Bench: A minimalistic re-implementation of miniMD\n");
             printf(HLINE);
@@ -341,6 +346,7 @@ int main(int argc, char** argv)
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
             printf("--xtc <string>:       XTC file for visualization\n");
+            printf("--ntypes <int>:       set number of atom types\n");
             printf("-v / --verbose:       print a per-routine timing breakdown in the "
                    "performance report\n");
             printf(HLINE);
