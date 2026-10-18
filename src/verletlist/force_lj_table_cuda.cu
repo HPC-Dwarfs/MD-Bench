@@ -49,7 +49,6 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     }
 
     DeviceAtom* atom         = &a;
-    DeviceNeighbor* neighbor = &neigh;
     const int numneighs      = neigh_numneigh[i];
 
     MD_FLOAT xtmp = atom_x(i);
@@ -124,7 +123,6 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
     }
 
     DeviceAtom* atom         = &a;
-    DeviceNeighbor* neighbor = &neigh;
     const int numneighs      = neigh_numneigh[i];
 
     MD_FLOAT xtmp = atom_x(i);

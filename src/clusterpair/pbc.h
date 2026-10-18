@@ -26,5 +26,6 @@ extern void reverseGhostForcesCPU(Atom*, Parameter*);
 extern void updatePbcCUDA(Atom*, Parameter*, bool);
 // extern void updateAtomsPbcCUDA(Atom*, Parameter*, bool);
 extern void setupPbcGPU(Atom*, Parameter*);
+extern void reverseGhostForcesCUDA(Atom*, Parameter*);
 #endif
 #endif
