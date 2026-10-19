@@ -2,6 +2,10 @@
 TOOLCHAIN ?= GCC
 # ISA of instruction code (X86/ARM)
 ISA ?= X86
+# Assembly syntax used when emitting .s files on X86 (intel/att), passed to the
+# compiler as -masm=<value>. Only affects the X86 toolchains (GCC/ICC/ICX/CLANG/
+# NVCC/HIPCC); ARM's assembler has no equivalent flag, so this is ignored there.
+ASM_SYNTAX ?= intel
 # Instruction set for instrinsic kernels (NONE/<X86-SIMD>/<ARM-SIMD>)
 # with X86-SIMD options: NONE/SSE/AVX/AVX_FMA/AVX2/AVX512
 # with ARM-SIMD options: NONE/NEON/SVE/SVE2 (SVE not width-agnostic yet!)
@@ -51,6 +55,14 @@ SUPERCLUSTER_DATA_LAYOUT ?= AOS3
 # Map threadIdx.y to cii and threadIdx.x to cjj (true or false)
 # If false, use same thread mapping and reduction instructions as Gromacs
 SUPERCLUSTER_INVERSE_THREAD_MAPPING ?= true
+# Number of thread-block slices the GPU grid is split into along each
+# i-supercluster's j-neighbor list for the super-clustering kernel (grid.y).
+# 1 slice means each i-supercluster's neighbors are handled by a single
+# block, writing its force directly; >1 splits the neighbor list across
+# multiple blocks running concurrently (more parallelism/occupancy) that
+# combine their partial forces with atomicAdd (more atomic contention).
+# Tune based on system size and GPU occupancy.
+SUPERCLUSTER_J_SLICES ?= 4
 # Use scalar version (and pray for the compiler to vectorize the code properly)
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)
@@ -71,6 +83,13 @@ XTC_OUTPUT ?= false
 # Configurations for CUDA
 # Use CUDA host memory to optimize transfers
 USE_CUDA_HOST_MEMORY ?= false
+# Allocate the host-side buffers that are transferred to/from the GPU every
+# reneighbor step (atom positions/velocities, per-type LJ params, neighbor
+# lists) as pinned (page-locked) memory instead of regular pageable memory.
+# Pinned memory gives faster/more predictable cudaMemcpy transfers and, on
+# systems with NUMA balancing enabled, avoids stalls from the OS migrating
+# pages that go untouched by the CPU between reneighbor steps.
+USE_PINNED_MEMORY ?= true
 
 #Feature options
 OPTIONS =  -DALIGNMENT=64
@@ -190,6 +209,14 @@ else ifneq ($(strip $(LJ_TABLE_INDEX)),r)
     $(error Invalid LJ_TABLE_INDEX, must be one of: r, rsq)
 endif
 
+ifeq ($(strip $(ASM_SYNTAX)),intel)
+    ASM_SYNTAX_FLAG = -masm=intel
+else ifeq ($(strip $(ASM_SYNTAX)),att)
+    ASM_SYNTAX_FLAG = -masm=att
+else
+    $(error Invalid ASM_SYNTAX, must be one of: intel, att)
+endif
+
 ifeq ($(strip $(MEM_TRACER)),true)
     DEFINES += -DMEM_TRACER
 endif
@@ -204,6 +231,10 @@ endif
 
 ifeq ($(strip $(XTC_OUTPUT)),true)
     DEFINES += -DXTC_OUTPUT
+endif
+
+ifeq ($(strip $(USE_PINNED_MEMORY)),true)
+    DEFINES += -DUSE_PINNED_MEMORY
 endif
 
 ifeq ($(strip $(USE_SCALAR_KERNEL)),true)
@@ -276,6 +307,8 @@ endif
 ifeq ($(strip $(SUPERCLUSTER_INVERSE_THREAD_MAPPING)),true)
     DEFINES += -DSUPERCLUSTER_INVERSE_THREAD_MAPPING
 endif
+
+DEFINES += -DGPU_J_SLICES=$(strip $(SUPERCLUSTER_J_SLICES))
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL

@@ -315,6 +315,11 @@ int main(int argc, char** argv)
             continue;
         }
 
+        if ((strcmp(argv[i], "--ntypes") == 0)) {
+            param.ntypes = atoi(argv[++i]);
+            continue;
+        }
+
         if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
             printf("MD Bench: A minimalistic re-implementation of miniMD\n");
             printf(HLINE);
@@ -341,6 +346,7 @@ int main(int argc, char** argv)
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
             printf("--xtc <string>:       XTC file for visualization\n");
+            printf("--ntypes <int>:       set number of atom types\n");
             printf("-v / --verbose:       print a per-routine timing breakdown in the "
                    "performance report\n");
             printf(HLINE);
@@ -358,7 +364,12 @@ int main(int argc, char** argv)
 
     param.outer_skin = MAX(param.outer_skin, 0.0);
     param.cutneigh   = param.cutforce + param.skin + param.outer_skin;
-    timer[SETUP]     = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
+#ifdef CUDA_TARGET
+    // Must run before setup(), which allocates pinned host memory
+    // (growClusters()) before initDevice() is reached.
+    initDeviceContext();
+#endif
+    timer[SETUP] = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
     if (param.displacement_reneigh) {
         storeReferencePositions(&atom);
     }
@@ -404,6 +415,7 @@ int main(int argc, char** argv)
     timer[INTEGRATE_FINAL]   = 0.0;
     timer[THERMO]            = 0.0;
     timer[RENEIGH_CHECK]     = 0.0;
+    timer[DEVICE_COPY]       = 0.0;
     timer[REVERSE]           = reverse(&comm, &atom, &param);
 
     if (param.vtk_file != NULL) {
@@ -445,7 +457,9 @@ int main(int argc, char** argv)
             timer[FORWARD] += forward(&comm, &atom, &param);
         } else {
 #ifdef CUDA_TARGET
+            double copyStart = getTimeStamp();
             copyDataFromCUDADevice(&param, &atom);
+            timer[DEVICE_COPY] += getTimeStamp() - copyStart;
 #endif
             timer[UPDATE] += updateAtoms(&comm, &atom, &param);
             if (param.balance && !((n + 1) % param.balance_every)) {
@@ -461,7 +475,9 @@ int main(int argc, char** argv)
                 storeReferencePositions(&atom);
             }
 #ifdef CUDA_TARGET
+            copyStart = getTimeStamp();
             copyDataToCUDADevice(&param, &atom, &neighbor);
+            timer[DEVICE_COPY] += getTimeStamp() - copyStart;
 #endif
         }
 #if defined(MEM_TRACER) || defined(INDEX_TRACER)
@@ -607,6 +623,15 @@ int main(int argc, char** argv)
                 maxt,
                 timer[TOTAL],
                 n);
+#ifdef CUDA_TARGET
+            printTimerSubRow("Device copy",
+                DEVICE_COPY,
+                sumt,
+                mint,
+                maxt,
+                timer[TOTAL],
+                n);
+#endif
         }
         fprintf(stdout,
             "    %-20s %8.2f   %8.2f   %8.2f    %5.1f%%       %5.1f%%\n",

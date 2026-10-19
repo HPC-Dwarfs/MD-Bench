@@ -84,9 +84,6 @@ MD_FLOAT* cuda_cl_sigma3;
 
 extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
-    cuda_assert("cudaDeviceSetup", cudaDeviceReset());
-    cuda_assert("cudaDeviceSetup", cudaSetDevice(0));
-
     cuda_cl_x = (MD_FLOAT*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM * sizeof(MD_FLOAT));
     cuda_cl_v = (MD_FLOAT*)allocateGPU(
@@ -131,8 +128,10 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
     cuda_neighbors_imask = (unsigned int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
-    natoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    ngatoms = (int*)allocate(ALIGNMENT,
+    // natoms/ngatoms are staging buffers refilled and cudaMemcpy'd to the GPU
+    // every reneighbor step (copyDataToCUDADevice()), so pin them too.
+    natoms = (int*)allocateHostPinned(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    ngatoms = (int*)allocateHostPinned(
         atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 }
 
@@ -192,9 +191,19 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
     memcpyToGPU(cuda_neighbors,
         neighbor->neighbors,
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
-    memsetGPU(cuda_neighbors_imask,
-        0xff,
-        atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+
+    if (param->super_clustering) {
+        // Host build already computed the real per-sub-cluster imask
+        // (neighbor.c); don't overwrite it with an all-1s memset.
+        memcpyToGPU(cuda_neighbors_imask,
+            neighbor->neighbors_imask,
+            atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+    } else {
+        // Unused by the non-super GPU force kernel.
+        memsetGPU(cuda_neighbors_imask,
+            0xff,
+            atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+    }
 }
 
 extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
@@ -231,8 +240,8 @@ extern "C" void cudaDeviceFree(Parameter* param)
     GPUfree(cuda_PBCy);
     GPUfree(cuda_PBCz);
 
-    free(natoms);
-    free(ngatoms);
+    freeHostPinned(natoms);
+    freeHostPinned(ngatoms);
 }
 
 __global__ void computeForceLJCudaFullNeigh(
@@ -961,12 +970,12 @@ extern "C" void growClustersCUDA(Atom* atom)
         cuda_numneigh_inner   = (int*)reallocateGPU(cuda_numneigh_inner,
             atom->Nclusters_max * sizeof(int));
 
-        free(natoms);
-        free(ngatoms);
+        freeHostPinned(natoms);
+        freeHostPinned(ngatoms);
 
-        natoms  = (int*)allocate(ALIGNMENT,
+        natoms = (int*)allocateHostPinned(
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-        ngatoms = (int*)allocate(ALIGNMENT,
+        ngatoms = (int*)allocateHostPinned(
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,

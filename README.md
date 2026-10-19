@@ -117,6 +117,10 @@ validation (automatically set for GPU and `SIMD=NONE` builds)
 auto-vectorization
 - `USE_SIMD_KERNEL`: Use hand-written SIMD intrinsic kernels for force computation
 - `USE_CUDA_HOST_MEMORY`: Enable pinned host memory for faster host-device transfers
+- `USE_PINNED_MEMORY` (default: true): Allocate the host-side buffers that are
+transferred to/from the GPU every reneighbor step (positions/velocities,
+per-type LJ params, neighbor lists) as pinned memory instead of regular
+pageable memory, for faster/more predictable `cudaMemcpy` transfers
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds (e.g. `gfx90a`).
 Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 `gfx942` (MI300X).
@@ -127,6 +131,12 @@ Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 - `SUPERCLUSTER_INVERSE_THREAD_MAPPING`: Map `threadIdx.y` to `cii` and
 `threadIdx.x` to `cjj` (true or false). If false, uses the same thread
 mapping and reduction as GROMACS.
+- `SUPERCLUSTER_J_SLICES` (default: 4): Number of thread-block slices the GPU
+grid is split into along each i-supercluster's j-neighbor list, for the
+super-clustering kernel. 1 means each i-supercluster's neighbors are handled
+by a single block; >1 splits the neighbor list across multiple concurrent
+blocks (more parallelism/occupancy) that combine partial forces with
+atomicAdd (more atomic contention). Tune based on system size and occupancy.
 - `XTC_OUTPUT`: Enable XTC trajectory output (GROMACS file format)
 - `MEM_TRACER`: Trace memory addresses for cache simulation (true or false)
 - `INDEX_TRACER`: Trace indexes and distances for gather-MD analysis (true or false)

@@ -34,7 +34,7 @@ endif
 
 DEFINES    += -DNO_ZMM_INTRIN
 CFLAGS      = $(PROFILE) $(OPENMP) $(OPTS) -std=c11 #-pedantic-errors
-ASFLAGS     = -masm=intel
+ASFLAGS     = $(ASM_SYNTAX_FLAG)
 LFLAGS      = $(PROFILE) $(OPENMP) $(OPTS)
 DEFINES    += -D_GNU_SOURCE
 INCLUDES    = 
