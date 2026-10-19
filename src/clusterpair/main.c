@@ -530,7 +530,7 @@ int main(int argc, char** argv)
     cudaDeviceFree(&param);
 #endif
     timer[REST] = timer[TOTAL] - timer[FORCE] - timer[NEIGH] - timer[BALANCE] -
-                  timer[FORWARD] - timer[REVERSE] - timer[DEVICE_COPY];
+                  timer[FORWARD] - timer[REVERSE];
 #ifdef _MPI
     double mint[NUMTIMER];
     double maxt[NUMTIMER];
