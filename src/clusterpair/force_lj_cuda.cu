@@ -970,12 +970,12 @@ extern "C" void growClustersCUDA(Atom* atom)
         cuda_numneigh_inner   = (int*)reallocateGPU(cuda_numneigh_inner,
             atom->Nclusters_max * sizeof(int));
 
-        free(natoms);
-        free(ngatoms);
+        freeHostPinned(natoms);
+        freeHostPinned(ngatoms);
 
-        natoms  = (int*)allocate(ALIGNMENT,
+        natoms = (int*)allocateHostPinned(
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-        ngatoms = (int*)allocate(ALIGNMENT,
+        ngatoms = (int*)allocateHostPinned(
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,
