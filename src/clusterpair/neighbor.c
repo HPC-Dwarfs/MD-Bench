@@ -1593,8 +1593,9 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
             if (d_bb_sq < cutsq) {
                 for (int sci_ci = 0; sci_ci < nclusters; sci_ci++) {
                     const int ci    = sci * SCLUSTER_SIZE + sci_ci;
-                    int ci_vec_base = SCI_VECTOR_BASE_INDEX(sci) + sci_ci * CLUSTER_M;
-                    int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
+                    int ci_vec_base = SCI_VECTOR_BASE_INDEX(sci) +
+                                      CL_X_INDEX(sci_ci * CLUSTER_M);
+                    int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
                     MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
                     MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
                     int sub_hit     = 0;
