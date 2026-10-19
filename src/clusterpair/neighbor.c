@@ -1208,9 +1208,9 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
             freeHostPinned(neighbor->neighbors_imask);
             free(is_inner_buf);
             neighbor->neighbors = (int*)allocateHostPinned(
-                atom->Nmax * neighbor->maxneighs * sizeof(int));
+                (size_t)nmax * neighbor->maxneighs * sizeof(int));
             neighbor->neighbors_imask = (unsigned int*)allocateHostPinned(
-                atom->Nmax * neighbor->maxneighs * sizeof(unsigned int));
+                (size_t)nmax * neighbor->maxneighs * sizeof(unsigned int));
             is_inner_buf = (int*)allocate(ALIGNMENT,
                 (size_t)max_threads() * neighbor->maxneighs * sizeof(int));
         }
