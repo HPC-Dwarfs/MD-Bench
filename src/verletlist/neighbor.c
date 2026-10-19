@@ -11,6 +11,7 @@
 
 #include <allocate.h>
 #include <atom.h>
+#include <device.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <util.h>
@@ -1073,15 +1074,15 @@ void sortAtom(Atom* atom)
     }
 
 #ifdef ATOM_POSITION_AOS
-    MD_FLOAT* new_x  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT) * 3);
-    MD_FLOAT* new_vx = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT) * 3);
+    MD_FLOAT* new_x  = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT) * 3);
+    MD_FLOAT* new_vx = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT) * 3);
 #else
-    MD_FLOAT* new_x  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_y  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_z  = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_vx = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_vy = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
-    MD_FLOAT* new_vz = (MD_FLOAT*)allocate(ALIGNMENT, Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_x  = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_y  = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_z  = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_vx = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_vy = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT));
+    MD_FLOAT* new_vz = (MD_FLOAT*)allocateHostPinned(Nmax * sizeof(MD_FLOAT));
 #endif
     MD_FLOAT* old_x  = atom->x;
     MD_FLOAT* old_y  = atom->y;
@@ -1114,15 +1115,15 @@ void sortAtom(Atom* atom)
         }
     }
 
-    free(atom->x);
-    free(atom->vx);
+    freeHostPinned(atom->x);
+    freeHostPinned(atom->vx);
     atom->x  = new_x;
     atom->vx = new_vx;
 #ifndef ATOM_POSITION_AOS
-    free(atom->y);
-    free(atom->z);
-    free(atom->vy);
-    free(atom->vz);
+    freeHostPinned(atom->y);
+    freeHostPinned(atom->z);
+    freeHostPinned(atom->vy);
+    freeHostPinned(atom->vz);
     atom->y  = new_y;
     atom->z  = new_z;
     atom->vy = new_vy;
