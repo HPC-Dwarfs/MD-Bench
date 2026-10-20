@@ -81,6 +81,10 @@ static inline JData load4xnJData(const Atom* atom, const int cj)
     return jd;
 }
 
+/* Rows of one entry of the diagonal mask table (the entries are selected by which
+ * of the i-cluster halves is the j-cluster). */
+#define DIAG_MASK_ROWS CLUSTER_M
+
 /* Masks of the pairs to skip in a pair of clusters that is, or overlaps with, the
  * cluster itself: a pair of an atom with itself or, in a half list, one that is counted
  * from the other side as well. The table depends on the shape of the clusters. */
@@ -90,13 +94,13 @@ static inline RowMasks load4xnDiagMasks(
     RowMasks diag;
     unsigned int idx;
 #if CLUSTER_M == CLUSTER_N
-    idx = (unsigned int)(cj == CJ0_FROM_CI(ci)) * 4;
+    idx = (unsigned int)(cj == CJ0_FROM_CI(ci)) * DIAG_MASK_ROWS;
 #elif CLUSTER_M < CLUSTER_N
-    idx = (unsigned int)((cj << 1) + 0 == ci) * 8 +
-          (unsigned int)((cj << 1) + 1 == ci) * 4;
+    idx = (unsigned int)((cj << 1) + 0 == ci) * (2 * DIAG_MASK_ROWS) +
+          (unsigned int)((cj << 1) + 1 == ci) * DIAG_MASK_ROWS;
 #else
-    idx = (unsigned int)(cj == CJ0_FROM_CI(ci)) * 8 +
-          (unsigned int)(cj == CJ1_FROM_CI(ci)) * 4;
+    idx = (unsigned int)(cj == CJ0_FROM_CI(ci)) * (2 * DIAG_MASK_ROWS) +
+          (unsigned int)(cj == CJ1_FROM_CI(ci)) * DIAG_MASK_ROWS;
 #endif
     for (int r = 0; r < CLUSTER_M; r++) {
         diag.v[r] = simd_mask_from_u32(table[idx + r]);

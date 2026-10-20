@@ -41,6 +41,14 @@
 // pair with its distance without producing NaN.
 #define CLUSTER_PAD_COORD ((MD_FLOAT)1.0e10)
 
+// LJ force prefactors: 6 C6 = 24 eps sigma^6 and 12 C12 = 48 eps sigma^12, and the
+// coefficients of sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3 and
+// sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6 used by the geometric combination rule.
+#define LJ_C6_FACTOR       ((MD_FLOAT)24.0)
+#define LJ_C12_FACTOR      ((MD_FLOAT)48.0)
+#define LJ_SQRT_6C6_COEF   ((MD_FLOAT)4.898979485566356)  // 2 * sqrt(6)
+#define LJ_SQRT_12C12_COEF ((MD_FLOAT)6.928203230275509)  // 2 * sqrt(12)
+
 #define DELTA 100000
 
 typedef struct {

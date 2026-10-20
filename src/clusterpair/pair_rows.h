@@ -96,9 +96,9 @@ static inline PairConstants pairConstants(const Parameter* param)
     const MD_FLOAT cutsq = param->cutforce * param->cutforce;
     pc.cutsq             = simd_real_broadcast(cutsq);
     // 6 C6 = 24 eps sigma^6, 12 C12 = 48 eps sigma^12
-    pc.c6  = simd_real_broadcast((MD_FLOAT)24.0 * param->epsilon * param->sigma6);
+    pc.c6  = simd_real_broadcast(LJ_C6_FACTOR * param->epsilon * param->sigma6);
     pc.c12 = simd_real_broadcast(
-        (MD_FLOAT)48.0 * param->epsilon * param->sigma6 * param->sigma6);
+        LJ_C12_FACTOR * param->epsilon * param->sigma6 * param->sigma6);
     pc.cs = coulombSimdInit((Parameter*)param);
     return pc;
 }
@@ -316,6 +316,11 @@ static inline void zeroForces(Atom* atom, const int ghosts)
 
 /* j-cluster data prefetch, a few list entries ahead: the list is an indirection into
  * data that does not fit the L1 cache. Define KERNEL_NO_PREFETCH to disable. */
+#define PREFETCH_READ     0
+#define PREFETCH_WRITE    1
+#define PREFETCH_LOCALITY 3 // keep in all cache levels
+#define CACHE_LINE_BYTES  64
+
 #ifndef KERNEL_PREFETCH_DIST
 #define KERNEL_PREFETCH_DIST 3
 #endif
@@ -324,19 +329,19 @@ MD_ALWAYS_INLINE void prefetchJ(const Atom* atom, const int cj, const int write_
 {
 #ifndef KERNEL_NO_PREFETCH
     const char* px = (const char*)&atom->cl_x[CJ_VECTOR3_BASE_INDEX(cj)];
-    __builtin_prefetch(px, 0, 3);
-    __builtin_prefetch(px + 64, 0, 3);
+    __builtin_prefetch(px, PREFETCH_READ, PREFETCH_LOCALITY);
+    __builtin_prefetch(px + CACHE_LINE_BYTES, PREFETCH_READ, PREFETCH_LOCALITY);
     if (write_f) {
         const char* pf = (const char*)&atom->cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
-        __builtin_prefetch(pf, 1, 3);
-        __builtin_prefetch(pf + 64, 1, 3);
+        __builtin_prefetch(pf, PREFETCH_WRITE, PREFETCH_LOCALITY);
+        __builtin_prefetch(pf + CACHE_LINE_BYTES, PREFETCH_WRITE, PREFETCH_LOCALITY);
     }
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-    __builtin_prefetch(&atom->cl_sqrt6c6[CJ_SCALAR_BASE_INDEX(cj)], 0, 3);
-    __builtin_prefetch(&atom->cl_sqrt12c12[CJ_SCALAR_BASE_INDEX(cj)], 0, 3);
+    __builtin_prefetch(&atom->cl_sqrt6c6[CJ_SCALAR_BASE_INDEX(cj)], PREFETCH_READ, PREFETCH_LOCALITY);
+    __builtin_prefetch(&atom->cl_sqrt12c12[CJ_SCALAR_BASE_INDEX(cj)], PREFETCH_READ, PREFETCH_LOCALITY);
 #endif
 #if COULOMB_RULE != COULOMB_NONE
-    __builtin_prefetch(&atom->cl_q[CJ_SCALAR_BASE_INDEX(cj)], 0, 3);
+    __builtin_prefetch(&atom->cl_q[CJ_SCALAR_BASE_INDEX(cj)], PREFETCH_READ, PREFETCH_LOCALITY);
 #endif
 #else
     (void)atom;
@@ -357,8 +362,8 @@ static inline void setupTypePairC6C12(Atom* atom)
     atom->ljc12x12 = (MD_FLOAT*)allocate(ALIGNMENT, n2 * sizeof(MD_FLOAT));
     for (int i = 0; i < n2; i++) {
         const MD_FLOAT s6 = atom->sigma6[i];
-        atom->ljc6x6[i]   = (MD_FLOAT)24.0 * atom->epsilon[i] * s6;
-        atom->ljc12x12[i] = (MD_FLOAT)48.0 * atom->epsilon[i] * s6 * s6;
+        atom->ljc6x6[i]   = LJ_C6_FACTOR * atom->epsilon[i] * s6;
+        atom->ljc12x12[i] = LJ_C12_FACTOR * atom->epsilon[i] * s6 * s6;
     }
 }
 #endif

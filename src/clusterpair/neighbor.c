@@ -1938,9 +1938,9 @@ void buildClustersCPU(Atom* atom)
                     ci_sigma3[cii]   = atom->sigma3_per_type[t];
                     // sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3,
                     // sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6
-                    ci_sqrt6c6[cii] = (MD_FLOAT)4.898979485566356 * ci_sqrt_eps[cii] *
+                    ci_sqrt6c6[cii] = LJ_SQRT_6C6_COEF * ci_sqrt_eps[cii] *
                                       ci_sigma3[cii];
-                    ci_sqrt12c12[cii] = (MD_FLOAT)6.928203230275509 * ci_sqrt_eps[cii] *
+                    ci_sqrt12c12[cii] = LJ_SQRT_12C12_COEF * ci_sqrt_eps[cii] *
                                         ci_sigma3[cii] * ci_sigma3[cii];
                     ci_q[cii]   = atom->q_per_type ? atom->q_per_type[t] : 0.0;
                     ci_id[cii]  = atom->id[i];

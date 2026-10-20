@@ -18,6 +18,18 @@
 #include <parameter.h>
 #include <util.h>
 
+// Random numbers skipped between two velocity components
+#define RANDOM_SKIP 5
+
+// Water model of the GROMACS non-bonded benchmark: atoms per molecule (O, H, H), atom
+// types, LJ C6/C12 of the oxygen (as given to GROMACS) and partial charges
+#define WATER_ATOMS      3
+#define WATER_NTYPES     2
+#define WATER_C6_OXYGEN  0.0026173456
+#define WATER_C12_OXYGEN 2.634129e-06
+#define WATER_Q_OXYGEN   -0.8476
+#define WATER_Q_HYDROGEN 0.4238
+
 inline int get_ncj_from_nci(int nci)
 {
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
@@ -203,15 +215,15 @@ void createAtom(Atom* atom, Parameter* param)
                     ztmp >= zlo && ztmp < zhi) {
                     n = k * (2 * param->ny) * (2 * param->nx) + j * (2 * param->nx) + i +
                         1;
-                    for (m = 0; m < 5; m++) {
+                    for (m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     vxtmp = myrandom(&n);
-                    for (m = 0; m < 5; m++) {
+                    for (m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     vytmp = myrandom(&n);
-                    for (m = 0; m < 5; m++) {
+                    for (m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     vztmp = myrandom(&n);
@@ -334,10 +346,10 @@ int readAtomGmx(Atom* atom, Parameter* param)
     param->yprd                          = param->yhi;
     param->zprd                          = param->zhi;
 
-    const int numAtomsInMolecule = 3;
+    const int numAtomsInMolecule = WATER_ATOMS;
     const int typeOxygen         = 0;
     const int typeHydrogen       = 1;
-    const int ntypes             = 2;
+    const int ntypes             = WATER_NTYPES;
     atom->ntypes                 = ntypes;
     atom->molsize                = numAtomsInMolecule;
 
@@ -355,15 +367,15 @@ int readAtomGmx(Atom* atom, Parameter* param)
                     atom_z(idx) = (MD_FLOAT)coordinates1000[p][2] + sz;
 
                     int n = idx + 1;
-                    for (int m = 0; m < 5; m++) {
+                    for (int m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     atom_vx(idx) = myrandom(&n);
-                    for (int m = 0; m < 5; m++) {
+                    for (int m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     atom_vy(idx) = myrandom(&n);
-                    for (int m = 0; m < 5; m++) {
+                    for (int m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     atom_vz(idx) = myrandom(&n);
@@ -387,10 +399,10 @@ int readAtomGmx(Atom* atom, Parameter* param)
     // potential with C6/6 and C12/12. Use those effective values to get the same forces.
     // Convert to the epsilon/sigma representation used by the kernels:
     // sigma^6 = C12 / C6, epsilon = C6^2 / (4 C12), i.e. sqrt(eps) = C6 / (2 sqrt(C12))
-    const double c6Oxygen       = 0.0026173456 / 6.0;
-    const double c12Oxygen      = 2.634129e-06 / 12.0;
-    const double chargeOxygen   = -0.8476;
-    const double chargeHydrogen = 0.4238;
+    const double c6Oxygen       = WATER_C6_OXYGEN / 6.0;
+    const double c12Oxygen      = WATER_C12_OXYGEN / 12.0;
+    const double chargeOxygen   = WATER_Q_OXYGEN;
+    const double chargeHydrogen = WATER_Q_HYDROGEN;
     atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, ntypes * sizeof(MD_FLOAT));
     atom->sigma3_per_type       = allocate(ALIGNMENT, ntypes * sizeof(MD_FLOAT));
     atom->q_per_type            = allocate(ALIGNMENT, ntypes * sizeof(MD_FLOAT));
