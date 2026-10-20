@@ -14,9 +14,9 @@
 #include <atom.h>
 #include <device.h>
 #include <force.h>
+#include <gmxcoords.h>
 #include <parameter.h>
 #include <util.h>
-#include <gmxcoords.h>
 
 inline int get_ncj_from_nci(int nci)
 {
@@ -92,8 +92,8 @@ void initAtom(Atom* atom)
     atom->siclusters            = NULL;
 
     atom->nonbondedParameters = NULL;
-    atom->c6  = NULL;
-    atom->c12 = NULL;
+    atom->c6                  = NULL;
+    atom->c12                 = NULL;
 
     initMasks(atom);
     // MPI New features
@@ -290,7 +290,7 @@ int readAtom(Atom* atom, Parameter* param)
     return -1;
 }
 
-int readAtomGmx(Atom *atom, Parameter *param)
+int readAtomGmx(Atom* atom, Parameter* param)
 {
     int factor = param->size;
 
@@ -299,8 +299,8 @@ int readAtomGmx(Atom *atom, Parameter *param)
         return -1;
     }
 
-    int fac[3] = {1, 1, 1};
-    for (int dim = 0; factor > 1; ) {
+    int fac[3] = { 1, 1, 1 };
+    for (int dim = 0; factor > 1;) {
         fac[dim] *= 2;
         factor >>= 1;
         dim = (dim + 1) % 3;
@@ -315,18 +315,17 @@ int readAtomGmx(Atom *atom, Parameter *param)
     atom->Natoms = atom->Nlocal = total;
 
     /* SPC/E benchmark: 3-site water (OHH) but only 2 atom types: O and H */
-    const int ntypes = 2;
+    const int ntypes             = 2;
     const int numAtomsInMolecule = 3;
-    const int typeOxygen   = 1;
-    const int typeHydrogen = 0;
-    atom->ntypes = ntypes;
-
+    const int typeOxygen         = 1;
+    const int typeHydrogen       = 0;
+    atom->ntypes                 = ntypes;
 
     atom->sqrt_epsilon_per_type = allocate(ALIGNMENT, ntypes * sizeof(MD_FLOAT));
     atom->sigma3_per_type       = allocate(ALIGNMENT, ntypes * sizeof(MD_FLOAT));
 
-    const MD_FLOAT epsO = (MD_FLOAT)0.650194; /* kJ/mol */
-    const MD_FLOAT sigO = (MD_FLOAT)0.316557; /* nm     */
+    const MD_FLOAT epsO                       = (MD_FLOAT)0.650194; /* kJ/mol */
+    const MD_FLOAT sigO                       = (MD_FLOAT)0.316557; /* nm     */
     atom->sqrt_epsilon_per_type[typeHydrogen] = (MD_FLOAT)0.0;
     atom->sigma3_per_type[typeHydrogen]       = (MD_FLOAT)0.0;
     atom->sqrt_epsilon_per_type[typeOxygen]   = (MD_FLOAT)sqrt(epsO);
@@ -357,11 +356,17 @@ int readAtomGmx(Atom *atom, Parameter *param)
 
                     /* keep your RNG pattern */
                     n = idx + 1;
-                    for (m = 0; m < 5; m++) { myrandom(&n); }
+                    for (m = 0; m < 5; m++) {
+                        myrandom(&n);
+                    }
                     vxtmp = myrandom(&n);
-                    for (m = 0; m < 5; m++) { myrandom(&n); }
+                    for (m = 0; m < 5; m++) {
+                        myrandom(&n);
+                    }
                     vytmp = myrandom(&n);
-                    for (m = 0; m < 5; m++) { myrandom(&n); }
+                    for (m = 0; m < 5; m++) {
+                        myrandom(&n);
+                    }
                     vztmp = myrandom(&n);
 
                     atom_vx(idx) = vxtmp;
@@ -370,10 +375,10 @@ int readAtomGmx(Atom *atom, Parameter *param)
 
                     /* coordinates1000 is ordered O,H,H,O,H,H,... */
                     if ((p % numAtomsInMolecule) == 0) {
-                        atom->type[idx] = typeOxygen;    /* O */
-                        /* atom->q[idx] = qO; */         /* if you have charges */
+                        atom->type[idx] = typeOxygen; /* O */
+                        /* atom->q[idx] = qO; */      /* if you have charges */
                     } else {
-                        atom->type[idx] = typeHydrogen;  /* H */
+                        atom->type[idx] = typeHydrogen; /* H */
                         /* atom->q[idx] = qH; */
                     }
                 }
@@ -382,17 +387,17 @@ int readAtomGmx(Atom *atom, Parameter *param)
     }
 
     param->xlo = param->ylo = param->zlo = 0.0;
-    param->xhi = fac[0] * box1000[0][0];
-    param->yhi = fac[1] * box1000[1][1];
-    param->zhi = fac[2] * box1000[2][2];
-    param->xprd = param->xhi;
-    param->yprd = param->yhi;
-    param->zprd = param->zhi;
+    param->xhi                           = fac[0] * box1000[0][0];
+    param->yhi                           = fac[1] * box1000[1][1];
+    param->zhi                           = fac[2] * box1000[2][2];
+    param->xprd                          = param->xhi;
+    param->yprd                          = param->yhi;
+    param->zprd                          = param->zhi;
 
     /* Allocate per-type-pair tables */
     const int numAtomTypes = ntypes;
-    atom->c6    = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
-    atom->c12    = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
+    atom->c6               = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
+    atom->c12              = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
 
     atom->epsilon    = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
     atom->sigma6     = allocate(ALIGNMENT, ntypes * ntypes * sizeof(MD_FLOAT));
@@ -404,7 +409,6 @@ int readAtomGmx(Atom *atom, Parameter *param)
 
     const MD_FLOAT cutneighsq = (MD_FLOAT)(param->cutneigh * param->cutneigh);
     const MD_FLOAT cutforcesq = (MD_FLOAT)(param->cutforce * param->cutforce);
-
 
     /* temporary: keep cutoffs initialized; force path will use C6/C12 later */
     for (int k = 0; k < ntypes * ntypes; ++k) {
@@ -430,8 +434,6 @@ int readAtomGmx(Atom *atom, Parameter *param)
 
     return total;
 }
-
-
 
 int readAtomPdb(Atom* atom, Parameter* param)
 {
@@ -594,15 +596,16 @@ int readAtomGro(Atom* atom, Parameter* param)
         memcpy(type_field, line + 10, 5);
         type_field[5]    = '\0';
         char* type_start = type_field;
-        while (*type_start == ' ') type_start++;
-        int type         = typeStr2int(type_start);
-        int atomId       = readAtoms;
-        MD_FLOAT in_x    = atof(strtok(line + 20, " "));
-        MD_FLOAT in_y    = atof(strtok(NULL, " "));
-        MD_FLOAT in_z    = atof(strtok(NULL, " "));
-        MD_FLOAT in_vx   = atof(strtok(NULL, " "));
-        MD_FLOAT in_vy   = atof(strtok(NULL, " "));
-        MD_FLOAT in_vz   = atof(strtok(NULL, " "));
+        while (*type_start == ' ')
+            type_start++;
+        int type       = typeStr2int(type_start);
+        int atomId     = readAtoms;
+        MD_FLOAT in_x  = atof(strtok(line + 20, " "));
+        MD_FLOAT in_y  = atof(strtok(NULL, " "));
+        MD_FLOAT in_z  = atof(strtok(NULL, " "));
+        MD_FLOAT in_vx = atof(strtok(NULL, " "));
+        MD_FLOAT in_vy = atof(strtok(NULL, " "));
+        MD_FLOAT in_vz = atof(strtok(NULL, " "));
         while (atomId + 1 >= atom->Nmax) {
             growAtom(atom);
         }
@@ -930,7 +933,7 @@ void initMasks(Atom* atom)
             atom->masks_4xn_fn[cond0 * 8 + cond1 * 4 + 3] = (unsigned int)(0xff -
                                                                            0x8 * cond0 -
                                                                            0x80 * cond1);
-            
+
             atom->masks_2xn_hn[cond0 * 4 + cond1 * 2 + 0] = (unsigned int)(0xf -
                                                                            0x1 * cond0 -
                                                                            0x7 * cond1);
@@ -1018,15 +1021,15 @@ void growClusters(Atom* atom, int super_clustering)
     int jterm = MAX(1, CLUSTER_N / CLUSTER_M);
 
     atom->Nclusters_max += DELTA;
-    atom->iclusters       = (Cluster*)reallocate(atom->iclusters,
+    atom->iclusters   = (Cluster*)reallocate(atom->iclusters,
         ALIGNMENT,
         atom->Nclusters_max * SCLUSTER_SIZE * sizeof(Cluster),
         nold * SCLUSTER_SIZE * sizeof(Cluster));
-    atom->jclusters       = (Cluster*)reallocate(atom->jclusters,
+    atom->jclusters   = (Cluster*)reallocate(atom->jclusters,
         ALIGNMENT,
         atom->Nclusters_max * SCLUSTER_SIZE * jterm * sizeof(Cluster),
         nold * SCLUSTER_SIZE * jterm * sizeof(Cluster));
-    atom->cluster_bin     = (int*)reallocate(atom->cluster_bin,
+    atom->cluster_bin = (int*)reallocate(atom->cluster_bin,
         ALIGNMENT,
         atom->Nclusters_max * sizeof(int),
         nold * sizeof(int));
@@ -1034,7 +1037,7 @@ void growClusters(Atom* atom, int super_clustering)
     // GPU every reneighbor step (copyDataToCUDADevice()), so they come from
     // pinned host memory when USE_PINNED_MEMORY is set; cl_x_ref/cl_f/etc.
     // never cross that boundary and stay on regular pageable memory.
-    atom->cl_x = (MD_FLOAT*)reallocateHostPinned(atom->cl_x,
+    atom->cl_x            = (MD_FLOAT*)reallocateHostPinned(atom->cl_x,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
     atom->cl_x_ref        = (MD_FLOAT*)reallocate(atom->cl_x_ref,
@@ -1045,16 +1048,16 @@ void growClusters(Atom* atom, int super_clustering)
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-    atom->cl_v = (MD_FLOAT*)reallocateHostPinned(atom->cl_v,
+    atom->cl_v            = (MD_FLOAT*)reallocateHostPinned(atom->cl_v,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-    atom->cl_t = (int*)reallocateHostPinned(atom->cl_t,
+    atom->cl_t            = (int*)reallocateHostPinned(atom->cl_t,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
     atom->cl_sqrt_epsilon = (MD_FLOAT*)reallocateHostPinned(atom->cl_sqrt_epsilon,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
-    atom->cl_sigma3 = (MD_FLOAT*)reallocateHostPinned(atom->cl_sigma3,
+    atom->cl_sigma3       = (MD_FLOAT*)reallocateHostPinned(atom->cl_sigma3,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 

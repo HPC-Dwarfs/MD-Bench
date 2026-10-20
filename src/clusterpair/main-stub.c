@@ -201,7 +201,8 @@ int main(int argc, const char* argv[])
             masked = 1;
             continue;
         }
-        if ((strcmp(argv[i], "-sc") == 0) || (strcmp(argv[i], "--super-clustering") == 0)) {
+        if ((strcmp(argv[i], "-sc") == 0) ||
+            (strcmp(argv[i], "--super-clustering") == 0)) {
             param.super_clustering = atoi(argv[++i]);
             continue;
         }

@@ -7,8 +7,8 @@
 #ifndef __PARAMETER_H_
 #define __PARAMETER_H_
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // Portable vector types compatible with CUDA/HIP.
 // Skip our definitions whenever CUDA/HIP runtime headers are (or may be)

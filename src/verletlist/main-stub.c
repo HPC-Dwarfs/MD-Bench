@@ -248,9 +248,9 @@ int main(int argc, const char* argv[])
         }
 
         atom->type[atom->Nlocal]         = rand() % atom->ntypes;
-        atom_x(atom->Nlocal)             = (MD_FLOAT)(i) * 0.00001;
-        atom_y(atom->Nlocal)             = (MD_FLOAT)(i) * 0.00001;
-        atom_z(atom->Nlocal)             = (MD_FLOAT)(i) * 0.00001;
+        atom_x(atom->Nlocal)             = (MD_FLOAT)(i)*0.00001;
+        atom_y(atom->Nlocal)             = (MD_FLOAT)(i)*0.00001;
+        atom_z(atom->Nlocal)             = (MD_FLOAT)(i)*0.00001;
         atom_vx(atom->Nlocal)            = 0.0;
         atom_vy(atom->Nlocal)            = 0.0;
         atom_vz(atom->Nlocal)            = 0.0;

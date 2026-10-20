@@ -15,9 +15,10 @@
 void computeForceGhostShell(Parameter*, Atom*, Neighbor*);
 
 // GCC (tested 13.3 on SVE2) does not vectorize the full-rule neighbor loop when it honors
-// "#pragma omp simd" (-fopenmp or -fopenmp-simd): the conditional sigma6/epsilon loads are then
-// "not supported" as masked gathers and the loop stays scalar, with a data-dependent branch.
-// Without the pragma GCC vectorizes it with SVE gathers. Clang needs the pragma to vectorize it.
+// "#pragma omp simd" (-fopenmp or -fopenmp-simd): the conditional sigma6/epsilon loads
+// are then "not supported" as masked gathers and the loop stays scalar, with a
+// data-dependent branch. Without the pragma GCC vectorizes it with SVE gathers. Clang
+// needs the pragma to vectorize it.
 #if defined(__GNUC__) && !defined(__clang__) && LJ_COMB_RULE == LJ_COMB_FULL
 #define MD_OMP_SIMD_REDUCTION_F
 #else
@@ -72,8 +73,8 @@ double computeForceLJFullNeigh(
         MD_FLOAT* restrict sqrt_epsilon_ptr = atom->sqrt_epsilon;
         MD_FLOAT* restrict sigma3_ptr       = atom->sigma3;
 #endif
-        int* restrict neighbors_ptr         = neighbor->neighbors;
-        int* restrict numneigh_inner_ptr    = neighbor->numneigh_inner;
+        int* restrict neighbors_ptr      = neighbor->neighbors;
+        int* restrict numneigh_inner_ptr = neighbor->numneigh_inner;
 
         LIKWID_MARKER_START("force");
 

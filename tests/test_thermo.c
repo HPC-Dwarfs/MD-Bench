@@ -18,8 +18,8 @@
  */
 
 /* Helper: set up a minimal atom with per-atom velocity arrays. */
-static void setup_atom_velocities(Atom* atom, int natoms, MD_FLOAT* vx, MD_FLOAT* vy,
-    MD_FLOAT* vz)
+static void setup_atom_velocities(
+    Atom* atom, int natoms, MD_FLOAT* vx, MD_FLOAT* vy, MD_FLOAT* vz)
 {
     memset(atom, 0, sizeof(Atom));
     atom->Natoms = natoms;
@@ -64,10 +64,10 @@ static void free_atom_velocities(Atom* atom)
  */
 static int test_adjustThermo_zeroes_com(void)
 {
-    const int N = 4;
-    MD_FLOAT vx[4] = { 1.0, 2.0, 3.0, 4.0 };    /* COM_x = 2.5 */
-    MD_FLOAT vy[4] = { 0.5, 1.5, -0.5, 2.5 };    /* COM_y = 1.0 */
-    MD_FLOAT vz[4] = { -1.0, 0.0, 1.0, 2.0 };    /* COM_z = 0.5 */
+    const int N    = 4;
+    MD_FLOAT vx[4] = { 1.0, 2.0, 3.0, 4.0 };  /* COM_x = 2.5 */
+    MD_FLOAT vy[4] = { 0.5, 1.5, -0.5, 2.5 }; /* COM_y = 1.0 */
+    MD_FLOAT vz[4] = { -1.0, 0.0, 1.0, 2.0 }; /* COM_z = 0.5 */
 
     Atom atom;
     setup_atom_velocities(&atom, N, vx, vy, vz);
@@ -111,7 +111,7 @@ static int test_adjustThermo_zeroes_com(void)
  */
 static int test_adjustThermo_rescales_temp(void)
 {
-    const int N = 4;
+    const int N    = 4;
     MD_FLOAT vx[4] = { 1.0, 2.0, 3.0, 4.0 };
     MD_FLOAT vy[4] = { 0.5, 1.5, -0.5, 2.5 };
     MD_FLOAT vz[4] = { -1.0, 0.0, 1.0, 2.0 };
@@ -154,7 +154,7 @@ static int test_adjustThermo_rescales_temp(void)
  */
 static int test_adjustThermo_preserves_structure(void)
 {
-    const int N = 3;
+    const int N    = 3;
     MD_FLOAT vx[3] = { 3.0, 6.0, 9.0 };
     MD_FLOAT vy[3] = { 0.0, 0.0, 0.0 };
     MD_FLOAT vz[3] = { 0.0, 0.0, 0.0 };
@@ -176,7 +176,9 @@ static int test_adjustThermo_preserves_structure(void)
 
     /* After COM removal: vx = {-3, 0, 3} (COM was 6.0).
      * Ratios should be preserved: vx[2] = -vx[0], vx[1] = 0. */
-    ASSERT_NEAR(atom.vx[0] + atom.vx[2], 0.0, 1e-10,
+    ASSERT_NEAR(atom.vx[0] + atom.vx[2],
+        0.0,
+        1e-10,
         "antisymmetric velocities preserved");
     ASSERT_NEAR(atom.vx[1], 0.0, 1e-10, "zero velocity preserved");
 

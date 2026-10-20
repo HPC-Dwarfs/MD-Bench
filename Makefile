@@ -28,6 +28,7 @@ SASS       = $(CU_OBJS:.o=.sass)
 FORCE_SASS = $(foreach o,$(CU_OBJS),$(if $(findstring force_lj_cuda,$o),$(o:.o=-force.sass)))
 endif
 SOURCES   =  $(wildcard $(SRC_DIR)/*.h $(SRC_DIR)/*.c $(COMMON_DIR)/*.c $(COMMON_DIR)/*.h)
+FORMAT_SOURCES = $(shell find $(SRC_ROOT) tests -name '*.c' -o -name '*.h')
 CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(OPTIONS) $(INCLUDES)
 c := ,
 clist = $(subst $(eval) ,$c,$(strip $1))
@@ -145,7 +146,7 @@ tags:
 	$(Q)ctags -R
 
 format:
-	@for src in $(SOURCES) ; do \
+	@for src in $(FORMAT_SOURCES) ; do \
 		echo "Formatting $$src" ; \
 		clang-format -i $$src ; \
 	done

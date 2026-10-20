@@ -318,7 +318,7 @@ int main(int argc, char** argv)
             param.setup = atoi(argv[++i]);
             continue;
         }
-        
+
         if ((strcmp(argv[i], "-gmxbench") == 0)) {
             param.gmxbenchmark = true;
             if (param.input_file != NULL) {

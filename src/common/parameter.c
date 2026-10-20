@@ -86,7 +86,7 @@ void initParameter(Parameter* param)
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     param->ntypes = 1;
 #else
-    param->ntypes = 4;
+    param->ntypes           = 4;
 #endif
     param->epsilon_per_type     = NULL;
     param->sigma_per_type       = NULL;
@@ -127,8 +127,8 @@ void initParameter(Parameter* param)
     param->setup         = 1;
     param->verbose       = 0;
     // gmx benchmark
-    param->gmxbenchmark  = false;
-    param->size          = 1;
+    param->gmxbenchmark = false;
+    param->size         = 1;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {

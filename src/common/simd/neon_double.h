@@ -124,17 +124,17 @@ static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
     MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
 {
     float64x2_t t1, t2;
- 
+
     t1 = vuzp1q_f64(v0, v1);
     t2 = vuzp2q_f64(v0, v1);
-     
+
     t1 = vaddq_f64(t1, t2);
- 
+
     t2 = vaddq_f64(t1, vld1q_f64(m));
     vst1q_f64(m, t2);
- 
+
     t2 = vpaddq_f64(t1, t1);
- 
+
     return vgetq_lane_f64(t2, 0);
 }
 

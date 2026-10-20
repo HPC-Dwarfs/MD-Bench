@@ -32,12 +32,8 @@ static int test_overlapBox_no_overlap(void)
  */
 static int test_overlapBox_adjacent_overlap(void)
 {
-    Box mybox = { .id = 0,
-        .lo                   = { 0.0, 0.0, 0.0 },
-        .hi                   = { 5.0, 5.0, 5.0 } };
-    Box other = { .id = 1,
-        .lo                   = { 5.0, 0.0, 0.0 },
-        .hi                   = { 10.0, 5.0, 5.0 } };
+    Box mybox = { .id = 0, .lo = { 0.0, 0.0, 0.0 }, .hi = { 5.0, 5.0, 5.0 } };
+    Box other = { .id = 1, .lo = { 5.0, 0.0, 0.0 }, .hi = { 10.0, 5.0, 5.0 } };
     Box cut;
     MD_FLOAT xprd     = 20.0;
     MD_FLOAT cutneigh = 1.0;
@@ -68,12 +64,8 @@ static int test_overlapBox_periodic(void)
      * In the forward direction (dir=0), the periodic image of other
      * is shifted left by xprd: [8-10, 10-10] = [-2, 0], which
      * is within cutneigh of mybox. */
-    Box mybox = { .id = 0,
-        .lo                   = { 0.0, 0.0, 0.0 },
-        .hi                   = { 2.0, 5.0, 5.0 } };
-    Box other = { .id = 1,
-        .lo                   = { 8.0, 0.0, 0.0 },
-        .hi                   = { 10.0, 5.0, 5.0 } };
+    Box mybox = { .id = 0, .lo = { 0.0, 0.0, 0.0 }, .hi = { 2.0, 5.0, 5.0 } };
+    Box other = { .id = 1, .lo = { 8.0, 0.0, 0.0 }, .hi = { 10.0, 5.0, 5.0 } };
     Box cut;
 
     int pbc = overlapBox(0, 0, &mybox, &other, &cut, xprd, cutneigh);
@@ -97,20 +89,14 @@ static int test_overlapFullBox_nearby(void)
     MD_FLOAT cutneigh[3] = { 1.0, 1.0, 1.0 };
 
     /* Two adjacent boxes along x */
-    Box mybox = { .id = 0,
-        .lo                   = { 0.0, 0.0, 0.0 },
-        .hi                   = { 5.0, 5.0, 5.0 } };
-    Box nearby = { .id = 1,
-        .lo                    = { 4.5, 0.0, 0.0 },
-        .hi                    = { 9.5, 5.0, 5.0 } };
+    Box mybox  = { .id = 0, .lo = { 0.0, 0.0, 0.0 }, .hi = { 5.0, 5.0, 5.0 } };
+    Box nearby = { .id = 1, .lo = { 4.5, 0.0, 0.0 }, .hi = { 9.5, 5.0, 5.0 } };
 
     int result = overlapFullBox(&param, cutneigh, &mybox, &nearby);
     ASSERT_INT_EQ(result, 1, "nearby boxes overlap");
 
     /* Box far away in all dimensions */
-    Box faraway = { .id = 2,
-        .lo                     = { 7.0, 7.0, 7.0 },
-        .hi                     = { 8.0, 8.0, 8.0 } };
+    Box faraway = { .id = 2, .lo = { 7.0, 7.0, 7.0 }, .hi = { 8.0, 8.0, 8.0 } };
 
     result = overlapFullBox(&param, cutneigh, &mybox, &faraway);
     ASSERT_INT_EQ(result, 0, "distant boxes do not overlap");
@@ -131,12 +117,8 @@ static int test_overlapFullBox_periodic(void)
 
     MD_FLOAT cutneigh[3] = { 1.5, 1.5, 1.5 };
 
-    Box mybox = { .id = 0,
-        .lo                   = { 9.0, 0.0, 0.0 },
-        .hi                   = { 10.0, 5.0, 5.0 } };
-    Box other = { .id = 1,
-        .lo                   = { 0.0, 0.0, 0.0 },
-        .hi                   = { 1.0, 5.0, 5.0 } };
+    Box mybox = { .id = 0, .lo = { 9.0, 0.0, 0.0 }, .hi = { 10.0, 5.0, 5.0 } };
+    Box other = { .id = 1, .lo = { 0.0, 0.0, 0.0 }, .hi = { 1.0, 5.0, 5.0 } };
 
     int result = overlapFullBox(&param, cutneigh, &mybox, &other);
     ASSERT_INT_EQ(result, 1, "periodic neighbor detected by overlapFullBox");
@@ -150,9 +132,7 @@ static int test_overlapFullBox_periodic(void)
  */
 static int test_overlapBox_self(void)
 {
-    Box mybox = { .id = 0,
-        .lo                   = { 0.0, 0.0, 0.0 },
-        .hi                   = { 5.0, 5.0, 5.0 } };
+    Box mybox = { .id = 0, .lo = { 0.0, 0.0, 0.0 }, .hi = { 5.0, 5.0, 5.0 } };
     Box cut;
     MD_FLOAT xprd     = 20.0;
     MD_FLOAT cutneigh = 1.0;

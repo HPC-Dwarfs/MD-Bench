@@ -39,7 +39,6 @@ static inline MD_SIMD_FLOAT simd_real_gather(
     return svld1_gather_s32index_f32(svptrue_b32(), base, vidx);
 }
 
-
 static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
 {
     svst1_f32(svptrue_b32(), ptr, vec);
@@ -101,7 +100,8 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 
 static inline MD_SIMD_FLOAT simd_real_reciprocal(MD_SIMD_FLOAT a)
 {
-    // svrecpe_f32(a) + one svrecps_f32 Newton-Raphson step was measured slower here (gather-bound kernel, div hides in memory stalls better than the dependency chain):
+    // svrecpe_f32(a) + one svrecps_f32 Newton-Raphson step was measured slower here
+    // (gather-bound kernel, div hides in memory stalls better than the dependency chain):
     // MD_SIMD_FLOAT reciprocal = svrecpe_f32(a);
     // reciprocal = svmul_f32_x(svptrue_b32(), reciprocal, svrecps_f32(reciprocal, a));
     // return reciprocal;
@@ -118,9 +118,9 @@ static inline float simd_real_incr_reduced_sum(
     sum[2] = svadda_f32(pg, 0.0f, v2);
     sum[3] = svadda_f32(pg, 0.0f, v3);
 #if VECTOR_WIDTH >= 4
-    pg                 = svptrue_pat_b32(SV_VL4);
-    svfloat32_t _m     = svld1_f32(pg, m);
-    svfloat32_t _s     = svld1_f32(pg, sum);
+    pg             = svptrue_pat_b32(SV_VL4);
+    svfloat32_t _m = svld1_f32(pg, m);
+    svfloat32_t _s = svld1_f32(pg, sum);
     svst1_f32(pg, m, svadd_f32_x(pg, _m, _s));
     return svadda_f32(pg, 0.0f, _s);
 #else
@@ -134,16 +134,16 @@ static inline float simd_real_incr_reduced_sum(
 }
 
 static inline float simd_real_incr_reduced_sum_j2(
-     float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+    float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
 {
     svbool_t pg = svptrue_b32();
     float sum[2];
     sum[0] = svadda_f32(pg, 0.0f, v0);
     sum[1] = svadda_f32(pg, 0.0f, v1);
 #if VECTOR_WIDTH >= 2
-    pg                 = svptrue_pat_b32(SV_VL2);
-    svfloat32_t _m     = svld1_f32(pg, m);
-    svfloat32_t _s     = svld1_f32(pg, sum);
+    pg             = svptrue_pat_b32(SV_VL2);
+    svfloat32_t _m = svld1_f32(pg, m);
+    svfloat32_t _s = svld1_f32(pg, sum);
     svst1_f32(pg, m, svadd_f32_x(pg, _m, _s));
     return svadda_f32(pg, 0.0f, _s);
 #else
@@ -217,8 +217,12 @@ static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 
 static inline MD_SIMD_INT simd_i32_seq(void) { return svindex_s32(0, 1); }
 
-// Single whilelt instruction -- the idiomatic SVE way to predicate a loop's remaining trip count, used by the VLA kernels.
-static inline MD_SIMD_MASK simd_mask_from_remaining(int remaining) { return svwhilelt_b32(0, remaining); }
+// Single whilelt instruction -- the idiomatic SVE way to predicate a loop's remaining
+// trip count, used by the VLA kernels.
+static inline MD_SIMD_MASK simd_mask_from_remaining(int remaining)
+{
+    return svwhilelt_b32(0, remaining);
+}
 
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 {

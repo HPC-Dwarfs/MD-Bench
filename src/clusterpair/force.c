@@ -27,7 +27,7 @@ void initForce(Parameter* param)
             } else {
                 computeForce = computeForceLJ4xnFullNeighC6C12;
             }
-        }else{
+        } else {
             if (param->half_neigh || param->method) {
                 computeForce = computeForceLJ4xnHalfNeigh;
             } else {
@@ -42,11 +42,11 @@ void initForce(Parameter* param)
             computeForce = computeForceLJ2xnnFullNeigh;
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XN)
-         if (param->half_neigh) {
-             computeForce = computeForceLJ2xnHalfNeigh;
-         } else {
-             computeForce = computeForceLJ2xnFullNeigh;
-         }
+        if (param->half_neigh) {
+            computeForce = computeForceLJ2xnHalfNeigh;
+        } else {
+            computeForce = computeForceLJ2xnFullNeigh;
+        }
 #elif defined(CLUSTERPAIR_KERNEL_GPU)
         if (param->super_clustering) {
             computeForce = computeForceLJCudaSup;

@@ -69,8 +69,8 @@ double computeForceLJTableFullNeigh(
         MD_FLOAT* restrict sqrt_epsilon_ptr = atom->sqrt_epsilon;
         MD_FLOAT* restrict sigma3_ptr       = atom->sigma3;
 #endif
-        int* restrict neighbors_ptr         = neighbor->neighbors;
-        int* restrict numneigh_inner_ptr    = neighbor->numneigh_inner;
+        int* restrict neighbors_ptr      = neighbor->neighbors;
+        int* restrict numneigh_inner_ptr = neighbor->numneigh_inner;
 
         LIKWID_MARKER_START("force");
 

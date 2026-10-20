@@ -96,7 +96,8 @@ static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
 {
     MD_FLOAT ret;
     fprintf(stderr,
-        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX2 with double precision!");
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX2 with double "
+        "precision!");
     exit(-1);
     return ret;
 }

@@ -92,7 +92,7 @@ typedef struct {
     unsigned int masks_4xn_fn[16];
     // Info Subdomain
     Box mybox;
-    //gmx benchmark
+    // gmx benchmark
     MD_FLOAT* nonbondedParameters;
     MD_FLOAT* c6;
     MD_FLOAT* c12;
@@ -134,9 +134,9 @@ extern "C"
 
 #ifdef ATOM_POSITION_AOS
 #define POS_DATA_LAYOUT "AoS"
-#define atom_x(i)       atom->x[(i) * 3 + 0]
-#define atom_y(i)       atom->x[(i) * 3 + 1]
-#define atom_z(i)       atom->x[(i) * 3 + 2]
+#define atom_x(i)       atom->x[(i)*3 + 0]
+#define atom_y(i)       atom->x[(i)*3 + 1]
+#define atom_z(i)       atom->x[(i)*3 + 2]
 /*
 #   define atom_vx(i)          atom->vx[(i) * 3 + 0]
 #   define atom_vy(i)          atom->vx[(i) * 3 + 1]

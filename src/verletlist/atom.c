@@ -449,17 +449,18 @@ int readAtom_gro(Atom* atom, Parameter* param)
         readline(line, fp);
         char type_field[6];
         memcpy(type_field, line + 10, 5);
-        type_field[5]     = '\0';
-        char* type_start  = type_field;
-        while (*type_start == ' ') type_start++;
-        int type          = type_str2int(type_start);
-        int atom_id       = read_atoms;
-        MD_FLOAT in_x    = atof(strtok(line + 20, " "));
-        MD_FLOAT in_y    = atof(strtok(NULL, " "));
-        MD_FLOAT in_z    = atof(strtok(NULL, " "));
-        MD_FLOAT in_vx   = atof(strtok(NULL, " "));
-        MD_FLOAT in_vy   = atof(strtok(NULL, " "));
-        MD_FLOAT in_vz   = atof(strtok(NULL, " "));
+        type_field[5]    = '\0';
+        char* type_start = type_field;
+        while (*type_start == ' ')
+            type_start++;
+        int type       = type_str2int(type_start);
+        int atom_id    = read_atoms;
+        MD_FLOAT in_x  = atof(strtok(line + 20, " "));
+        MD_FLOAT in_y  = atof(strtok(NULL, " "));
+        MD_FLOAT in_z  = atof(strtok(NULL, " "));
+        MD_FLOAT in_vx = atof(strtok(NULL, " "));
+        MD_FLOAT in_vy = atof(strtok(NULL, " "));
+        MD_FLOAT in_vz = atof(strtok(NULL, " "));
         while (atom_id + 1 >= atom->Nmax) {
             growAtom(atom);
         }

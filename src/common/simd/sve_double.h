@@ -98,7 +98,8 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 
 static inline MD_SIMD_FLOAT simd_real_reciprocal(MD_SIMD_FLOAT a)
 {
-    // svrecpe_f64(a) + one svrecps_f64 Newton-Raphson step was measured slower here (gather-bound kernel, div hides in memory stalls better than the dependency chain):
+    // svrecpe_f64(a) + one svrecps_f64 Newton-Raphson step was measured slower here
+    // (gather-bound kernel, div hides in memory stalls better than the dependency chain):
     // MD_SIMD_FLOAT reciprocal = svrecpe_f64(a);
     // reciprocal = svmul_f64_x(svptrue_b64(), reciprocal, svrecps_f64(reciprocal, a));
     // return reciprocal;
@@ -152,10 +153,10 @@ static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
     sum[0] = svadda_f64(pg, 0.0, v0);
     sum[1] = svadda_f64(pg, 0.0, v1);
 #if VECTOR_WIDTH >= 2
-    svfloat64_t _m = svld1_f64(pg, m);               
-    svfloat64_t _s = svld1_f64(pg, sum);            
-    svst1_f64(pg, m, svadd_f64_x(pg, _m, _s));       
-    return svadda_f64(pg, 0.0, _s);                 
+    svfloat64_t _m = svld1_f64(pg, m);
+    svfloat64_t _s = svld1_f64(pg, sum);
+    svst1_f64(pg, m, svadd_f64_x(pg, _m, _s));
+    return svadda_f64(pg, 0.0, _s);
 #else
     double res = 0;
     for (int i = 0; i < 2; i++) {
@@ -223,8 +224,12 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 // Create sequence [0, 1, 2, ...] for SVE
 static inline MD_SIMD_INT simd_i32_seq(void) { return svindex_s64(0, 1); }
 
-// Single whilelt instruction -- the idiomatic SVE way to predicate a loop's remaining trip count, used by the VLA kernels.
-static inline MD_SIMD_MASK simd_mask_from_remaining(int remaining) { return svwhilelt_b64(0, remaining); }
+// Single whilelt instruction -- the idiomatic SVE way to predicate a loop's remaining
+// trip count, used by the VLA kernels.
+static inline MD_SIMD_MASK simd_mask_from_remaining(int remaining)
+{
+    return svwhilelt_b64(0, remaining);
+}
 
 // Integer multiply (for type indices)
 static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
