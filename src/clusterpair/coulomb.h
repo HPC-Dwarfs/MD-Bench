@@ -4,7 +4,7 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
-/* Electrostatics for the cluster-pair force kernels.
+/* Electrostatics for the cluster-pair force kernels (see force_lj_4xn.c).
  *
  * The formulation follows GROMACS' NBNxM kernels: a pair contributes the force
  *   f_scalar = qq * (interact * 1/r^3 + <correction>)      (f = f_scalar * (r_i - r_j))
@@ -22,35 +22,7 @@
 
 #include <parameter.h>
 
-#ifndef USE_REFERENCE_KERNEL
-// force.h defines the cluster dimensions that simd.h would otherwise default
-#include <force.h>
-#include <simd.h>
-
-/* Reciprocal refined with Newton-Raphson steps until it is accurate to the working
- * precision. The plain simd_real_reciprocal() is a hardware estimate (12-14 bits) on
- * most targets, which is what the LJ kernels use by default, so enabling
- * ACCURATE_RECIPROCAL makes their forces comparable with codes that iterate the
- * estimate to full precision. */
-static inline MD_SIMD_FLOAT simd_real_reciprocal_accurate(MD_SIMD_FLOAT a)
-{
-    const MD_SIMD_FLOAT two = simd_real_broadcast(2.0);
-    MD_SIMD_FLOAT x         = simd_real_reciprocal(a);
-    x                       = simd_real_mul(x, simd_real_sub(two, simd_real_mul(a, x)));
-#if PRECISION == 2
-    x = simd_real_mul(x, simd_real_sub(two, simd_real_mul(a, x)));
-#endif
-    return x;
-}
-
-#ifdef ACCURATE_RECIPROCAL
-#define SIMD_RECIPROCAL simd_real_reciprocal_accurate
-#else
-#define SIMD_RECIPROCAL simd_real_reciprocal
-#endif
-#endif /* !USE_REFERENCE_KERNEL */
-
-#if COULOMB_RULE != COULOMB_NONE
+#include <kernel_math.h>
 
 #ifndef USE_REFERENCE_KERNEL
 typedef struct {
@@ -70,7 +42,11 @@ static inline CoulombSimd coulombSimdInit(Parameter* param)
     cs.beta2 = simd_real_broadcast(param->ewald_beta * param->ewald_beta);
     return cs;
 }
+#endif /* !USE_REFERENCE_KERNEL */
 
+#if COULOMB_RULE != COULOMB_NONE
+
+#ifndef USE_REFERENCE_KERNEL
 #if COULOMB_RULE == COULOMB_EWALD
 static inline MD_SIMD_FLOAT pmeForceCorrectionSimd(MD_SIMD_FLOAT z2)
 {
@@ -128,32 +104,6 @@ static inline MD_SIMD_FLOAT pmeForceCorrectionSimd(MD_SIMD_FLOAT z2)
 }
 #endif /* COULOMB_EWALD */
 
-/* SIMD force factor of a set of pairs, see the force factor in the header comment.
- *   sr2       1/rsq (may be garbage on lanes that are masked later)
- *   qq        charge products (not yet scaled by epsfac)
- *   rinvx     1/r, zero for excluded pairs
- *   within    lanes whose force is kept (inside the cut-off, not self-pairs) */
-static inline MD_SIMD_FLOAT coulombForceSimd(const CoulombSimd* cs,
-    MD_SIMD_FLOAT rsq,
-    MD_SIMD_FLOAT sr2,
-    MD_SIMD_FLOAT qq,
-    MD_SIMD_FLOAT rinvx,
-    MD_SIMD_MASK within)
-{
-    const MD_SIMD_FLOAT qqe = simd_real_mul(cs->epsfac, qq);
-#if COULOMB_RULE == COULOMB_RF
-    (void)within;
-    (void)rsq;
-    return simd_real_mul(qqe, simd_real_sub(simd_real_mul(rinvx, sr2), cs->k_rf2));
-#else
-    /* The correction vanishes at r = 0, so lanes outside the cut-off are masked
-     * by setting r^2 to zero */
-    const MD_SIMD_FLOAT z2   = simd_real_mul(cs->beta2,
-        simd_real_select_by_mask(rsq, within));
-    const MD_SIMD_FLOAT corr = simd_real_mul(cs->beta, pmeForceCorrectionSimd(z2));
-    return simd_real_mul(qqe, simd_real_mul(simd_real_fma(corr, z2, rinvx), sr2));
-#endif
-}
 #endif /* !USE_REFERENCE_KERNEL */
 
 #endif /* COULOMB_RULE != COULOMB_NONE */

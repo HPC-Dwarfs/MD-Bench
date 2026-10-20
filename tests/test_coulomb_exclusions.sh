@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Validates the electrostatics (reaction-field, Ewald) and molecular exclusions of the
-# cluster-pair 4xN kernel against an exact float64 reference.
+# cluster-pair SIMD kernels (4xN, 2xNN, 2xN as far as the SIMD back-end can run them)
+# against an exact float64 reference.
 #
 # The system is the water box of the GROMACS non-bonded benchmark (-gmxbench). The
 # reference (tests/gromacs_nonbonded/nbnxm_reference.py) evaluates the same pair
@@ -39,24 +40,31 @@ else
 fi
 
 status=0
+# kernel:data type of every cluster-pair kernel the SIMD back-end can run
+CONFIGS=("4xN:DP" "4xN:SP")
+case "${SIMD}" in
+  AVX2) CONFIGS+=("2xNN:SP" "2xN:DP") ;;
+  AVX512) CONFIGS+=("2xNN:SP") ;;
+esac
 for rule in rf ewald none; do
   "${PYTHON}" "${DIR}/nbnxm_reference.py" --size 1 --coulomb "${rule}" --out "${WORK}/ref_${rule}.txt"
-  for dtype in DP SP; do
+  for config in "${CONFIGS[@]}"; do
+    IFS=: read -r kernel dtype <<<"${config}"
     if [ "${dtype}" = "DP" ]; then tol="1e-7"; else tol="5e-5"; fi
     excl=auto
     suffix="-${rule}-accrecip"
     if [ "${rule}" = "none" ]; then excl=true; suffix="-accrecip-excl"; fi
     make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}" \
-         OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL=4xN COULOMB_RULE="${rule}" \
+         OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" COULOMB_RULE="${rule}" \
          EXCLUSIONS="${excl}" ACCURATE_RECIPROCAL=true >/dev/null
-    bin="./MDBench-CP-4xN-${TOOL_TAG}-${dtype}-geometric${suffix}"
+    bin="./MDBench-CP-${kernel}-${TOOL_TAG}-${dtype}-geometric${suffix}"
     for half in 0 1; do
       # Half lists scatter j-forces from several threads, which is not thread safe
       OMP_NUM_THREADS=1 "${bin}" -gmxbench -size 1 -half "${half}" --kernel-bench 1 \
           --dump-forces "${WORK}/f.txt" >/dev/null
       if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/ref_${rule}.txt" "${WORK}/f.txt" \
            --tol "${tol}" --tol-max "$(python3 -c "print(${tol}*10)")" \
-           --label "${rule} ${dtype} half=${half}"; then
+           --label "${kernel} ${rule} ${dtype} half=${half}"; then
         status=1
       fi
     done

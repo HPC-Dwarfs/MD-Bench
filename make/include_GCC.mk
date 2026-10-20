@@ -55,6 +55,14 @@ endif
 ASFLAGS = $(ASM_SYNTAX_FLAG)
 endif
 
+# Extra flags for the SIMD force kernels (src/clusterpair/force_lj_*.c). How GCC orders
+# the long dependency chains of the rows is worth 15-25%: scheduling before register
+# allocation with register pressure awareness is much better than the default, and
+# unrolling the loop over the neighbor list only bloats the loop body.
+ifeq ($(strip $(ISA)),X86)
+KERNEL_CFLAGS = -fschedule-insns -fsched-pressure -fno-unroll-loops
+endif
+
 CFLAGS = $(PROFILE) $(OPENMP) $(OPTS) -std=c11 $(ANSI_CFLAGS)
 LFLAGS = $(PROFILE) $(OPENMP) $(OPTS)
 DEFINES += -D_GNU_SOURCE

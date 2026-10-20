@@ -91,13 +91,17 @@ void initAtom(Atom* atom)
     atom->cluster_bin           = NULL;
     atom->siclusters            = NULL;
 
-    atom->molsize    = 0;
-    atom->ids_valid  = 0;
-    atom->id         = NULL;
-    atom->q_per_type = NULL;
-    atom->cl_q       = NULL;
-    atom->cl_id      = NULL;
-    atom->cl_mol     = NULL;
+    atom->molsize      = 0;
+    atom->ids_valid    = 0;
+    atom->id           = NULL;
+    atom->q_per_type   = NULL;
+    atom->cl_q         = NULL;
+    atom->cl_id        = NULL;
+    atom->cl_mol       = NULL;
+    atom->cl_sqrt6c6   = NULL;
+    atom->cl_sqrt12c12 = NULL;
+    atom->ljc6x6       = NULL;
+    atom->ljc12x12     = NULL;
 
     initMasks(atom);
     // MPI New features
@@ -1044,18 +1048,26 @@ void growClusters(Atom* atom, int super_clustering)
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
     // Electrostatics/exclusion data is only consumed by the CPU kernels
-    atom->cl_q   = (MD_FLOAT*)reallocate(atom->cl_q,
+    atom->cl_q         = (MD_FLOAT*)reallocate(atom->cl_q,
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
-    atom->cl_id  = (int*)reallocate(atom->cl_id,
+    atom->cl_id        = (int*)reallocate(atom->cl_id,
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
-    atom->cl_mol = (int*)reallocate(atom->cl_mol,
+    atom->cl_mol       = (int*)reallocate(atom->cl_mol,
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
+    atom->cl_sqrt6c6   = (MD_FLOAT*)reallocate(atom->cl_sqrt6c6,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+    atom->cl_sqrt12c12 = (MD_FLOAT*)reallocate(atom->cl_sqrt12c12,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 
 // NUMA-aware first-touch initialization for newly allocated memory
 #ifdef _OPENMP
@@ -1159,6 +1171,10 @@ void freeAtom(Atom* atom)
     atom->id = NULL;
     free(atom->q_per_type);
     atom->q_per_type = NULL;
+    free(atom->ljc6x6);
+    atom->ljc6x6 = NULL;
+    free(atom->ljc12x12);
+    atom->ljc12x12 = NULL;
 }
 
 void growPbc(Atom* atom)
@@ -1330,9 +1346,9 @@ int unpackGhost(Parameter* param, Atom* atom, int cj, MD_FLOAT* buf)
     }
 
     for (int cjj = atom->jclusters[cj].natoms; cjj < CLUSTER_N; cjj++) {
-        cj_x[CL_X_INDEX(cjj)]         = INF;
-        cj_x[CL_Y_INDEX(cjj)]         = INF;
-        cj_x[CL_Z_INDEX(cjj)]         = INF;
+        cj_x[CL_X_INDEX(cjj)]         = CLUSTER_PAD_COORD;
+        cj_x[CL_Y_INDEX(cjj)]         = CLUSTER_PAD_COORD;
+        cj_x[CL_Z_INDEX(cjj)]         = CLUSTER_PAD_COORD;
         atom->cl_t[cj_sca_base + cjj] = 0;
         m += 4;
     }

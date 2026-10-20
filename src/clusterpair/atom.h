@@ -36,6 +36,11 @@
 #define INF INFINITY
 #endif
 
+// Coordinates of the padding atoms that fill up a cluster. They are far from everything
+// but finite (unlike INF), so a kernel can multiply the exactly zero force of a masked
+// pair with its distance without producing NaN.
+#define CLUSTER_PAD_COORD ((MD_FLOAT)1.0e10)
+
 #define DELTA 100000
 
 typedef struct {
@@ -100,6 +105,14 @@ typedef struct {
     MD_FLOAT* cl_q;       // charge per atom in cluster layout
     int* cl_id;           // original atom index per atom in cluster layout
     int* cl_mol;          // molecule index per atom in cluster layout (exclusions)
+    // Per-atom LJ parameters of the geometric combination rule in the form the 4xN
+    // kernels multiply: sqrt(6 C6_i) and sqrt(12 C12_i) with C6 = 4 eps sigma^6, C12 = 4
+    // eps sigma^12
+    MD_FLOAT* cl_sqrt6c6;
+    MD_FLOAT* cl_sqrt12c12;
+    // Type-pair tables of 6 C6 and 12 C12 for the full combination rule (built on demand)
+    MD_FLOAT* ljc6x6;
+    MD_FLOAT* ljc12x12;
 } Atom;
 
 extern int get_ncj_from_nci(int nci);

@@ -144,9 +144,9 @@ void addDummyCluster(Parameter* param, Atom* atom)
     MD_FLOAT* cjX = &atom->cl_x[cjVecBase];
 
     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
-        cjX[CL_X_INDEX(cjj)] = INF;
-        cjX[CL_Y_INDEX(cjj)] = INF;
-        cjX[CL_Z_INDEX(cjj)] = INF;
+        cjX[CL_X_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cjX[CL_Y_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cjX[CL_Z_INDEX(cjj)] = CLUSTER_PAD_COORD;
     }
 }
 #endif

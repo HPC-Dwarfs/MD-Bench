@@ -91,17 +91,6 @@ static inline MD_FLOAT simd_real_incr_reduced_sum(
     return *((MD_FLOAT*)&a0);
 }
 
-static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
-    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
-{
-    MD_FLOAT ret;
-    fprintf(stderr,
-        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX2 with double "
-        "precision!");
-    exit(-1);
-    return ret;
-}
-
 static inline MD_SIMD_FLOAT simd_real_select_by_mask(MD_SIMD_FLOAT a, MD_SIMD_MASK m)
 {
     return _mm256_and_pd(a, m);
@@ -169,6 +158,17 @@ static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
     a1 = _mm256_extractf128_pd(a, 0x1);
     a0 = _mm_add_sd(a0, a1);
     return *((MD_FLOAT*)&a0);
+}
+
+/* m[0] += sum of the lanes of v0, m[1] += sum of the lanes of v1 */
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    const MD_FLOAT s0 = simd_real_h_reduce_sum(v0);
+    const MD_FLOAT s1 = simd_real_h_reduce_sum(v1);
+    m[0] += s0;
+    m[1] += s1;
+    return s0 + s1;
 }
 
 static inline void simd_h_decr(MD_FLOAT* m, MD_SIMD_FLOAT a)

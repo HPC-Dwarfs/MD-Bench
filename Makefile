@@ -44,6 +44,10 @@ ifneq ($(VARIANT),)
     DEFINES += -DVARIANT=$(VARIANT)
 endif
 
+# Flags only for the SIMD force kernels, empty unless the toolchain defines them
+KERNEL_OBJ = $(addprefix $(BUILD_DIR)/,force_lj_4xn.o force_lj_2xnn.o force_lj_2xn.o)
+$(KERNEL_OBJ): CFLAGS += $(KERNEL_CFLAGS)
+
 ${TARGET}: $(BUILD_DIR) .clangd $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} $(CPPFLAGS) ${LFLAGS} -o $(TARGET) $(OBJ) $(SRC_DIR)/main.c $(LIBS)
@@ -187,6 +191,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_main_stub.sh
 	@echo "===>  RUNNING  test_coulomb_exclusions"
 	@bash tests/test_coulomb_exclusions.sh
+	@echo "===>  RUNNING  test_halfshell"
+	@bash tests/test_halfshell.sh
 
 TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c $(COMMON_DIR)/ljtable.c $(COMMON_DIR)/device.c
 TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neighbor.c $(SRC_ROOT)/clusterpair/pbc.c $(SRC_ROOT)/clusterpair/integrate.c

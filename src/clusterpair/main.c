@@ -86,6 +86,17 @@ double setup(Parameter* param,
 #if COULOMB_RULE == COULOMB_EWALD
     param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
 #endif
+#ifndef _MPI
+    // Single domain: its box is the simulation box, which the half-shell selection of the
+    // periodic ghost clusters (see initForce()) works on
+    atom->mybox.xprd  = param->xprd;
+    atom->mybox.yprd  = param->yprd;
+    atom->mybox.zprd  = param->zprd;
+    atom->mybox.lo[0] = atom->mybox.lo[1] = atom->mybox.lo[2] = 0.0;
+    atom->mybox.hi[0]                                         = param->xprd;
+    atom->mybox.hi[1]                                         = param->yprd;
+    atom->mybox.hi[2]                                         = param->zprd;
+#endif
     setupNeighbor(param, atom);
 #ifdef _MPI
     setupGrid(grid, atom, param);
