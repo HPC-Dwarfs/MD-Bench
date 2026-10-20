@@ -18,23 +18,21 @@ void initForce(Parameter* param)
         computeForce = computeForceEam;
         break;
     case FF_LJ:
+#if (COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS) && !defined(CLUSTERPAIR_KERNEL_4XN)
+        fprintf(stderr,
+            "Error: electrostatics and exclusions are only supported by the 4xN "
+            "cluster-pair kernel (CLUSTER_PAIR_KERNEL=4xN, or auto with a "
+            "SIMD width that selects it)!\n");
+        exit(EXIT_FAILURE);
+#endif
 #if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJRef;
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
-        if (param->gmxbenchmark) {
-            if (param->half_neigh || param->method) {
-                computeForce = computeForceLJ4xnHalfNeighC6C12;
-            } else {
-                computeForce = computeForceLJ4xnFullNeighC6C12;
-            }
+        if (param->half_neigh || param->method) {
+            computeForce = computeForceLJ4xnHalfNeigh;
         } else {
-            if (param->half_neigh || param->method) {
-                computeForce = computeForceLJ4xnHalfNeigh;
-            } else {
-                computeForce = computeForceLJ4xnFullNeigh;
-            }
+            computeForce = computeForceLJ4xnFullNeigh;
         }
-
 #elif defined(CLUSTERPAIR_KERNEL_2XNN)
         if (param->half_neigh || param->method) {
             computeForce = computeForceLJ2xnnHalfNeigh;

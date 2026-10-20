@@ -200,6 +200,21 @@ static int test_readParameter_multitype_lj(void)
     return 0;
 }
 
+static int test_computeEwaldCoefficient(void)
+{
+    const double rtol = 1e-5;
+    double beta       = computeEwaldCoefficient(1.0, rtol);
+
+    /* erfc(beta * rc) must equal the requested tolerance at the cut-off */
+    ASSERT_NEAR(erfc(beta * 1.0) / rtol, 1.0, 1e-9, "erfc(beta*rc) == rtol");
+    /* Value GROMACS' calc_ewaldcoeff_q gives for rc = 1 nm, rtol = 1e-5 */
+    ASSERT_NEAR(beta, 3.1234, 1e-3, "beta for rc=1, rtol=1e-5");
+    /* beta scales inversely with the cut-off */
+    ASSERT_NEAR(computeEwaldCoefficient(2.0, rtol), 0.5 * beta, 1e-9, "beta ~ 1/rc");
+
+    return 0;
+}
+
 int run_parameter_tests(void)
 {
     int rc = 0;
@@ -222,6 +237,10 @@ int run_parameter_tests(void)
 
     tr_log("  parameter: readParameter multi-type LJ parsing");
     rc = test_readParameter_multitype_lj();
+    if (rc) return rc;
+
+    tr_log("  parameter: computeEwaldCoefficient");
+    rc = test_computeEwaldCoefficient();
     if (rc) return rc;
 
     return 0;

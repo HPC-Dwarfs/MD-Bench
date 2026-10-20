@@ -88,6 +88,9 @@ Key configuration options in `config.mk`:
 - `ATOM_DATA_LAYOUT`: Data layout (AOS for array-of-structures, SOA for structure-of-arrays)
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU and SOA for GPU
 - `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `full` for full pair matrix)
+- `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`), 4xN cluster-pair kernel only; adds `-<rule>` to the binary tag
+- `EXCLUSIONS`: Molecular exclusions (`auto`/`true`/`false`), `auto` = on when `COULOMB_RULE` is not `none`
+- `ACCURATE_RECIPROCAL`: Newton-refine the 12-14 bit `simd_real_reciprocal` estimate used by the cluster-pair LJ kernels (default off, adds `-accrecip` to the tag)
 - `ENABLE_MPI`: Enable MPI parallelization
 - `ENABLE_OPENMP`: Enable OpenMP parallelization
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds; **required, no default**. Common values: `gfx90a` (MI250X), `gfx940` (MI300A), `gfx942` (MI300X), `gfx1030` (RX 6800 XT)
@@ -168,6 +171,30 @@ Cluster-pair kernel entry points (`src/clusterpair/force_lj.c` /
 `computeForceLJ4xnHalfNeigh`/`FullNeigh`, `computeForceLJ2xnnHalfNeigh`/`FullNeigh`,
 `computeForceLJ2xnHalfNeigh`/`FullNeigh`, `computeForceLJCuda`, `computeForceLJCudaSup`.
 
+### Electrostatics, exclusions and the GROMACS benchmark
+
+`src/clusterpair/coulomb.h` holds the GROMACS-style SIMD force factor for
+reaction-field and real-space Ewald (analytical `pmeForceCorrection` rational
+approximation). Only the 4xN kernels (`computeForceLJ4xnHalfNeigh`/`FullNeigh`) call it;
+`initForce()` aborts for any other kernel when `COULOMB_RULE`/`EXCLUSIONS` are enabled.
+Charges are per atom type (`atom->q_per_type`, copied to `cl_q`). Exclusions are
+molecule based: `atom->molsize` consecutive atom ids form a molecule, `cl_mol` holds the
+molecule index per cluster slot and `cl_id` the original atom index (the atom array
+itself is never permuted, only `updateSingleAtoms()` rewrites it from the clusters).
+`buildNeighborCPU()` keeps cluster pairs that contain an excluded atom pair in the
+masked part of the list (`clusterPairHasExclusion()`), the masked kernel loop compares
+`cl_mol` per lane and only zeroes LJ and the direct `1/r^3` term: excluded pairs inside
+the cut-off still get the exclusion correction, like in GROMACS' NBNxM kernels. The
+unmasked loop has no exclusion work. Ghost clusters copy `cl_q`/`cl_mol`/`cl_id` in the
+`ADDGHOST` macro (`pbc.c`), the MPI ghost exchange does not, so MPI is unsupported.
+
+`-gmxbench [-size N]` (`readAtomGmx()`, data in `src/common/gmxcoords.h`) builds the
+water box of `gmx nonbonded-benchmark`. That benchmark passes C6/C12 where NBNxM expects
+6*C6/12*C12, so its effective LJ potential uses C6/6 and C12/12; `readAtomGmx()` does the
+same. `--kernel-bench N` times only the force kernel on the fixed lists and `--dump-forces
+f` writes per-atom forces by original index. `tests/gromacs_nonbonded/` has the exact
+float64 reference, the force comparison, the GROMACS patch and the comparison script.
+
 ## Core Data Structures
 
 **Cluster-pair `Atom`** (`src/clusterpair/atom.h`) holds both flat per-atom
@@ -208,6 +235,8 @@ a `key value` text file (`readParameter`/`readTypesFile` in
 | `src/clusterpair/neighbor.h` | Cluster-pair neighbor list structure |
 | `src/clusterpair/force.h` | Kernel macro definitions and cluster indexing |
 | `src/clusterpair/force_lj.c` | Cluster-pair LJ force kernels (reference, SIMD) |
+| `src/clusterpair/coulomb.h` | SIMD reaction-field/Ewald force factor, accurate reciprocal |
+| `tests/gromacs_nonbonded/` | GROMACS benchmark comparison: reference, patch, scripts |
 | `src/clusterpair/force_lj_cuda.cu`, `force_lj_cuda_sup.cu` | Cluster-pair CUDA/HIP LJ kernels (plain and super-clustering) |
 | `src/verletlist/force_lj.c` | Verlet-list LJ force kernels |
 | `src/common/ljtable.c` | Tabulated LJ force lookup |
@@ -301,7 +330,7 @@ Simulation test data lives in `data/`: `data/argon/input.gro` +
 
 10. **Header Dependencies**: The force.h header contains complex macro definitions that control kernel generation.
 
-11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`.
+11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`. Electrostatics/exclusions exist only for the 4xN CPU cluster-pair kernels (not 2xNN, 2xN, reference, GPU, verlet-list, MPI).
 
 12. **Multiple Kernels Per Change**: Don't assume a single force kernel; a correctness or feature change in cluster-pair may need to be applied across reference, 4xN, 2xNN, 2xN, CUDA, and super-clustering GPU variants to stay consistent.
 

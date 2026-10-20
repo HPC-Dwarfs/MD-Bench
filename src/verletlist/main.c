@@ -5,6 +5,11 @@
  * license that can be found in the LICENSE file.
  */
 #include <math.h>
+
+#include <parameter.h>
+#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
+#error "Electrostatics and exclusions are only supported by the clusterpair scheme"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

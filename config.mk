@@ -40,6 +40,20 @@ LJ_TABLE_INDEX ?= rsq
 # geometric: per-type params with geometric combination (default)
 # full: full type-pair matrix lookup (not supported in SIMD kernels)
 LJ_COMB_RULE ?= geometric
+# Electrostatics (none/rf/ewald), only supported by the CPU cluster-pair kernels
+# none: LJ only (default)
+# rf: reaction-field with infinite dielectric, shifted at the cut-off
+# ewald: real-space Ewald part with an analytical force correction
+COULOMB_RULE ?= none
+# Molecular exclusions (true/false), atoms of the same molecule skip LJ and the direct
+# Coulomb term (the Ewald/RF exclusion correction is still applied). Defaults to true
+# whenever COULOMB_RULE is not none.
+EXCLUSIONS ?= auto
+# Refine the hardware reciprocal estimate of the cluster-pair force kernels with
+# Newton-Raphson steps (true or false). The estimate is only 12-14 bits accurate, so
+# enable this when forces have to be comparable with codes that compute 1/r^2 to
+# full precision, at the cost of a few extra instructions per pair.
+ACCURATE_RECIPROCAL ?= false
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
 # Trace indexes and distances for gather-md (true or false)
@@ -203,6 +217,32 @@ else
     $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, full)
 endif
 
+# Translate COULOMB_RULE and EXCLUSIONS to compiler defines
+ifeq ($(strip $(COULOMB_RULE)),none)
+    DEFINES += -DCOULOMB_RULE=0
+    ifeq ($(strip $(EXCLUSIONS)),auto)
+        EXCLUSIONS_RESOLVED = false
+    endif
+else ifeq ($(strip $(COULOMB_RULE)),rf)
+    DEFINES += -DCOULOMB_RULE=1
+    ifeq ($(strip $(EXCLUSIONS)),auto)
+        EXCLUSIONS_RESOLVED = true
+    endif
+else ifeq ($(strip $(COULOMB_RULE)),ewald)
+    DEFINES += -DCOULOMB_RULE=2
+    ifeq ($(strip $(EXCLUSIONS)),auto)
+        EXCLUSIONS_RESOLVED = true
+    endif
+else
+    $(error Invalid COULOMB_RULE, must be one of: none, rf, ewald)
+endif
+ifneq ($(strip $(EXCLUSIONS)),auto)
+    EXCLUSIONS_RESOLVED = $(strip $(EXCLUSIONS))
+endif
+ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
+    DEFINES += -DUSE_EXCLUSIONS=1
+endif
+
 ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
     DEFINES += -DLJ_TABLE_RSQ
 else ifneq ($(strip $(LJ_TABLE_INDEX)),r)
@@ -215,6 +255,10 @@ else ifeq ($(strip $(ASM_SYNTAX)),att)
     ASM_SYNTAX_FLAG = -masm=att
 else
     $(error Invalid ASM_SYNTAX, must be one of: intel, att)
+endif
+
+ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
+    DEFINES += -DACCURATE_RECIPROCAL
 endif
 
 ifeq ($(strip $(MEM_TRACER)),true)
@@ -322,6 +366,17 @@ else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
 		OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
 endif
 TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
+ifneq ($(strip $(COULOMB_RULE)),none)
+    TAG_SUFFIX := $(TAG_SUFFIX)-$(strip $(COULOMB_RULE))
+endif
+ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
+    TAG_SUFFIX := $(TAG_SUFFIX)-accrecip
+endif
+ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
+    ifeq ($(strip $(COULOMB_RULE)),none)
+        TAG_SUFFIX := $(TAG_SUFFIX)-excl
+    endif
+endif
 
 ifeq ($(strip $(SIMD)),NONE)
 		TOOL_TAG = $(TOOLCHAIN)-$(ISA)

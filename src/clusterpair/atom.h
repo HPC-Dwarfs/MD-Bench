@@ -92,10 +92,14 @@ typedef struct {
     unsigned int masks_4xn_fn[16];
     // Info Subdomain
     Box mybox;
-    // gmx benchmark
-    MD_FLOAT* nonbondedParameters;
-    MD_FLOAT* c6;
-    MD_FLOAT* c12;
+    // Electrostatics and exclusions
+    int molsize;          // atoms per molecule, consecutive atom ids (0: no exclusions)
+    int ids_valid;        // atom->id has been initialised
+    int* id;              // original atom index, follows the atom through the clusters
+    MD_FLOAT* q_per_type; // charge per atom type (NULL: all atoms neutral)
+    MD_FLOAT* cl_q;       // charge per atom in cluster layout
+    int* cl_id;           // original atom index per atom in cluster layout
+    int* cl_mol;          // molecule index per atom in cluster layout (exclusions)
 } Atom;
 
 extern int get_ncj_from_nci(int nci);

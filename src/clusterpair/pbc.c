@@ -184,7 +184,10 @@ void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool dummy)
     int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);                                          \
     int cg_sca_base = CJ_SCALAR_BASE_INDEX(cg);                                          \
     for (int cjj = 0; cjj < cj_natoms; cjj++) {                                          \
-        atom->cl_t[cg_sca_base + cjj] = atom->cl_t[cj_sca_base + cjj];                   \
+        atom->cl_t[cg_sca_base + cjj]   = atom->cl_t[cj_sca_base + cjj];                 \
+        atom->cl_q[cg_sca_base + cjj]   = atom->cl_q[cj_sca_base + cjj];                 \
+        atom->cl_id[cg_sca_base + cjj]  = atom->cl_id[cj_sca_base + cjj];                \
+        atom->cl_mol[cg_sca_base + cjj] = atom->cl_mol[cj_sca_base + cjj];               \
         atom->cl_sqrt_epsilon[cg_sca_base + cjj] =                                       \
             atom->cl_sqrt_epsilon[cj_sca_base + cjj];                                    \
         atom->cl_sigma3[cg_sca_base + cjj] = atom->cl_sigma3[cj_sca_base + cjj];         \
@@ -337,10 +340,13 @@ void setupPbc(Atom* atom, Parameter* param)
     MD_FLOAT* cjX = &atom->cl_x[cjVecBase];
 
     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
-        cjX[CL_X_INDEX(cjj)] = INF;
-        cjX[CL_Y_INDEX(cjj)] = INF;
-        cjX[CL_Z_INDEX(cjj)] = INF;
-        cjT[cjj]             = 0;
+        cjX[CL_X_INDEX(cjj)]          = INF;
+        cjX[CL_Y_INDEX(cjj)]          = INF;
+        cjX[CL_Z_INDEX(cjj)]          = INF;
+        cjT[cjj]                      = 0;
+        atom->cl_q[cjScaBase + cjj]   = 0.0;
+        atom->cl_id[cjScaBase + cjj]  = -1;
+        atom->cl_mol[cjScaBase + cjj] = -1;
     }
 
     // Increase by one to make it the ghost atom count

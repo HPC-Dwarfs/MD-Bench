@@ -307,6 +307,27 @@ static unsigned int get_imask_simd_j8(int rdiag, int ci, int cj)
 #error "Invalid cluster configuration"
 #endif
 
+#if USE_EXCLUSIONS
+/* Returns whether any atom of i-cluster ci is excluded from any atom of j-cluster cj,
+ * i.e. both belong to the same molecule. Such cluster pairs are kept in the masked
+ * part of the neighbor list, where the kernels evaluate the exclusions. */
+static int clusterPairHasExclusion(Atom* atom, int ci, int cj)
+{
+    const int* mol_i = &atom->cl_mol[CI_SCALAR_BASE_INDEX(ci)];
+    const int* mol_j = &atom->cl_mol[CJ_SCALAR_BASE_INDEX(cj)];
+
+    for (int cii = 0; cii < CLUSTER_M; cii++) {
+        for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
+            if (mol_i[cii] >= 0 && mol_i[cii] == mol_j[cjj]) {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+#endif
+
 void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("buildNeighbor start\n");
@@ -740,7 +761,11 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 #endif
 
                                     if (n < neighbor->maxneighs) {
-                                        if (imask == NBNXN_INTERACTION_MASK_ALL) {
+                                        if (imask == NBNXN_INTERACTION_MASK_ALL
+#if USE_EXCLUSIONS
+                                            && !clusterPairHasExclusion(atom, ci, cj)
+#endif
+                                        ) {
                                             neighs_padded(neighbor->neighbors,
                                                 ci,
                                                 n,
@@ -1830,6 +1855,14 @@ void buildClustersCPU(Atom* atom)
     DEBUG_MESSAGE("buildClusters start\n");
     atom->Nclusters_local = 0;
 
+    // The atom index is used to identify molecules and to report per-atom results
+    if (!atom->ids_valid) {
+        for (int i = 0; i < atom->Nlocal; i++) {
+            atom->id[i] = i;
+        }
+        atom->ids_valid = 1;
+    }
+
     /* bin local atoms */
     binAtoms(atom);
     sortAtomsByZCoord(atom);
@@ -1854,6 +1887,9 @@ void buildClustersCPU(Atom* atom)
             int* ci_t             = &atom->cl_t[ci_sca_base];
             MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[ci_sca_base];
             MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[ci_sca_base];
+            MD_FLOAT* ci_q        = &atom->cl_q[ci_sca_base];
+            int* ci_id            = &atom->cl_id[ci_sca_base];
+            int* ci_mol           = &atom->cl_mol[ci_sca_base];
             MD_FLOAT bbminx = INF, bbmaxx = -INF;
             MD_FLOAT bbminy = INF, bbmaxy = -INF;
             MD_FLOAT bbminz = INF, bbmaxz = -INF;
@@ -1898,6 +1934,10 @@ void buildClustersCPU(Atom* atom)
                     int t            = atom->type[i];
                     ci_sqrt_eps[cii] = atom->sqrt_epsilon_per_type[t];
                     ci_sigma3[cii]   = atom->sigma3_per_type[t];
+                    ci_q[cii]        = atom->q_per_type ? atom->q_per_type[t] : 0.0;
+                    ci_id[cii]       = atom->id[i];
+                    ci_mol[cii]      = atom->molsize > 0 ? atom->id[i] / atom->molsize
+                                                         : atom->id[i];
                     atom->iclusters[ci].natoms++;
                 } else {
                     ci_x[CL_X_INDEX_3D(cii)] = INF;
@@ -1906,6 +1946,9 @@ void buildClustersCPU(Atom* atom)
                     ci_t[cii]                = 0;
                     ci_sqrt_eps[cii]         = 0.0;
                     ci_sigma3[cii]           = 0.0;
+                    ci_q[cii]                = 0.0;
+                    ci_id[cii]               = -1;
+                    ci_mol[cii]              = -1;
                 }
 
                 ac++;
@@ -2443,8 +2486,10 @@ void updateSingleAtoms(Parameter* param, Atom* atom)
             MD_FLOAT* ci_x  = &atom->cl_x[CI_VECTOR_BASE_INDEX(ci)];
             MD_FLOAT* ci_v  = &atom->cl_v[ci_vec_base];
             int* ci_t       = &atom->cl_t[ci_sca_base];
+            int* ci_id      = &atom->cl_id[ci_sca_base];
 
             for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
+                atom->id[Natom]   = ci_id[cii];
                 atom_x(Natom)     = ci_x[CL_X_INDEX(cii)];
                 atom_y(Natom)     = ci_x[CL_Y_INDEX(cii)];
                 atom_z(Natom)     = ci_x[CL_Z_INDEX(cii)];

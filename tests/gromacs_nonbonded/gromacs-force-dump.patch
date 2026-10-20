@@ -1,0 +1,59 @@
+diff --git a/src/gromacs/nbnxm/benchmark/bench_setup.cpp b/src/gromacs/nbnxm/benchmark/bench_setup.cpp
+index 7939050..243d253 100644
+--- a/src/gromacs/nbnxm/benchmark/bench_setup.cpp
++++ b/src/gromacs/nbnxm/benchmark/bench_setup.cpp
+@@ -418,6 +418,27 @@ static void setupAndRunInstance(const BenchmarkSystem&         system,
+                 &nrnb);
+     }
+ 
++    if (!doWarmup && !options.forceOutputFile.empty())
++    {
++        // Forces of the single pre-iteration (which clears the force buffer first)
++        std::vector<gmx::RVec> forces(system.coordinates.size(), gmx::RVec(0, 0, 0));
++        nbv->atomdata_add_nbat_f_to_f(AtomLocality::Local, forces);
++        FILE* fp = std::fopen(options.forceOutputFile.c_str(), "w");
++        const PairlistSet& pls = nbv->pairlistSets().pairlistSet(InteractionLocality::Local);
++        std::fprintf(fp, "# natoms %zu\n", forces.size());
++        std::fprintf(fp, "# pairs_ljq %ld lj %ld q %ld\n", long(pls.natpair_ljq_), long(pls.natpair_lj_), long(pls.natpair_q_));
++        if (options.computeVirialAndEnergy)
++        {
++            std::fprintf(fp, "# energy_lj %.9g\n", double(enerd.grpp.energyGroupPairTerms[NonBondedEnergyTerms::LJSR][0]));
++            std::fprintf(fp, "# energy_coulomb %.9g\n", double(enerd.grpp.energyGroupPairTerms[NonBondedEnergyTerms::CoulombSR][0]));
++        }
++        for (size_t i = 0; i < forces.size(); i++)
++        {
++            std::fprintf(fp, "%zu %.9g %.9g %.9g\n", i, double(forces[i][XX]), double(forces[i][YY]), double(forces[i][ZZ]));
++        }
++        std::fclose(fp);
++    }
++
+     const int numIterations = (doWarmup ? options.numWarmupIterations : options.numIterations);
+     const PairlistSet& pairlistSet = nbv->pairlistSets().pairlistSet(InteractionLocality::Local);
+     const Index numPairs = pairlistSet.natpair_ljq_ + pairlistSet.natpair_lj_ + pairlistSet.natpair_q_;
+diff --git a/src/gromacs/nbnxm/benchmark/bench_setup.h b/src/gromacs/nbnxm/benchmark/bench_setup.h
+index a63fb62..0c63077 100644
+--- a/src/gromacs/nbnxm/benchmark/bench_setup.h
++++ b/src/gromacs/nbnxm/benchmark/bench_setup.h
+@@ -128,6 +128,8 @@ struct NbnxmKernelBenchOptions
+     bool reportTime = false;
+     //! Also report into a csv file
+     std::string outputFile;
++    //! If set, write the forces (and energies with -energy) of a single kernel pass to this file
++    std::string forceOutputFile;
+ };
+ 
+ /*! \brief
+diff --git a/src/programs/mdrun/nonbonded_bench.cpp b/src/programs/mdrun/nonbonded_bench.cpp
+index 1391efc..b6b5a02 100644
+--- a/src/programs/mdrun/nonbonded_bench.cpp
++++ b/src/programs/mdrun/nonbonded_bench.cpp
+@@ -225,6 +225,9 @@ void NonbondedBenchmark::initOptions(IOptionsContainer* options, ICommandLineOpt
+                                .description("Report cycles/pair instead of pairs/cycle"));
+     options->addOption(
+             BooleanOption("time").store(&benchmarkOptions_.reportTime).description("Report micro-seconds instead of cycles"));
++    options->addOption(StringOption("forces")
++                               .store(&benchmarkOptions_.forceOutputFile)
++                               .description("Write the forces of a single kernel pass to this text file"));
+     options->addOption(FileNameOption("o")
+                                .filetype(OptionFileType::Csv)
+                                .outputFile()

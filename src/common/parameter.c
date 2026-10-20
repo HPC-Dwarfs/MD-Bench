@@ -129,6 +129,12 @@ void initParameter(Parameter* param)
     // gmx benchmark
     param->gmxbenchmark = false;
     param->size         = 1;
+    // electrostatics
+    param->epsfac           = 1.0;
+    param->ewald_rtol       = 1e-5;
+    param->ewald_beta       = 0.0;
+    param->kernel_bench     = 0;
+    param->dump_forces_file = NULL;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
@@ -300,6 +306,32 @@ void readParameter(Parameter* param, const char* filename)
     fclose(fp);
 }
 
+// Ewald splitting coefficient such that erfc(beta * cutoff) == rtol
+// (same bisection as GROMACS' calc_ewaldcoeff_q)
+double computeEwaldCoefficient(double cutoff, double rtol)
+{
+    double beta = 5.0, low, high;
+    int n, i = 0;
+
+    do {
+        i++;
+        beta *= 2.0;
+    } while (erfc(beta * cutoff) > rtol);
+
+    n    = i + 60;
+    low  = 0.0;
+    high = beta;
+    for (i = 0; i < n; i++) {
+        beta = (low + high) / 2.0;
+        if (erfc(beta * cutoff) > rtol) {
+            low = beta;
+        } else {
+            high = beta;
+        }
+    }
+    return beta;
+}
+
 void printParameter(Parameter* param)
 {
     fprintf(stdout, "SIMULATION PARAMETERS\n");
@@ -383,6 +415,13 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Sigma:                             %.6e\n", param->sigma);
     fprintf(stdout, "    Number of types:                   %d\n", param->ntypes);
     fprintf(stdout, "    LJ combination rule:               %s\n", LJ_COMB_RULE_NAME);
+    fprintf(stdout, "    Coulomb:                           %s\n", COULOMB_RULE_NAME);
+#if COULOMB_RULE == COULOMB_EWALD
+    fprintf(stdout, "    Ewald coefficient:                 %.6e\n", param->ewald_beta);
+#endif
+#if USE_EXCLUSIONS
+    fprintf(stdout, "    Molecular exclusions:              yes\n");
+#endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     if (param->epsilon_per_type != NULL) {
         fprintf(stdout, "    Per-type epsilon:                  ");

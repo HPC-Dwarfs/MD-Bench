@@ -154,6 +154,44 @@ static int test_pack_unpack_exchange_roundtrip(void)
     return 0;
 }
 
+static int test_readAtomGmx_water_system(void)
+{
+    Atom atom_storage;
+    Atom* atom = &atom_storage;
+    Parameter param;
+    initAtom(atom);
+    initParameter(&param);
+    param.size     = 2;
+    param.cutforce = 1.0;
+    param.cutneigh = 1.0;
+
+    int n = readAtomGmx(atom, &param);
+
+    ASSERT_INT_EQ(n, 6000, "2 x 3000 atoms");
+    ASSERT_INT_EQ(atom->Natoms, 6000, "Natoms");
+    ASSERT_INT_EQ(atom->molsize, 3, "water molecules have 3 atoms");
+    ASSERT_NEAR(param.xprd, 2.0 * 3.10736, 1e-9, "size 2 doubles x");
+    ASSERT_NEAR(param.yprd, 3.10736, 1e-9, "y unchanged");
+
+    /* Molecule layout O,H,H with a neutral molecule and all atoms inside the box */
+    ASSERT_NEAR(atom->q_per_type[0] + 2.0 * atom->q_per_type[1], 0.0, 1e-6, "neutral");
+    int oxygens = 0;
+    for (int i = 0; i < n; i++) {
+        ASSERT_INT_EQ(atom->type[i], (i % 3 == 0) ? 0 : 1, "O,H,H atom types");
+        oxygens += (atom->type[i] == 0);
+        ASSERT_TRUE(atom_x(i) >= 0.0 && atom_x(i) < param.xprd, "x inside the box");
+        ASSERT_TRUE(atom_y(i) >= 0.0 && atom_y(i) < param.yprd, "y inside the box");
+        ASSERT_TRUE(atom_z(i) >= 0.0 && atom_z(i) < param.zprd, "z inside the box");
+    }
+    ASSERT_INT_EQ(oxygens, 2000, "one oxygen per molecule");
+
+    /* Only oxygen has LJ parameters */
+    ASSERT_TRUE(atom->sqrt_epsilon_per_type[0] > 0.0, "oxygen has epsilon");
+    ASSERT_NEAR(atom->sqrt_epsilon_per_type[1], 0.0, 0.0, "hydrogen has no epsilon");
+
+    return 0;
+}
+
 int run_atom_tests(void)
 {
     int rc = 0;
@@ -168,6 +206,10 @@ int run_atom_tests(void)
 
     tr_log("  atom: pack/unpack exchange roundtrip");
     rc = test_pack_unpack_exchange_roundtrip();
+    if (rc) return rc;
+
+    tr_log("  atom: GROMACS benchmark water system");
+    rc = test_readAtomGmx_water_system();
     if (rc) return rc;
 
     return 0;
