@@ -13,10 +13,13 @@
 #ifndef __NEIGHBOR_H_
 #define __NEIGHBOR_H_
 // GPU kernels only receive a flat neighbor buffer plus maxneighs (no Neighbor*),
-// so the neighs() macro's AOS/CSR branches (which index through nbr->maxneighs /
-// nbr->neigh_start) cannot be used there; only the SoA branch works.
-#if defined(CUDA_TARGET) && (defined(NBLIST_AOS) || defined(NBLIST_CSR))
-#error "NBLIST_DATA_LAYOUT must be SOA (or auto) for GPU targets (NVCC/HIPCC)"
+// so the neighs() macro's CSR branch (which indexes through nbr->neigh_start[],
+// an array never copied to device) cannot be used there; CSR would need a new
+// device-side neigh_start buffer to support. AOS only needs the maxneighs
+// scalar already passed to every device call site, so device kernels use the
+// separate neighs_gpu() macro below instead of neighs() itself.
+#if defined(CUDA_TARGET) && defined(NBLIST_CSR)
+#error "NBLIST_DATA_LAYOUT must be AOS or SOA (or auto) for GPU targets (NVCC/HIPCC)"
 #endif
 // Interaction masks from GROMACS, things to remember (maybe these confused just me):
 //   1. These are not "exclusion" masks as the name suggests in GROMACS, but rather
@@ -43,6 +46,15 @@
 #else
 #define NBLIST_DATA_LAYOUT      "SoA"
 #define neighs(l, i, j, M, nbr) (l)[(j) * (M) + (i)]
+#endif
+// Device-kernel counterpart of neighs(): every GPU call site passes the plain
+// maxneighs scalar (not a Neighbor*) as the last argument, so this computes
+// the same AOS/SOA offset without dereferencing it as a struct pointer. CSR
+// is excluded above, so no CSR branch is needed here.
+#ifdef NBLIST_AOS
+#define neighs_gpu(l, i, j, M, maxneighs) (l)[(i) * (maxneighs) + (j)]
+#else
+#define neighs_gpu(l, i, j, M, maxneighs) (l)[(j) * (M) + (i)]
 #endif
 /* Shell list and build-phase scratch always use padded AOS layout */
 #define neighshell(nblist, i, j, N)       nblist[(i) * (N) + (j)]

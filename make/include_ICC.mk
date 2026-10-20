@@ -35,7 +35,7 @@ OPTS       += -no-vec
 endif
 
 CFLAGS      = $(PROFILE) $(OPENMP) $(OPTS) -std=c11 -restrict -diag-disable=10441 #-pedantic-errors
-ASFLAGS     = -masm=intel
+ASFLAGS     = $(ASM_SYNTAX_FLAG)
 LFLAGS      = $(PROFILE) $(OPENMP) $(OPTS) -diag-disable=10441
 DEFINES    += -D_GNU_SOURCE
 INCLUDES    =

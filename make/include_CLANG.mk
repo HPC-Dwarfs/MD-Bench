@@ -1,4 +1,4 @@
-CC = clang
+CC ?= clang
 LINKER = $(CC)
 
 OS := $(shell uname -s)
@@ -58,7 +58,7 @@ endif
 ifeq ($(strip $(SIMD)),NONE)
 OPTS += -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize
 endif
-ASFLAGS = -masm=intel
+ASFLAGS = $(ASM_SYNTAX_FLAG)
 endif
 
 CFLAGS = $(PROFILE) $(OPENMP) $(OPTS) -std=c99 $(ANSI_CFLAGS)

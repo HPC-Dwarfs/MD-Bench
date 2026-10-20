@@ -204,7 +204,9 @@ __global__ void compute_neighborhood(DeviceAtom a,
 #endif
 
             if (rsq <= cutoff) {
-                neighs(neighbor->neighbors, i, n, nlocal, neighbor) = j;
+                if (n < neighbor->maxneighs) {
+                    neighs(neighbor->neighbors, i, n, nlocal, neighbor) = j;
+                }
                 n++;
             }
         }
@@ -610,8 +612,9 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
             neighbor->maxneighs   = new_maxneighs * 1.2;
             d_neighbor->maxneighs = neighbor->maxneighs;
             printf("NEW SIZE %d\n", neighbor->maxneighs);
-            neighbor->neighbors = (int*)reallocateGPU(neighbor->neighbors,
+            d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
                 atom->Nmax * neighbor->maxneighs * sizeof(int));
+            neighbor->neighbors = d_neighbor->neighbors;
         }
     }
 #endif /* NBLIST_CSR */

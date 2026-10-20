@@ -85,9 +85,11 @@ double reverse(Comm* comm, Atom* atom, Parameter* param)
 #else
 #ifdef CLUSTER_PAIR
 #ifdef CUDA_TARGET
-    copyForceFromGPU(atom);
-    reverseGhostForcesCPU(atom, param);
-    copyForceToGPU(atom);
+    /* Ghost-cluster reaction forces are folded back onto their real
+     * mirror directly on-device (atomic scatter-add); no D2H/H2D round
+     * trip needed since neither the host force nor position arrays are
+     * consulted between force computation and integration. */
+    reverseGhostForcesCUDA(atom, param);
 #else
     /* CPU full-neighbor-list kernels never write reaction forces onto
      * ghost clusters, so their cl_f slots hold stale/uninitialized data;

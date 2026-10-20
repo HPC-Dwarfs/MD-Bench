@@ -50,6 +50,11 @@ extern __global__ void cudaUpdatePbcSup_warp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT param_yprd,
     MD_FLOAT param_zprd);
 
+extern __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
+    int* cuda_border_map,
+    int Nclusters_local,
+    int Nclusters_ghost);
+
 extern "C" {
 MD_FLOAT* cuda_cl_x;
 MD_FLOAT* cuda_cl_v;
@@ -79,9 +84,6 @@ MD_FLOAT* cuda_cl_sigma3;
 
 extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
-    cuda_assert("cudaDeviceSetup", cudaDeviceReset());
-    cuda_assert("cudaDeviceSetup", cudaSetDevice(0));
-
     cuda_cl_x = (MD_FLOAT*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * ATOM_DIM * sizeof(MD_FLOAT));
     cuda_cl_v = (MD_FLOAT*)allocateGPU(
@@ -126,8 +128,10 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->Nclusters_max * neighbor->maxneighs * sizeof(int));
     cuda_neighbors_imask = (unsigned int*)allocateGPU(
         atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
-    natoms = (int*)allocate(ALIGNMENT, atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-    ngatoms = (int*)allocate(ALIGNMENT,
+    // natoms/ngatoms are staging buffers refilled and cudaMemcpy'd to the GPU
+    // every reneighbor step (copyDataToCUDADevice()), so pin them too.
+    natoms = (int*)allocateHostPinned(atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
+    ngatoms = (int*)allocateHostPinned(
         atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 }
 
@@ -187,9 +191,19 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
     memcpyToGPU(cuda_neighbors,
         neighbor->neighbors,
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
-    memsetGPU(cuda_neighbors_imask,
-        0xff,
-        atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+
+    if (param->super_clustering) {
+        // Host build already computed the real per-sub-cluster imask
+        // (neighbor.c); don't overwrite it with an all-1s memset.
+        memcpyToGPU(cuda_neighbors_imask,
+            neighbor->neighbors_imask,
+            atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+    } else {
+        // Unused by the non-super GPU force kernel.
+        memsetGPU(cuda_neighbors_imask,
+            0xff,
+            atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+    }
 }
 
 extern "C" void copyDataFromCUDADevice(Parameter* param, Atom* atom)
@@ -226,8 +240,8 @@ extern "C" void cudaDeviceFree(Parameter* param)
     GPUfree(cuda_PBCy);
     GPUfree(cuda_PBCz);
 
-    free(natoms);
-    free(ngatoms);
+    freeHostPinned(natoms);
+    freeHostPinned(ngatoms);
 }
 
 __global__ void computeForceLJCudaFullNeigh(
@@ -284,7 +298,7 @@ __global__ void computeForceLJCudaFullNeigh(
 #endif
 
     for (int k = 0; k < numneighs; k++) {
-        int cj          = neighs(cuda_neighs, ci, k, Nclusters_local, maxneighs);
+        int cj          = neighs_gpu(cuda_neighs, ci, k, Nclusters_local, maxneighs);
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
         MD_FLOAT* cj_x  = &cuda_cl_x[cj_vec_base];
 
@@ -431,7 +445,7 @@ __global__ void computeForceLJCudaHalfNeigh(
 #endif
 
     for (int k = 0; k < numneighs; k++) {
-        int cj         = neighs(cuda_neighs, ci, k, Nclusters_local, maxneighs);
+        int cj         = neighs_gpu(cuda_neighs, ci, k, Nclusters_local, maxneighs);
         MD_FLOAT* cj_x = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
         MD_FLOAT* cj_f = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
 
@@ -600,7 +614,7 @@ extern "C" void cudaFinalIntegrate(Parameter* param, Atom* atom)
         cuda_cl_f,
         cuda_natoms,
         atom->Nclusters_local,
-        param->dt);
+        param->dtforce);
 
     cuda_assert("cudaFinalIntegrate", cudaPeekAtLastError());
     cuda_assert("cudaFinalIntegrate", cudaDeviceSynchronize());
@@ -682,6 +696,58 @@ extern "C" void updatePbcCUDA(Atom* atom, Parameter* param)
     cuda_assert("cudaUpdatePbc", cudaDeviceSynchronize());
 }
 
+/* fold ghost-cluster reaction forces back onto the real cluster they mirror,
+ * entirely on-device; a real cluster can be mirrored by several ghost
+ * clusters (one per PBC image), so the accumulation must be atomic */
+__global__ void cudaReverseGhostForces_warp(MD_FLOAT* cuda_cl_f,
+    int* cuda_border_map,
+    int* cuda_jclusters_natoms,
+    int Nclusters_local,
+    int Nclusters_ghost)
+{
+    unsigned int cg = blockDim.x * blockIdx.x + threadIdx.x;
+    if (cg >= Nclusters_ghost) {
+        return;
+    }
+
+    int ncj           = CJ0_FROM_CI(Nclusters_local);
+    const int cj      = ncj + cg;
+    int cj_vec_base   = CJ_VECTOR3_BASE_INDEX(cj);
+    int bmap_vec_base = CJ_VECTOR3_BASE_INDEX(cuda_border_map[cg]);
+    MD_FLOAT* cj_f     = &cuda_cl_f[cj_vec_base];
+    MD_FLOAT* bmap_f   = &cuda_cl_f[bmap_vec_base];
+
+    for (int cjj = 0; cjj < cuda_jclusters_natoms[cg]; cjj++) {
+        atomicAdd(&bmap_f[CL_X_INDEX_3D(cjj)], cj_f[CL_X_INDEX_3D(cjj)]);
+        atomicAdd(&bmap_f[CL_Y_INDEX_3D(cjj)], cj_f[CL_Y_INDEX_3D(cjj)]);
+        atomicAdd(&bmap_f[CL_Z_INDEX_3D(cjj)], cj_f[CL_Z_INDEX_3D(cjj)]);
+    }
+}
+
+extern "C" void reverseGhostForcesCUDA(Atom* atom, Parameter* param)
+{
+    const int N           = atom->Nclusters_ghost;
+    const int threads_num = 64;
+    dim3 block_size       = dim3(threads_num, 1, 1);
+    dim3 grid_size        = dim3((N + threads_num - 1) / threads_num, 1, 1);
+
+    if (param->super_clustering) {
+        cudaReverseGhostForcesSup_warp<<<grid_size, block_size>>>(cuda_cl_f,
+            cuda_border_map,
+            atom->Nclusters_local,
+            atom->Nclusters_ghost);
+    } else {
+        cudaReverseGhostForces_warp<<<grid_size, block_size>>>(cuda_cl_f,
+            cuda_border_map,
+            cuda_jclusters_natoms,
+            atom->Nclusters_local,
+            atom->Nclusters_ghost);
+    }
+
+    cuda_assert("cudaReverseGhostForces", cudaPeekAtLastError());
+    cuda_assert("cudaReverseGhostForces", cudaDeviceSynchronize());
+}
+
 __global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
     int* cuda_numneigh,
     int* cuda_numneigh_inner,
@@ -700,7 +766,7 @@ __global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
     int lo              = 0;
 
     for (int hi = 0; hi < numneighs; hi++) {
-        int cj         = neighs(cuda_neighbors, ci, hi, Nclusters_local, maxneighs);
+        int cj         = neighs_gpu(cuda_neighbors, ci, hi, Nclusters_local, maxneighs);
         MD_FLOAT* cj_x = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
         int is_inner   = 0;
 
@@ -721,9 +787,9 @@ __global__ void cudaPruneNeighbor(MD_FLOAT* cuda_cl_x,
 
         if (is_inner) {
             if (hi != lo) {
-                int t_cj = neighs(cuda_neighbors, ci, lo, Nclusters_local, maxneighs);
-                neighs(cuda_neighbors, ci, lo, Nclusters_local, maxneighs) = cj;
-                neighs(cuda_neighbors, ci, hi, Nclusters_local, maxneighs) = t_cj;
+                int t_cj = neighs_gpu(cuda_neighbors, ci, lo, Nclusters_local, maxneighs);
+                neighs_gpu(cuda_neighbors, ci, lo, Nclusters_local, maxneighs) = cj;
+                neighs_gpu(cuda_neighbors, ci, hi, Nclusters_local, maxneighs) = t_cj;
             }
             lo++;
         }
@@ -904,12 +970,12 @@ extern "C" void growClustersCUDA(Atom* atom)
         cuda_numneigh_inner   = (int*)reallocateGPU(cuda_numneigh_inner,
             atom->Nclusters_max * sizeof(int));
 
-        free(natoms);
-        free(ngatoms);
+        freeHostPinned(natoms);
+        freeHostPinned(ngatoms);
 
-        natoms  = (int*)allocate(ALIGNMENT,
+        natoms = (int*)allocateHostPinned(
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-        ngatoms = (int*)allocate(ALIGNMENT,
+        ngatoms = (int*)allocateHostPinned(
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,

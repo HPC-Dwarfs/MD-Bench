@@ -30,12 +30,15 @@ static inline MD_SIMD_FLOAT simd_real_load(const MD_FLOAT* ptr)
     return svld1_f64(svptrue_b64(), ptr);
 }
 
+// Every caller passes scale == sizeof(MD_FLOAT), so the index-scaled gather
+// form applies directly: it multiplies vidx by the destination element size
+// (8 bytes for f64) as part of the gather's addressing mode, avoiding a
+// separate svmul_n_s64_x to pre-compute byte offsets.
 static inline MD_SIMD_FLOAT simd_real_gather(
     MD_SIMD_INT vidx, MD_FLOAT* base, const int scale)
 {
-    svint64_t offsets = svmul_n_s64_x(svptrue_b64(), vidx, scale);
-    return svld1_gather_s64offset_f64(svptrue_b64(), base, offsets);
-    // return svld1_gather_s64index_f64(svptrue_b64(), base, vidx);
+    (void)scale;
+    return svld1_gather_s64index_f64(svptrue_b64(), base, vidx);
 }
 
 static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
@@ -240,14 +243,13 @@ static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
     return svcmpeq_s64(svptrue_b64(), a, b);
 }
 
-// Masked integer load
+// Masked integer load: SVE's widening load takes mask (a b64 predicate over
+// VECTOR_WIDTH logical lanes) directly and does the 32-bit load + sign-extend
+// to 64-bit in a single instruction, so no predicate-format conversion or
+// separate unpack is needed.
 static inline MD_SIMD_INT simd_i32_mask_load(const int* ptr, MD_SIMD_MASK mask)
 {
-    // Load 32-bit integers and extend to 64-bit
-    svbool_t pg32        = svwhilelt_b32(0, VECTOR_WIDTH);
-    svbool_t pg32_masked = svand_b_z(svptrue_b32(), pg32, svunpklo_b(mask));
-    svint32_t loaded     = svld1_s32(pg32_masked, ptr);
-    return svunpklo_s64(loaded);
+    return svld1sw_s64(mask, ptr);
 }
 
 // Gather integers (for multi-atom-type)

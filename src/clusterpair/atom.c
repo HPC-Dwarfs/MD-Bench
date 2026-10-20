@@ -12,6 +12,7 @@
 
 #include <allocate.h>
 #include <atom.h>
+#include <device.h>
 #include <force.h>
 #include <parameter.h>
 #include <util.h>
@@ -589,21 +590,30 @@ int readAtomGro(Atom* atom, Parameter* param)
             break;
         }
 
-        char* label = strtok(line, " ");
-        int type    = typeStr2int(strtok(NULL, " "));
-        int atomId  = atoi(strtok(NULL, " ")) - 1;
-        atomId      = readAtoms;
+        char type_field[6];
+        memcpy(type_field, line + 10, 5);
+        type_field[5]    = '\0';
+        char* type_start = type_field;
+        while (*type_start == ' ') type_start++;
+        int type         = typeStr2int(type_start);
+        int atomId       = readAtoms;
+        MD_FLOAT in_x    = atof(strtok(line + 20, " "));
+        MD_FLOAT in_y    = atof(strtok(NULL, " "));
+        MD_FLOAT in_z    = atof(strtok(NULL, " "));
+        MD_FLOAT in_vx   = atof(strtok(NULL, " "));
+        MD_FLOAT in_vy   = atof(strtok(NULL, " "));
+        MD_FLOAT in_vz   = atof(strtok(NULL, " "));
         while (atomId + 1 >= atom->Nmax) {
             growAtom(atom);
         }
 
         atom->type[atomId] = type;
-        atom_x(atomId)     = atof(strtok(NULL, " "));
-        atom_y(atomId)     = atof(strtok(NULL, " "));
-        atom_z(atomId)     = atof(strtok(NULL, " "));
-        atom->vx[atomId]   = atof(strtok(NULL, " "));
-        atom->vy[atomId]   = atof(strtok(NULL, " "));
-        atom->vz[atomId]   = atof(strtok(NULL, " "));
+        atom_x(atomId)     = in_x;
+        atom_y(atomId)     = in_y;
+        atom_z(atomId)     = in_z;
+        atom->vx[atomId]   = in_vx;
+        atom->vy[atomId]   = in_vy;
+        atom->vz[atomId]   = in_vz;
         atom->ntypes       = MAX(atom->type[atomId] + 1, atom->ntypes);
         atom->Natoms++;
         atom->Nlocal++;
@@ -1020,8 +1030,11 @@ void growClusters(Atom* atom, int super_clustering)
         ALIGNMENT,
         atom->Nclusters_max * sizeof(int),
         nold * sizeof(int));
-    atom->cl_x            = (MD_FLOAT*)reallocate(atom->cl_x,
-        ALIGNMENT,
+    // cl_x, cl_v, cl_t, cl_sqrt_epsilon and cl_sigma3 are cudaMemcpy'd to the
+    // GPU every reneighbor step (copyDataToCUDADevice()), so they come from
+    // pinned host memory when USE_PINNED_MEMORY is set; cl_x_ref/cl_f/etc.
+    // never cross that boundary and stay on regular pageable memory.
+    atom->cl_x = (MD_FLOAT*)reallocateHostPinned(atom->cl_x,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
     atom->cl_x_ref        = (MD_FLOAT*)reallocate(atom->cl_x_ref,
@@ -1032,20 +1045,16 @@ void growClusters(Atom* atom, int super_clustering)
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-    atom->cl_v            = (MD_FLOAT*)reallocate(atom->cl_v,
-        ALIGNMENT,
+    atom->cl_v = (MD_FLOAT*)reallocateHostPinned(atom->cl_v,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-    atom->cl_t            = (int*)reallocate(atom->cl_t,
-        ALIGNMENT,
+    atom->cl_t = (int*)reallocateHostPinned(atom->cl_t,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
-    atom->cl_sqrt_epsilon = (MD_FLOAT*)reallocate(atom->cl_sqrt_epsilon,
-        ALIGNMENT,
+    atom->cl_sqrt_epsilon = (MD_FLOAT*)reallocateHostPinned(atom->cl_sqrt_epsilon,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
-    atom->cl_sigma3       = (MD_FLOAT*)reallocate(atom->cl_sigma3,
-        ALIGNMENT,
+    atom->cl_sigma3 = (MD_FLOAT*)reallocateHostPinned(atom->cl_sigma3,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 
