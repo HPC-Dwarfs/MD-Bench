@@ -678,6 +678,14 @@ extern "C" double computeForceLJCudaSup(
     cuda_assert("computeForceLJCudaSup", cudaDeviceSynchronize());
 
     LIKWID_MARKER_STOP("force");
+
+#ifdef COMPUTE_STATS
+    for (int sci = 0; sci < atom->Nclusters_local; sci++) {
+        addStat(stats->calculated_forces, 1);
+        addStat(stats->num_neighs, neighbor->numneigh[sci]);
+    }
+#endif
+
     double E = getTimeStamp();
     DEBUG_MESSAGE("computeForceLJCudaSup stop\r\n");
     return E - S;

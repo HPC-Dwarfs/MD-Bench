@@ -903,6 +903,14 @@ extern "C" double computeForceLJCuda(
     cuda_assert("computeForceLJ_cuda", cudaPeekAtLastError());
     cuda_assert("computeForceLJ_cuda", cudaDeviceSynchronize());
     LIKWID_MARKER_STOP("force");
+
+#ifdef COMPUTE_STATS
+    for (int ci = 0; ci < atom->Nclusters_local; ci++) {
+        addStat(stats->calculated_forces, 1);
+        addStat(stats->num_neighs, neighbor->numneigh[ci]);
+    }
+#endif
+
     double E = getTimeStamp();
     DEBUG_MESSAGE("computeForceLJCuda stop\r\n");
     return E - S;
