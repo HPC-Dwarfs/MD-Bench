@@ -5,6 +5,7 @@
  * license that can be found in the LICENSE file.
  */
 #include <stdbool.h>
+#include <stddef.h>
 
 #include <box.h>
 #include <parameter.h>
@@ -121,11 +122,17 @@ typedef struct {
     // Type-pair tables of 6 C6 and 12 C12 for the full combination rule (built on demand)
     MD_FLOAT* ljc6x6;
     MD_FLOAT* ljc12x12;
+    // Force arrays of threads 1..n-1 for the half-list kernels (see thread_forces.h)
+    MD_FLOAT* cl_f_threads;
+    size_t cl_f_threads_size;
 } Atom;
 
 extern int get_ncj_from_nci(int nci);
 extern void initAtom(Atom*);
 extern void initMasks(Atom*);
+extern void initAtomIds(Atom*);
+extern void setClusterAtom(Atom*, int sca, int type, int id);
+extern void clearClusterAtom(Atom*, int sca);
 extern void createAtom(Atom*, Parameter*);
 extern int readAtom(Atom*, Parameter*);
 extern int readAtomGmx(Atom*, Parameter*);

@@ -30,8 +30,7 @@
 #define WATER_Q_OXYGEN   -0.8476
 #define WATER_Q_HYDROGEN 0.4238
 
-inline int get_ncj_from_nci(int nci)
-{
+inline int get_ncj_from_nci(int nci) {
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
     return nci << 3;
 #else
@@ -45,8 +44,7 @@ inline int get_ncj_from_nci(int nci)
 #endif
 }
 
-int write_atoms_to_file(Atom* atom, char* name)
-{
+int write_atoms_to_file(Atom* atom, char* name) {
     FILE* fp = fopen(name, "wb");
     if (fp == NULL) {
         perror("Error opening file");
@@ -68,8 +66,7 @@ int write_atoms_to_file(Atom* atom, char* name)
     return 0;
 }
 
-void initAtom(Atom* atom)
-{
+void initAtom(Atom* atom) {
     atom->x                     = NULL;
     atom->y                     = NULL;
     atom->z                     = NULL;
@@ -114,6 +111,8 @@ void initAtom(Atom* atom)
     atom->cl_sqrt12c12 = NULL;
     atom->ljc6x6       = NULL;
     atom->ljc12x12     = NULL;
+    atom->cl_f_threads      = NULL;
+    atom->cl_f_threads_size = 0;
 
     initMasks(atom);
     // MPI New features
@@ -133,8 +132,46 @@ void initAtom(Atom* atom)
     mybox->hi[2]    = 0;
 }
 
-void createAtom(Atom* atom, Parameter* param)
-{
+/* Global atom ids: the index in the full system, assigned before the atoms are
+ * distributed over MPI ranks (every rank creates or reads the full system and discards
+ * what lies outside its domain). They identify molecules and the atoms of
+ * --dump-forces. */
+void initAtomIds(Atom* atom) {
+    for (int i = 0; i < atom->Nlocal; i++) {
+        atom->id[i] = i;
+    }
+    atom->ids_valid = 1;
+}
+
+/* Per-atom data of the cluster slot sca, which all derives from the type and global id */
+void setClusterAtom(Atom* atom, const int sca, const int type, const int id) {
+    atom->cl_t[sca]            = type;
+    atom->cl_sqrt_epsilon[sca] = atom->sqrt_epsilon_per_type[type];
+    atom->cl_sigma3[sca]       = atom->sigma3_per_type[type];
+    // sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3,
+    // sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6
+    atom->cl_sqrt6c6[sca] = LJ_SQRT_6C6_COEF * atom->cl_sqrt_epsilon[sca] *
+                            atom->cl_sigma3[sca];
+    atom->cl_sqrt12c12[sca] = LJ_SQRT_12C12_COEF * atom->cl_sqrt_epsilon[sca] *
+                              atom->cl_sigma3[sca] * atom->cl_sigma3[sca];
+    atom->cl_q[sca]   = atom->q_per_type ? atom->q_per_type[type] : 0.0;
+    atom->cl_id[sca]  = id;
+    atom->cl_mol[sca] = atom->molsize > 0 ? id / atom->molsize : id;
+}
+
+/* A padding slot: no interactions, no exclusions */
+void clearClusterAtom(Atom* atom, const int sca) {
+    atom->cl_t[sca]            = 0;
+    atom->cl_sqrt_epsilon[sca] = 0.0;
+    atom->cl_sigma3[sca]       = 0.0;
+    atom->cl_sqrt6c6[sca]      = 0.0;
+    atom->cl_sqrt12c12[sca]    = 0.0;
+    atom->cl_q[sca]            = 0.0;
+    atom->cl_id[sca]           = -1;
+    atom->cl_mol[sca]          = -1;
+}
+
+void createAtom(Atom* atom, Parameter* param) {
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -268,8 +305,7 @@ void createAtom(Atom* atom, Parameter* param)
     }
 }
 
-int typeStr2int(const char* type)
-{
+int typeStr2int(const char* type) {
     if (strncmp(type, "Ar", 2) == 0) {
         return 0;
     } // Argon
@@ -278,8 +314,7 @@ int typeStr2int(const char* type)
     return -1;
 }
 
-int readAtom(Atom* atom, Parameter* param)
-{
+int readAtom(Atom* atom, Parameter* param) {
     int me = 0;
 
 #ifdef _MPI
@@ -314,8 +349,7 @@ int readAtom(Atom* atom, Parameter* param)
  * 1000 3-site water molecules (O,H,H) in a 3.107 nm box, replicated param->size times
  * (a power of two). Units are GROMACS' (nm, kJ/mol, e). Only oxygen has LJ parameters
  * and all atoms of a molecule are mutually excluded. */
-int readAtomGmx(Atom* atom, Parameter* param)
-{
+int readAtomGmx(Atom* atom, Parameter* param) {
     int factor = param->size;
 
     if (factor < 1 || (factor & (factor - 1)) != 0) {
@@ -387,11 +421,16 @@ int readAtomGmx(Atom* atom, Parameter* param)
         }
     }
 
-    // Put all atoms in the box individually, as the GROMACS benchmark does
-    atom->mybox.xprd = param->xprd;
-    atom->mybox.yprd = param->yprd;
-    atom->mybox.zprd = param->zprd;
-    pbc(atom);
+    // Put all atoms in the box individually, as the GROMACS benchmark does. The domain
+    // box (atom->mybox) is set up later, by setup() or the MPI grid
+    const MD_FLOAT prd[3] = { param->xprd, param->yprd, param->zprd };
+    for (int i = 0; i < total; i++) {
+        MD_FLOAT* r[3] = { &atom_x(i), &atom_y(i), &atom_z(i) };
+        for (int dim = 0; dim < 3; dim++) {
+            if (*r[dim] < 0.0) *r[dim] += prd[dim];
+            if (*r[dim] >= prd[dim]) *r[dim] -= prd[dim];
+        }
+    }
 
     // SPC/E-like parameters: LJ on oxygen only, given as C6/C12 in the GROMACS
     // benchmark. The benchmark hands them to the NBNxM atom data, which expects the
@@ -423,7 +462,8 @@ int readAtomGmx(Atom* atom, Parameter* param)
         atom->sigma3_per_type,
         atom->epsilon,
         atom->sigma6);
-    // Hydrogen pairs have epsilon = 0 and sigma^6 = 0: keep the force finite
+    // One cut-off for all type pairs. Pairs with hydrogen have C6 = C12 = 0 and only
+    // interact through their charges
     for (int k = 0; k < ntypes * ntypes; ++k) {
         atom->cutforcesq[k] = param->cutforce * param->cutforce;
         atom->cutneighsq[k] = param->cutneigh * param->cutneigh;
@@ -544,8 +584,7 @@ int readAtomPdb(Atom* atom, Parameter* param)
     return readAtoms;
 }
 
-int readAtomGro(Atom* atom, Parameter* param)
-{
+int readAtomGro(Atom* atom, Parameter* param) {
     int me = 0;
 
 #ifdef _MPI
@@ -675,8 +714,7 @@ int readAtomGro(Atom* atom, Parameter* param)
     return readAtoms;
 }
 
-int readAtomDmp(Atom* atom, Parameter* param)
-{
+int readAtomDmp(Atom* atom, Parameter* param) {
     int me = 0;
 #ifdef _MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
@@ -810,8 +848,7 @@ int readAtomDmp(Atom* atom, Parameter* param)
     return natoms;
 }
 
-void initMasks(Atom* atom)
-{
+void initMasks(Atom* atom) {
     const unsigned int halfMaskBits = VECTOR_WIDTH >> 1;
     unsigned int mask0, mask1, mask2, mask3;
 
@@ -971,8 +1008,7 @@ void initMasks(Atom* atom)
 #endif
 }
 
-void growAtom(Atom* atom)
-{
+void growAtom(Atom* atom) {
     int nold = atom->Nmax;
     atom->Nmax += DELTA;
 
@@ -1158,8 +1194,7 @@ void growClusters(Atom* atom, int super_clustering)
 
 /* MPI added*/
 
-void freeAtom(Atom* atom)
-{
+void freeAtom(Atom* atom) {
 #ifdef ATOM_POSITION_AOS
     free(atom->x);
     atom->x = NULL;
@@ -1187,10 +1222,12 @@ void freeAtom(Atom* atom)
     atom->ljc6x6 = NULL;
     free(atom->ljc12x12);
     atom->ljc12x12 = NULL;
+    free(atom->cl_f_threads);
+    atom->cl_f_threads      = NULL;
+    atom->cl_f_threads_size = 0;
 }
 
-void growPbc(Atom* atom)
-{
+void growPbc(Atom* atom) {
     int nold = atom->NmaxGhost;
     atom->NmaxGhost += DELTA;
 
@@ -1214,8 +1251,7 @@ void growPbc(Atom* atom)
     }
 }
 
-void packForward(Atom* atom, int nc, int* list, MD_FLOAT* buf, int* pbc)
-{
+void packForward(Atom* atom, int nc, int* list, MD_FLOAT* buf, int* pbc) {
     for (int i = 0; i < nc; i++) {
         int cj          = list[i];
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
@@ -1239,8 +1275,7 @@ void packForward(Atom* atom, int nc, int* list, MD_FLOAT* buf, int* pbc)
     }
 }
 
-void unpackForward(Atom* atom, int nc, int c0, MD_FLOAT* buf)
-{
+void unpackForward(Atom* atom, int nc, int c0, MD_FLOAT* buf) {
     for (int i = 0; i < nc; i++) {
         int cj          = c0 + i;
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
@@ -1258,8 +1293,7 @@ void unpackForward(Atom* atom, int nc, int c0, MD_FLOAT* buf)
     }
 }
 
-int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc)
-{
+int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc) {
     // # of elements per cluster natoms,x0,y0,z0,type_0, . .
     // ,xn,yn,zn,type_n,bbminx,bbmaxxy,bbminy,bbmaxy,bbminz,bbmaxz count = 4*N_CLUSTER+7,
     // if N_CLUSTER =4 => count = 23 value/cluster + trackpbc[x] + trackpbc[y] +
@@ -1284,6 +1318,7 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc)
             buf[m++] = ytmp;
             buf[m++] = ztmp;
             buf[m++] = (MD_FLOAT)atom->cl_t[cj_sca_base + cjj];
+            buf[m++] = (MD_FLOAT)atom->cl_id[cj_sca_base + cjj];
 
             if (bbminx > xtmp) {
                 bbminx = xtmp;
@@ -1310,6 +1345,7 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc)
             buf[m++] = -1.0; // y
             buf[m++] = -1.0; // z
             buf[m++] = -1.0; // type
+            buf[m++] = -1.0; // id
         }
 
         buf[m++] = bbminx;
@@ -1332,8 +1368,7 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc)
     return m;
 }
 
-int unpackGhost(Parameter* param, Atom* atom, int cj, MD_FLOAT* buf)
-{
+int unpackGhost(Parameter* param, Atom* atom, int cj, MD_FLOAT* buf) {
     int m    = 0;
     int jfac = MAX(1, CLUSTER_N / CLUSTER_M);
     if (cj * jfac >= atom->Nclusters_max) {
@@ -1350,19 +1385,21 @@ int unpackGhost(Parameter* param, Atom* atom, int cj, MD_FLOAT* buf)
 
     atom->jclusters[cj].natoms = (int)buf[m++];
     for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
-        cj_x[CL_X_INDEX(cjj)]         = buf[m++];
-        cj_x[CL_Y_INDEX(cjj)]         = buf[m++];
-        cj_x[CL_Z_INDEX(cjj)]         = buf[m++];
-        atom->cl_t[cj_sca_base + cjj] = (int)buf[m++];
+        cj_x[CL_X_INDEX(cjj)] = buf[m++];
+        cj_x[CL_Y_INDEX(cjj)] = buf[m++];
+        cj_x[CL_Z_INDEX(cjj)] = buf[m++];
+        const int type        = (int)buf[m++];
+        const int id          = (int)buf[m++];
+        setClusterAtom(atom, cj_sca_base + cjj, type, id);
         atom->Nghost++;
     }
 
     for (int cjj = atom->jclusters[cj].natoms; cjj < CLUSTER_N; cjj++) {
-        cj_x[CL_X_INDEX(cjj)]         = CLUSTER_PAD_COORD;
-        cj_x[CL_Y_INDEX(cjj)]         = CLUSTER_PAD_COORD;
-        cj_x[CL_Z_INDEX(cjj)]         = CLUSTER_PAD_COORD;
-        atom->cl_t[cj_sca_base + cjj] = 0;
-        m += 4;
+        cj_x[CL_X_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cj_x[CL_Y_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cj_x[CL_Z_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        clearClusterAtom(atom, cj_sca_base + cjj);
+        m += 5;
     }
 
     atom->jclusters[cj].bbminx        = buf[m++];
@@ -1378,8 +1415,7 @@ int unpackGhost(Parameter* param, Atom* atom, int cj, MD_FLOAT* buf)
     return m;
 }
 
-void packReverse(Atom* atom, int nc, int c0, MD_FLOAT* buf)
-{
+void packReverse(Atom* atom, int nc, int c0, MD_FLOAT* buf) {
     for (int i = 0; i < nc; i++) {
         int cj          = c0 + i;
         int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
@@ -1400,8 +1436,7 @@ void packReverse(Atom* atom, int nc, int c0, MD_FLOAT* buf)
     }
 }
 
-void unpackReverse(Atom* atom, int nc, int* list, MD_FLOAT* buf)
-{
+void unpackReverse(Atom* atom, int nc, int* list, MD_FLOAT* buf) {
     for (int i = 0; i < nc; i++) {
         int cj          = list[i];
         int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
@@ -1416,8 +1451,7 @@ void unpackReverse(Atom* atom, int nc, int* list, MD_FLOAT* buf)
     }
 }
 
-int packExchange(Atom* atom, int i, MD_FLOAT* buf)
-{
+int packExchange(Atom* atom, int i, MD_FLOAT* buf) {
     int m    = 0;
     buf[m++] = atom_x(i);
     buf[m++] = atom_y(i);
@@ -1426,11 +1460,11 @@ int packExchange(Atom* atom, int i, MD_FLOAT* buf)
     buf[m++] = atom_vy(i);
     buf[m++] = atom_vz(i);
     buf[m++] = atom->type[i];
+    buf[m++] = atom->id[i];
     return m;
 }
 
-int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
-{
+int unpackExchange(Atom* atom, int i, MD_FLOAT* buf) {
     while (i >= atom->Nmax) {
         growAtom(atom);
     }
@@ -1443,11 +1477,11 @@ int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
     atom_vy(i)    = buf[m++];
     atom_vz(i)    = buf[m++];
     atom->type[i] = buf[m++];
+    atom->id[i]   = buf[m++];
     return m;
 }
 
-void pbc(Atom* atom)
-{
+void pbc(Atom* atom) {
     for (int i = 0; i < atom->Nlocal; i++) {
         MD_FLOAT xprd = atom->mybox.xprd;
         MD_FLOAT yprd = atom->mybox.yprd;
@@ -1461,8 +1495,7 @@ void pbc(Atom* atom)
     }
 }
 
-void copy(Atom* atom, int i, int j)
-{
+void copy(Atom* atom, int i, int j) {
     atom_x(i)     = atom_x(j);
     atom_y(i)     = atom_y(j);
     atom_z(i)     = atom_z(j);
@@ -1473,8 +1506,7 @@ void copy(Atom* atom, int i, int j)
     atom->id[i]   = atom->id[j];
 }
 
-bool needsReneigh(Atom* atom, Parameter* param)
-{
+bool needsReneigh(Atom* atom, Parameter* param) {
     MD_FLOAT threshold = (MD_FLOAT)0.25 * param->skin * param->skin;
     MD_FLOAT max_sq    = (MD_FLOAT)0.0;
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
@@ -1487,7 +1519,10 @@ bool needsReneigh(Atom* atom, Parameter* param)
             MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)] -
                           atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
             MD_FLOAT d = dx * dx + dy * dy + dz * dz;
-            if (d > max_sq) max_sq = d;
+
+            if (d > max_sq) {
+                max_sq = d;
+            }
         }
     }
 #ifdef _MPI
@@ -1497,8 +1532,7 @@ bool needsReneigh(Atom* atom, Parameter* param)
     return max_sq > threshold;
 }
 
-void storeReferencePositions(Atom* atom)
-{
+void storeReferencePositions(Atom* atom) {
     int n = atom->Nclusters_local * CLUSTER_M * SCLUSTER_SIZE * 3;
     memcpy(atom->cl_x_ref, atom->cl_x, n * sizeof(MD_FLOAT));
 }

@@ -35,6 +35,7 @@
 #include <coulomb.h>
 #include <force.h>
 #include <kernel_math.h>
+#include <neighbor.h>
 #include <parameter.h>
 #include <simd.h>
 
@@ -325,14 +326,15 @@ static inline void zeroForces(Atom* atom, const int ghosts)
 #define KERNEL_PREFETCH_DIST 3
 #endif
 
-MD_ALWAYS_INLINE void prefetchJ(const Atom* atom, const int cj, const int write_f)
+/* f: the force array the kernel writes j-forces into (NULL: none, full lists) */
+MD_ALWAYS_INLINE void prefetchJ(const Atom* atom, const int cj, const MD_FLOAT* f)
 {
 #ifndef KERNEL_NO_PREFETCH
     const char* px = (const char*)&atom->cl_x[CJ_VECTOR3_BASE_INDEX(cj)];
     __builtin_prefetch(px, PREFETCH_READ, PREFETCH_LOCALITY);
     __builtin_prefetch(px + CACHE_LINE_BYTES, PREFETCH_READ, PREFETCH_LOCALITY);
-    if (write_f) {
-        const char* pf = (const char*)&atom->cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
+    if (f != NULL) {
+        const char* pf = (const char*)&f[CJ_VECTOR3_BASE_INDEX(cj)];
         __builtin_prefetch(pf, PREFETCH_WRITE, PREFETCH_LOCALITY);
         __builtin_prefetch(pf + CACHE_LINE_BYTES, PREFETCH_WRITE, PREFETCH_LOCALITY);
     }
@@ -346,7 +348,40 @@ MD_ALWAYS_INLINE void prefetchJ(const Atom* atom, const int cj, const int write_
 #else
     (void)atom;
     (void)cj;
-    (void)write_f;
+    (void)f;
+#endif
+}
+
+/* Prefetch the j-cluster KERNEL_PREFETCH_DIST entries after position pos in the order a
+ * kernel visits the pruned list: the inner masked entries [0, inner_masked) first, then
+ * the inner unmasked entries that start at index masked. The outer (pruned) entries in
+ * between are skipped, the prefetch crosses from the masked into the unmasked loop. */
+MD_ALWAYS_INLINE void prefetchAhead(const Atom* atom,
+    const Neighbor* neighbor,
+    const int ci,
+    const int nbM,
+    const int pos,
+    const int numneighs,
+    const int masked,
+    const int inner_masked,
+    const MD_FLOAT* f)
+{
+#ifndef KERNEL_NO_PREFETCH
+    const int p = pos + KERNEL_PREFETCH_DIST;
+    if (p < numneighs) {
+        const int k = p < inner_masked ? p : p - inner_masked + masked;
+        prefetchJ(atom, neighs(neighbor->neighbors, ci, k, nbM, neighbor), f);
+    }
+#else
+    (void)atom;
+    (void)neighbor;
+    (void)ci;
+    (void)nbM;
+    (void)pos;
+    (void)numneighs;
+    (void)masked;
+    (void)inner_masked;
+    (void)f;
 #endif
 }
 

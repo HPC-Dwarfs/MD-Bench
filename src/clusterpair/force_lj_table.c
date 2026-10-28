@@ -15,6 +15,7 @@
 #include <parameter.h>
 #include <simd.h>
 #include <stats.h>
+#include <thread_forces.h>
 #include <timing.h>
 #include <util.h>
 
@@ -57,11 +58,13 @@ double computeForceLJTableRef(
         }
     }
 
+    const int nf = threadForcesReserve(atom);
     double S = getTimeStamp();
 
 #pragma omp parallel
     {
         LIKWID_MARKER_START("force");
+        MD_FLOAT* f = threadForces(atom, nf);
 
 #pragma omp for schedule(runtime)
         for (int ci = 0; ci < atom->Nclusters_local; ci++) {
@@ -69,7 +72,7 @@ double computeForceLJTableRef(
             int ci_cj1      = CJ1_FROM_CI(ci);
             int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
-            MD_FLOAT* ci_f  = &atom->cl_f[ci_vec_base];
+            MD_FLOAT* ci_f  = &f[ci_vec_base];
             int numneighs   = neighbor->numneigh_inner[ci];
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
@@ -86,7 +89,7 @@ double computeForceLJTableRef(
                 int cj_vec_base = CJ_VECTOR3_BASE_INDEX(cj);
                 int any         = 0;
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
-                MD_FLOAT* cj_f  = &atom->cl_f[cj_vec_base];
+                MD_FLOAT* cj_f  = &f[cj_vec_base];
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 int cj_sca_base       = CJ_SCALAR_BASE_INDEX(cj);
@@ -192,10 +195,13 @@ double computeForceLJTableRef(
             addStat(stats->force_iters,
                 (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
         }
-        if (param->method == eightShell) {
-            computeForceGhostShell(param, atom, neighbor);
-        }
+        threadForcesReduce(atom, nf);
         LIKWID_MARKER_STOP("force");
+    }
+
+    // Single threaded: it writes cl_f of the shell clusters without a thread buffer
+    if (param->method == eightShell) {
+        computeForceGhostShell(param, atom, neighbor);
     }
 
     double E = getTimeStamp();

@@ -19,6 +19,7 @@
 #include <parameter.h>
 #include <simd.h>
 #include <stats.h>
+#include <thread_forces.h>
 #include <timing.h>
 #include <util.h>
 
@@ -141,6 +142,7 @@ double computeForceLJ2xnnHalfNeigh(
     setupTypePairC6C12(atom);
 #endif
 
+    const int nf = threadForcesReserve(atom);
     zeroForces(atom, 1);
 
     double S = getTimeStamp();
@@ -148,6 +150,7 @@ double computeForceLJ2xnnHalfNeigh(
 #pragma omp parallel
     {
         LIKWID_MARKER_START("force");
+        MD_FLOAT* f = threadForces(atom, nf);
 
 #pragma omp for schedule(runtime)
         for (int ci = 0; ci < atom->Nclusters_local; ci++) {
@@ -156,7 +159,7 @@ double computeForceLJ2xnnHalfNeigh(
             const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
             const int unmasked_inner_end     = numneighs_masked +
                                            (numneighs - numneighs_inner_masked);
-            MD_FLOAT* ci_f = &atom->cl_f[CI_VECTOR3_BASE_INDEX(ci)];
+            MD_FLOAT* ci_f = &f[CI_VECTOR3_BASE_INDEX(ci)];
 
             const IRows ir = load2xnnIRows(atom, ci, &pc);
             Rows fx        = rowsZero();
@@ -164,15 +167,15 @@ double computeForceLJ2xnnHalfNeigh(
             Rows fz        = rowsZero();
 
             for (int k = 0; k < numneighs_inner_masked; k++) {
-                if (k + KERNEL_PREFETCH_DIST < numneighs) {
-                    prefetchJ(atom,
-                        neighs(neighbor->neighbors,
-                            ci,
-                            k + KERNEL_PREFETCH_DIST,
-                            nbM,
-                            neighbor),
-                        1);
-                }
+                prefetchAhead(atom,
+                    neighbor,
+                    ci,
+                    nbM,
+                    k,
+                    numneighs,
+                    numneighs_masked,
+                    numneighs_inner_masked,
+                    f);
                 const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
                 const JData jd      = load2xnnJData(atom, cj);
                 const RowMasks diag = load2xnnDiagMasks(atom->masks_2xnn_hn, ci, cj);
@@ -181,20 +184,20 @@ double computeForceLJ2xnnHalfNeigh(
 
                 accumulateForces((CLUSTER_M / 2), &fx, &fy, &fz, &p);
                 if (cj < nlocal_clusters || param->method) {
-                    decrementJForces(&atom->cl_f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
+                    decrementJForces(&f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
                 }
             }
 
             for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
-                if (k + KERNEL_PREFETCH_DIST < numneighs) {
-                    prefetchJ(atom,
-                        neighs(neighbor->neighbors,
-                            ci,
-                            k + KERNEL_PREFETCH_DIST,
-                            nbM,
-                            neighbor),
-                        1);
-                }
+                prefetchAhead(atom,
+                    neighbor,
+                    ci,
+                    nbM,
+                    k - numneighs_masked + numneighs_inner_masked,
+                    numneighs,
+                    numneighs_masked,
+                    numneighs_inner_masked,
+                    f);
                 const int cj   = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
                 const JData jd = load2xnnJData(atom, cj);
                 const PairForces p =
@@ -202,7 +205,7 @@ double computeForceLJ2xnnHalfNeigh(
 
                 accumulateForces((CLUSTER_M / 2), &fx, &fy, &fz, &p);
                 if (cj < nlocal_clusters || param->method) {
-                    decrementJForces(&atom->cl_f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
+                    decrementJForces(&f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
                 }
             }
 
@@ -213,10 +216,13 @@ double computeForceLJ2xnnHalfNeigh(
             addStat(stats->force_iters,
                 (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
         }
-        if (param->method == eightShell) {
-            computeForceGhostShell(param, atom, neighbor);
-        }
+        threadForcesReduce(atom, nf);
         LIKWID_MARKER_STOP("force");
+    }
+
+    // Single threaded: it writes cl_f of the shell clusters without a thread buffer
+    if (param->method == eightShell) {
+        computeForceGhostShell(param, atom, neighbor);
     }
 
     double E = getTimeStamp();
@@ -257,15 +263,15 @@ double computeForceLJ2xnnFullNeigh(
             Rows fz        = rowsZero();
 
             for (int k = 0; k < numneighs_inner_masked; k++) {
-                if (k + KERNEL_PREFETCH_DIST < numneighs) {
-                    prefetchJ(atom,
-                        neighs(neighbor->neighbors,
-                            ci,
-                            k + KERNEL_PREFETCH_DIST,
-                            nbM,
-                            neighbor),
-                        0);
-                }
+                prefetchAhead(atom,
+                    neighbor,
+                    ci,
+                    nbM,
+                    k,
+                    numneighs,
+                    numneighs_masked,
+                    numneighs_inner_masked,
+                    NULL);
                 const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
                 const JData jd      = load2xnnJData(atom, cj);
                 const RowMasks diag = load2xnnDiagMasks(atom->masks_2xnn_fn, ci, cj);
@@ -276,15 +282,15 @@ double computeForceLJ2xnnFullNeigh(
             }
 
             for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
-                if (k + KERNEL_PREFETCH_DIST < numneighs) {
-                    prefetchJ(atom,
-                        neighs(neighbor->neighbors,
-                            ci,
-                            k + KERNEL_PREFETCH_DIST,
-                            nbM,
-                            neighbor),
-                        0);
-                }
+                prefetchAhead(atom,
+                    neighbor,
+                    ci,
+                    nbM,
+                    k - numneighs_masked + numneighs_inner_masked,
+                    numneighs,
+                    numneighs_masked,
+                    numneighs_inner_masked,
+                    NULL);
                 const int cj   = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
                 const JData jd = load2xnnJData(atom, cj);
                 const PairForces p =
