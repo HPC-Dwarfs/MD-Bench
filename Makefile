@@ -87,7 +87,7 @@ $(BUILD_DIR)/%.o:  %.s
 	$(info ===>  ASSEMBLE  $@)
 	$(Q)$(AS) $< -o $@
 
-.PHONY: clean distclean cleanall tags format info asm sass test
+.PHONY: clean distclean cleanall tags format info asm sass test mdbench-tests
 
 clean:
 	$(info ===>  CLEAN)
@@ -101,7 +101,7 @@ cleanall:
 
 distclean: clean
 	$(info ===>  DIST CLEAN)
-	@rm -f $(TARGET)
+	@rm -f $(TARGET) $(TEST_BIN)
 	@rm -f tags .clangd
 
 info:
@@ -156,7 +156,10 @@ format:
 	done
 	@echo "Done"
 
-TEST_BIN := mdbench-tests
+# Unit tests, tagged like the benchmark binary so every configuration gets its own
+TEST_BIN = $(TARGET)-tests
+
+mdbench-tests: $(TEST_BIN)
 
 test: $(TEST_BIN) $(TARGET)
 	@echo "===>  RUNNING  $(TEST_BIN)"
@@ -197,7 +200,10 @@ test: $(TEST_BIN) $(TARGET)
 TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c $(COMMON_DIR)/ljtable.c $(COMMON_DIR)/device.c
 TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neighbor.c $(SRC_ROOT)/clusterpair/pbc.c $(SRC_ROOT)/clusterpair/integrate.c
 
-$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS)
+TEST_HEADERS     := $(wildcard $(SRC_ROOT)/clusterpair/*.h $(COMMON_DIR)/*.h $(COMMON_DIR)/simd/*.h)
+
+$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS) $(TEST_HEADERS)
+	@mkdir -p $(dir $(TEST_BIN))
 	@echo "===>  BUILDING $(TEST_BIN)"
 	$(Q)$(CC) -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) -DCLUSTER_PAIR -DCLUSTERPAIR_KERNEL_AUTO \
 		tests/main.c tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c \
