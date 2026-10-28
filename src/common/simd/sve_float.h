@@ -22,6 +22,11 @@ static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
     return svsub_f32_x(svptrue_b32(), a, b);
 }
 
+static inline MD_SIMD_FLOAT simd_real_max(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
+{
+    return svmax_f32_x(svptrue_b32(), a, b);
+}
+
 static inline MD_SIMD_FLOAT simd_real_load(const float* ptr)
 {
     return svld1_f32(svptrue_b32(), ptr);

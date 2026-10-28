@@ -18,6 +18,11 @@ static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return vsubq_f32(a, b);
 }
+
+static inline MD_SIMD_FLOAT simd_real_max(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
+{
+    return vmaxq_f32(a, b);
+}
 static inline MD_SIMD_FLOAT simd_real_load(const float* ptr) { return vld1q_f32(ptr); }
 static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
 {

@@ -82,6 +82,7 @@ typedef struct {
 /* Values that stay the same for the whole kernel call */
 typedef struct {
     MD_SIMD_FLOAT cutsq;
+    MD_SIMD_FLOAT minrsq;  // MIN_DISTANCE_SQ
     MD_SIMD_FLOAT c6, c12; // 6 C6 and 12 C12 of the single atom type rule
     CoulombSimd cs;
 } PairConstants;
@@ -96,6 +97,7 @@ static inline PairConstants pairConstants(const Parameter* param)
     PairConstants pc;
     const MD_FLOAT cutsq = param->cutforce * param->cutforce;
     pc.cutsq             = simd_real_broadcast(cutsq);
+    pc.minrsq            = simd_real_broadcast(MIN_DISTANCE_SQ);
     // 6 C6 = 24 eps sigma^6, 12 C12 = 48 eps sigma^12
     pc.c6  = simd_real_broadcast(LJ_C6_FACTOR * param->epsilon * param->sigma6);
     pc.c12 = simd_real_broadcast(
@@ -197,6 +199,11 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
         }
     }
 
+    // Clamp after the cut-off check, like GROMACS: padding atoms are at distance zero
+    for (int r = 0; r < nr; r++) {
+        rsq.v[r] = simd_real_max(rsq.v[r], pc->minrsq);
+    }
+
 #if COULOMB_RULE == COULOMB_NONE
     // Without electrostatics only 1/r^2 is needed, which is cheaper than via 1/r
     for (int r = 0; r < nr; r++) {
@@ -276,8 +283,8 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
     }
 #endif
 
-    // The padding atoms of a cluster are far away but finite (CLUSTER_PAD_COORD), the
-    // force of a masked pair is exactly zero
+    // The padding atoms of a cluster are far away but finite (CLUSTER_PAD_COORD) and the
+    // distance is clamped, so the force of a masked pair is exactly zero
     for (int r = 0; r < nr; r++) {
         out.tx.v[r] = simd_real_mul(dx.v[r], force.v[r]);
         out.ty.v[r] = simd_real_mul(dy.v[r], force.v[r]);
@@ -316,7 +323,7 @@ static inline void zeroForces(Atom* atom, const int ghosts)
 }
 
 /* j-cluster data prefetch, a few list entries ahead: the list is an indirection into
- * data that does not fit the L1 cache. Define KERNEL_NO_PREFETCH to disable. */
+ * data that does not fit the L1 cache. Disabled by KERNEL_PREFETCH=false in config.mk */
 #define PREFETCH_READ     0
 #define PREFETCH_WRITE    1
 #define PREFETCH_LOCALITY 3 // keep in all cache levels

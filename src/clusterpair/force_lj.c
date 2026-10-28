@@ -142,7 +142,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
 #endif
 
                             if (rsq < cutforcesq) {
-                                MD_FLOAT sr2   = 1.0 / rsq;
+                                MD_FLOAT sr2   = 1.0 / MAX(rsq, MIN_DISTANCE_SQ);
                                 MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
                                 MD_FLOAT force = 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
 
@@ -235,7 +235,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 
                     MD_FLOAT rsq = delx * delx + dely * dely + delz * delz;
                     if (rsq < cutforcesq) {
-                        MD_FLOAT sr2   = 1.0 / rsq;
+                        MD_FLOAT sr2   = 1.0 / MAX(rsq, MIN_DISTANCE_SQ);
                         MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
                         MD_FLOAT force = 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
 
