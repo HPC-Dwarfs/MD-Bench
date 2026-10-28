@@ -35,19 +35,28 @@ static inline void tr_log(const char* msg) { fprintf(stdout, "%s\n", msg); }
         }                                                                                \
     } while (0)
 
+/* Values stored as MD_FLOAT cannot be compared tighter than their precision: in single
+ * precision the tolerance is at least TEST_SP_RTOL relative to the expected value */
+#if PRECISION == 1
+#define TEST_SP_RTOL 1e-5
+#else
+#define TEST_SP_RTOL 0.0
+#endif
+
 #define ASSERT_NEAR(got, exp, tol, msg)                                                  \
     do {                                                                                 \
         double _g = (double)(got);                                                       \
         double _e = (double)(exp);                                                       \
         double _d = fabs(_g - _e);                                                       \
-        if (_d > (tol)) {                                                                \
+        double _t = fmax((double)(tol), TEST_SP_RTOL * fmax(1.0, fabs(_e)));             \
+        if (_d > _t) {                                                                   \
             fprintf(stderr,                                                              \
                 "ASSERT_NEAR failed: %s (got=%g, exp=%g, diff=%g, tol=%g at %s:%d)\n",   \
                 msg,                                                                     \
                 _g,                                                                      \
                 _e,                                                                      \
                 _d,                                                                      \
-                (double)(tol),                                                           \
+                _t,                                                                      \
                 __FILE__,                                                                \
                 __LINE__);                                                               \
             return 1;                                                                    \

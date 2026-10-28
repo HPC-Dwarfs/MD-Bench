@@ -104,8 +104,10 @@ static int test_pack_unpack_exchange_roundtrip(void)
     atom->vy   = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
     atom->vz   = (MD_FLOAT*)malloc(atom->Nmax * sizeof(MD_FLOAT));
     atom->type = (int*)malloc(atom->Nmax * sizeof(int));
+    atom->id   = (int*)malloc(atom->Nmax * sizeof(int));
 
-    ASSERT_TRUE(atom->vx && atom->vy && atom->vz && atom->type, "alloc velocities/types");
+    ASSERT_TRUE(atom->vx && atom->vy && atom->vz && atom->type && atom->id,
+        "alloc velocities/types/ids");
 
     /* Original values. */
     atom_x(0)     = 1.0;
@@ -115,8 +117,9 @@ static int test_pack_unpack_exchange_roundtrip(void)
     atom_vy(0)    = 0.2;
     atom_vz(0)    = 0.3;
     atom->type[0] = 7;
+    atom->id[0]   = 42;
 
-    MD_FLOAT buf[7];
+    MD_FLOAT buf[8];
     int m1 = packExchange(atom, 0, buf);
 
     /* Clear atom and unpack. */
@@ -127,11 +130,12 @@ static int test_pack_unpack_exchange_roundtrip(void)
     atom_vy(0)    = 0.0;
     atom_vz(0)    = 0.0;
     atom->type[0] = 0;
+    atom->id[0]   = 0;
 
     int m2 = unpackExchange(atom, 0, buf);
 
-    ASSERT_INT_EQ(m1, 7, "packExchange element count");
-    ASSERT_INT_EQ(m2, 7, "unpackExchange element count");
+    ASSERT_INT_EQ(m1, 8, "packExchange element count");
+    ASSERT_INT_EQ(m2, 8, "unpackExchange element count");
 
     ASSERT_NEAR(atom_x(0), 1.0, 1e-12, "x roundtrip");
     ASSERT_NEAR(atom_y(0), 2.0, 1e-12, "y roundtrip");
@@ -140,6 +144,7 @@ static int test_pack_unpack_exchange_roundtrip(void)
     ASSERT_NEAR(atom_vy(0), 0.2, 1e-12, "vy roundtrip");
     ASSERT_NEAR(atom_vz(0), 0.3, 1e-12, "vz roundtrip");
     ASSERT_INT_EQ(atom->type[0], 7, "type roundtrip");
+    ASSERT_INT_EQ(atom->id[0], 42, "id roundtrip");
 
     free(atom->x);
 #ifndef ATOM_POSITION_AOS
@@ -150,6 +155,7 @@ static int test_pack_unpack_exchange_roundtrip(void)
     free(atom->vy);
     free(atom->vz);
     free(atom->type);
+    free(atom->id);
 
     return 0;
 }
