@@ -118,8 +118,8 @@ same molecule (consecutive atom ids, `atom->molsize` atoms per molecule) do not
 interact via LJ or the direct Coulomb term, but get the exclusion correction of the
 selected `COULOMB_RULE`. `auto` enables it whenever `COULOMB_RULE` is not `none`.
 - `ACCURATE_RECIPROCAL` (default: false): Refine the hardware reciprocal and
-reciprocal square root estimates (12-14 bits) used by the cluster-pair LJ kernels with
-Newton-Raphson steps. Needed
+reciprocal square root estimates (12-14 bits) used by the SIMD kernels (cluster-pair
+and verlet-list with `USE_SIMD_KERNEL`) with Newton-Raphson steps. Needed
 when forces have to agree with a code that evaluates 1/r^2 to full precision, e.g. to
 compare against GROMACS.
 - `DEBUG`: Enable additional debug output
@@ -204,7 +204,8 @@ Brookhaven protein data bank (.pdb), GROMACS GROMOS87 (.gro), and LAMMPS dump
 - `-half <int>`: use half (1) or full (0) neighbor lists (default 0 - full
 neighbor list). The cluster-pair SIMD kernels without MPI keep only half of
 the periodic ghost clusters with half lists, so a half list has about half the entries of
-a full list. Half lists are not thread safe, use one OpenMP thread
+a full list. With several OpenMP threads the half-list kernels accumulate into per-thread
+force arrays that are summed afterwards
 - `-r / --radius <real>`:   set cutoff radius (default 2.5)
 - `-s / --skin <real>`:   set skin (verlet buffer, default 0.3)
 - `-w <file>`:  write input atoms to file
@@ -284,8 +285,7 @@ exclusions, cut-off 1.0 nm) through its generic cluster-pair SIMD kernels, so fo
 kernel times can be compared. `tests/gromacs_nonbonded/` has the exact reference, the
 GROMACS patch and the comparison script, see the README there.
 
-Run the benchmark with MD-Bench (use one thread: half lists are not thread safe, and
-GROMACS' benchmark also defaults to one):
+Run the benchmark with MD-Bench (one thread, the default of GROMACS' benchmark):
 
 ```shell=bash
 # 4xN kernel (SIMD=AVX2 and single precision give the 4x8 kernel of GROMACS' 4xM)
