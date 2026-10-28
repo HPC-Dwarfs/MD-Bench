@@ -171,8 +171,8 @@ double computeForceLJ4xnHalfNeigh(
             const int numneighs_masked       = neighbor->numneigh_masked[ci];
             const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
             const int unmasked_inner_end     = numneighs_masked +
-                                           (numneighs - numneighs_inner_masked);
-            MD_FLOAT* ci_f = &f[CI_VECTOR3_BASE_INDEX(ci)];
+                                               (numneighs - numneighs_inner_masked);
+            MD_FLOAT* ci_f                   = &f[CI_VECTOR3_BASE_INDEX(ci)];
 
             const IRows ir = load4xnIRows(atom, ci, &pc);
             Rows fx        = rowsZero();
@@ -265,8 +265,8 @@ double computeForceLJ4xnFullNeigh(
             const int numneighs_masked       = neighbor->numneigh_masked[ci];
             const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
             const int unmasked_inner_end     = numneighs_masked +
-                                           (numneighs - numneighs_inner_masked);
-            MD_FLOAT* ci_f = &atom->cl_f[CI_VECTOR3_BASE_INDEX(ci)];
+                                               (numneighs - numneighs_inner_masked);
+            MD_FLOAT* ci_f                   = &atom->cl_f[CI_VECTOR3_BASE_INDEX(ci)];
 
             const IRows ir = load4xnIRows(atom, ci, &pc);
             Rows fx        = rowsZero();

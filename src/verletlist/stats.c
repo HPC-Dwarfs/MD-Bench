@@ -58,9 +58,9 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                                             (double)(stats->total_force_neighs) *
                                                 (sizeof(MD_FLOAT) * 3 + sizeof(int)));
     double avg_neigh           = stats->total_force_neighs /
-                       (double)(atom->Natoms * (param->ntimes + 1));
-    double avg_simd = stats->total_force_iters /
-                      (double)(atom->Natoms * (param->ntimes + 1));
+                                 (double)(atom->Natoms * (param->ntimes + 1));
+    double avg_simd            = stats->total_force_iters /
+                                 (double)(atom->Natoms * (param->ntimes + 1));
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
     force_useful_volume += 1e-9 *

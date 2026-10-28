@@ -200,7 +200,7 @@ void file2array(Eam* eam)
         cof3 = -0.5 * p * (p + 1.0) * (p - 2.0);
         cof4 = sixth * p * (p * p - 1.0);
         zri  = cof1 * ifile->zr[k - 1] + cof2 * ifile->zr[k] + cof3 * ifile->zr[k + 1] +
-              cof4 * ifile->zr[k + 2];
+               cof4 * ifile->zr[k + 2];
 
         p = r / jfile->dr + 1.0;
         k = (int)(p);
@@ -213,7 +213,7 @@ void file2array(Eam* eam)
         cof3 = -0.5 * p * (p + 1.0) * (p - 2.0);
         cof4 = sixth * p * (p * p - 1.0);
         zrj  = cof1 * jfile->zr[k - 1] + cof2 * jfile->zr[k] + cof3 * jfile->zr[k + 1] +
-              cof4 * jfile->zr[k + 2];
+               cof4 * jfile->zr[k + 2];
 
         eam->z2r[m] = 27.2 * 0.529 * zri * zrj;
     }

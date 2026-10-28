@@ -82,23 +82,23 @@ void copy(Atom*, int, int);
 
 #ifdef ATOM_POSITION_AOS
 #define POS_DATA_LAYOUT "AoS"
-#define atom_x(i)       atom->x[(i)*3 + 0]
-#define atom_y(i)       atom->x[(i)*3 + 1]
-#define atom_z(i)       atom->x[(i)*3 + 2]
-#define atom_x_ref(i)   atom->x_ref[(i)*3 + 0]
-#define atom_y_ref(i)   atom->x_ref[(i)*3 + 1]
-#define atom_z_ref(i)   atom->x_ref[(i)*3 + 2]
-#define atom_vx(i)      atom->vx[(i)*3 + 0]
-#define atom_vy(i)      atom->vx[(i)*3 + 1]
-#define atom_vz(i)      atom->vx[(i)*3 + 2]
-#define atom_fx(i)      atom->fx[(i)*3 + 0]
-#define atom_fy(i)      atom->fx[(i)*3 + 1]
-#define atom_fz(i)      atom->fx[(i)*3 + 2]
+#define atom_x(i)       atom->x[(i) * 3 + 0]
+#define atom_y(i)       atom->x[(i) * 3 + 1]
+#define atom_z(i)       atom->x[(i) * 3 + 2]
+#define atom_x_ref(i)   atom->x_ref[(i) * 3 + 0]
+#define atom_y_ref(i)   atom->x_ref[(i) * 3 + 1]
+#define atom_z_ref(i)   atom->x_ref[(i) * 3 + 2]
+#define atom_vx(i)      atom->vx[(i) * 3 + 0]
+#define atom_vy(i)      atom->vx[(i) * 3 + 1]
+#define atom_vz(i)      atom->vx[(i) * 3 + 2]
+#define atom_fx(i)      atom->fx[(i) * 3 + 0]
+#define atom_fy(i)      atom->fx[(i) * 3 + 1]
+#define atom_fz(i)      atom->fx[(i) * 3 + 2]
 // Same as above but taking an explicit pointer instead of the implicit
 // "atom" variable, so callers can pass a local restrict-qualified alias.
-#define atom_access_x(ptr, i) (ptr)[(i)*3 + 0]
-#define atom_access_y(ptr, i) (ptr)[(i)*3 + 1]
-#define atom_access_z(ptr, i) (ptr)[(i)*3 + 2]
+#define atom_access_x(ptr, i) (ptr)[(i) * 3 + 0]
+#define atom_access_y(ptr, i) (ptr)[(i) * 3 + 1]
+#define atom_access_z(ptr, i) (ptr)[(i) * 3 + 2]
 #else
 #define POS_DATA_LAYOUT       "SoA"
 #define atom_x(i)             atom->x[i]

@@ -55,7 +55,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
     }
 
     const int nf = threadForcesReserve(atom);
-    double S = getTimeStamp();
+    double S     = getTimeStamp();
 
 #pragma omp parallel
     {
@@ -114,8 +114,8 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                                                     : (ci_cj0 != cj || cii != cjj);
 #elif CLUSTER_M < CLUSTER_N
                         cond = neighbor->half_neigh
-                                               ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
-                                               : (ci_cj0 != cj ||
+                                   ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
+                                   : (ci_cj0 != cj ||
                                          cii + CLUSTER_M * (ci & 0x1) != cjj);
 #else
                         cond = neighbor->half_neigh

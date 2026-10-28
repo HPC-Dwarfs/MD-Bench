@@ -82,10 +82,10 @@ void staggeredBalance(Grid* grid, Atom* atom, Parameter* param, double newTime)
     MD_FLOAT* cellSize = (MD_FLOAT*)allocate(ALIGNMENT, maxprocs * sizeof(MD_FLOAT));
     MD_FLOAT* limits   = (MD_FLOAT*)allocate(ALIGNMENT,
         2 * maxprocs * sizeof(MD_FLOAT)); // limits: (x0, x1), (x1, x2)... Repeat values
-                                            // in between to perfom MPI_Scatter later
+                                          // in between to perfom MPI_Scatter later
     MD_FLOAT t_sum[3]        = { 0, 0, 0 };
     MD_FLOAT recv_buf[2]     = { 0,
-            0 }; // Each proc only receives 2 elments per dimension xlo and xhi
+        0 }; // Each proc only receives 2 elments per dimension xlo and xhi
     MD_FLOAT balancedLoad[3] = { 0, 0, 0 }; // 1/nprocs
     MD_FLOAT minLoad[3]      = { 0, 0, 0 }; // beta*(1/nprocs)
     MD_FLOAT prd[3]          = { param->xprd, param->yprd, param->zprd };

@@ -47,8 +47,8 @@
 // sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6 used by the geometric combination rule.
 #define LJ_C6_FACTOR       ((MD_FLOAT)24.0)
 #define LJ_C12_FACTOR      ((MD_FLOAT)48.0)
-#define LJ_SQRT_6C6_COEF   ((MD_FLOAT)4.898979485566356)  // 2 * sqrt(6)
-#define LJ_SQRT_12C12_COEF ((MD_FLOAT)6.928203230275509)  // 2 * sqrt(12)
+#define LJ_SQRT_6C6_COEF   ((MD_FLOAT)4.898979485566356) // 2 * sqrt(6)
+#define LJ_SQRT_12C12_COEF ((MD_FLOAT)6.928203230275509) // 2 * sqrt(12)
 
 #define DELTA 100000
 
@@ -160,15 +160,14 @@ void copy(Atom*, int, int);
 #ifdef __cplusplus
 extern "C"
 #endif
-    extern void
-    growClustersCUDA(Atom*);
+    extern void growClustersCUDA(Atom*);
 #endif
 
 #ifdef ATOM_POSITION_AOS
 #define POS_DATA_LAYOUT "AoS"
-#define atom_x(i)       atom->x[(i)*3 + 0]
-#define atom_y(i)       atom->x[(i)*3 + 1]
-#define atom_z(i)       atom->x[(i)*3 + 2]
+#define atom_x(i)       atom->x[(i) * 3 + 0]
+#define atom_y(i)       atom->x[(i) * 3 + 1]
+#define atom_z(i)       atom->x[(i) * 3 + 2]
 /*
 #   define atom_vx(i)          atom->vx[(i) * 3 + 0]
 #   define atom_vy(i)          atom->vx[(i) * 3 + 1]

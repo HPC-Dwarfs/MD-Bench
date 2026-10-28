@@ -335,10 +335,8 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max                                 \
-                                                     : new_maxneighs)                    \
-    reduction(|                                                                          \
-              : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
+    reduction(| : resize_local)
         for (int i = 0; i < atom->Nlocal; i++) {
             int n         = 0;
             MD_FLOAT xtmp = atom_x(i);
@@ -412,23 +410,21 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
         int new_maxneighs = neighbor->maxneighs;
         int resize_local  = 0;
 
-#pragma omp parallel for schedule(runtime) reduction(max                                 \
-                                                     : new_maxneighs)                    \
-    reduction(|                                                                          \
-              : resize_local)
+#pragma omp parallel for schedule(runtime) reduction(max : new_maxneighs)                \
+    reduction(| : resize_local)
         for (int i = 0; i < atom->Nlocal; i++) {
-            int n                           = 0;
-            MD_FLOAT xtmp                   = atom_x(i);
-            MD_FLOAT ytmp                   = atom_y(i);
-            MD_FLOAT ztmp                   = atom_z(i);
-            int ibin                        = coord2bin(xtmp, ytmp, ztmp);
+            int n         = 0;
+            MD_FLOAT xtmp = atom_x(i);
+            MD_FLOAT ytmp = atom_y(i);
+            MD_FLOAT ztmp = atom_z(i);
+            int ibin      = coord2bin(xtmp, ytmp, ztmp);
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_i                      = atom->type[i];
+            int type_i = atom->type[i];
 #endif
-            MD_SIMD_INT ivec                = simd_i32_broadcast(i);
-            MD_SIMD_FLOAT xtmp_vec          = simd_real_broadcast(xtmp);
-            MD_SIMD_FLOAT ytmp_vec          = simd_real_broadcast(ytmp);
-            MD_SIMD_FLOAT ztmp_vec          = simd_real_broadcast(ztmp);
+            MD_SIMD_INT ivec       = simd_i32_broadcast(i);
+            MD_SIMD_FLOAT xtmp_vec = simd_real_broadcast(xtmp);
+            MD_SIMD_FLOAT ytmp_vec = simd_real_broadcast(ytmp);
+            MD_SIMD_FLOAT ztmp_vec = simd_real_broadcast(ztmp);
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             MD_SIMD_FLOAT cutoff_vec_single = simd_real_broadcast(cutneighsq);
 #else
@@ -453,7 +449,7 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                         MD_FLOAT delz = ztmp - atom_z(j);
                         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-                        int type_j    = atom->type[j];
+                        int type_j = atom->type[j];
                         const MD_FLOAT cutoff =
                             atom->cutneighsq[type_i * atom->ntypes + type_j];
 #else
@@ -473,17 +469,17 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                     MD_SIMD_MASK bound_mask = simd_mask_i32_cond_lt(
                         simd_i32_add(simd_i32_broadcast(m), simd_i32_seq()),
                         bincount_vec);
-                    MD_SIMD_INT jvec   = simd_i32_mask_load(&loc_bin[m], bound_mask);
+                    MD_SIMD_INT jvec = simd_i32_mask_load(&loc_bin[m], bound_mask);
 
 #ifdef ATOM_POSITION_AOS
-                    MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
-                    MD_SIMD_FLOAT xj   = simd_real_gather(j3,
+                    MD_SIMD_INT j3   = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
+                    MD_SIMD_FLOAT xj = simd_real_gather(j3,
                         &(atom->x[0]),
                         sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT yj   = simd_real_gather(j3,
+                    MD_SIMD_FLOAT yj = simd_real_gather(j3,
                         &(atom->x[1]),
                         sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT zj   = simd_real_gather(j3,
+                    MD_SIMD_FLOAT zj = simd_real_gather(j3,
                         &(atom->x[2]),
                         sizeof(MD_FLOAT));
 #else
@@ -570,13 +566,13 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
     int max_threads     = 1;
     int actual_nthreads = 1;
 #ifdef _OPENMP
-    max_threads         = omp_get_max_threads();
+    max_threads = omp_get_max_threads();
 #endif
-    int** t_buf         = (int**)malloc(max_threads * sizeof(int*));
-    int* t_cap          = (int*)malloc(max_threads * sizeof(int));
-    int* t_pos          = (int*)malloc(max_threads * sizeof(int));
-    int* t_owner        = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
-    int init_cap        = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
+    int** t_buf  = (int**)malloc(max_threads * sizeof(int*));
+    int* t_cap   = (int*)malloc(max_threads * sizeof(int));
+    int* t_pos   = (int*)malloc(max_threads * sizeof(int));
+    int* t_owner = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
+    int init_cap = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
     for (int t = 0; t < max_threads; t++) {
         t_cap[t] = init_cap;
         t_pos[t] = 0;
@@ -614,7 +610,7 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
             MD_FLOAT ztmp = atom_z(i);
             int ibin      = coord2bin(xtmp, ytmp, ztmp);
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_i    = atom->type[i];
+            int type_i = atom->type[i];
 #endif
             for (int k = 0; k < nstencil; k++) {
                 int jbin     = ibin + stencil[k];
@@ -629,7 +625,7 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                     MD_FLOAT delz = ztmp - atom_z(j);
                     MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-                    int type_j    = atom->type[j];
+                    int type_j = atom->type[j];
                     const MD_FLOAT cutoff =
                         atom->cutneighsq[type_i * atom->ntypes + type_j];
 #else
@@ -694,13 +690,13 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
     int max_threads     = 1;
     int actual_nthreads = 1;
 #ifdef _OPENMP
-    max_threads         = omp_get_max_threads();
+    max_threads = omp_get_max_threads();
 #endif
-    int** t_buf         = (int**)malloc(max_threads * sizeof(int*));
-    int* t_cap          = (int*)malloc(max_threads * sizeof(int));
-    int* t_pos          = (int*)malloc(max_threads * sizeof(int));
-    int* t_owner        = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
-    int init_cap        = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
+    int** t_buf  = (int**)malloc(max_threads * sizeof(int*));
+    int* t_cap   = (int*)malloc(max_threads * sizeof(int));
+    int* t_pos   = (int*)malloc(max_threads * sizeof(int));
+    int* t_owner = (int*)allocate(ALIGNMENT, Nlocal * sizeof(int));
+    int init_cap = MAX(1, Nlocal / max_threads) * MAX(1, neighbor->maxneighs);
     for (int t = 0; t < max_threads; t++) {
         t_cap[t] = init_cap;
         t_pos[t] = 0;
@@ -732,18 +728,18 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
             t_owner[i]               = tid;
             neighbor->neigh_start[i] = t_pos[tid];
 
-            int n                           = 0;
-            MD_FLOAT xtmp                   = atom_x(i);
-            MD_FLOAT ytmp                   = atom_y(i);
-            MD_FLOAT ztmp                   = atom_z(i);
-            int ibin                        = coord2bin(xtmp, ytmp, ztmp);
+            int n         = 0;
+            MD_FLOAT xtmp = atom_x(i);
+            MD_FLOAT ytmp = atom_y(i);
+            MD_FLOAT ztmp = atom_z(i);
+            int ibin      = coord2bin(xtmp, ytmp, ztmp);
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_i                      = atom->type[i];
+            int type_i = atom->type[i];
 #endif
-            MD_SIMD_INT ivec                = simd_i32_broadcast(i);
-            MD_SIMD_FLOAT xtmp_vec          = simd_real_broadcast(xtmp);
-            MD_SIMD_FLOAT ytmp_vec          = simd_real_broadcast(ytmp);
-            MD_SIMD_FLOAT ztmp_vec          = simd_real_broadcast(ztmp);
+            MD_SIMD_INT ivec       = simd_i32_broadcast(i);
+            MD_SIMD_FLOAT xtmp_vec = simd_real_broadcast(xtmp);
+            MD_SIMD_FLOAT ytmp_vec = simd_real_broadcast(ytmp);
+            MD_SIMD_FLOAT ztmp_vec = simd_real_broadcast(ztmp);
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             MD_SIMD_FLOAT cutoff_vec_single = simd_real_broadcast(cutneighsq);
 #else
@@ -766,7 +762,7 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                         MD_FLOAT delz = ztmp - atom_z(j);
                         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
-                        int type_j    = atom->type[j];
+                        int type_j = atom->type[j];
                         const MD_FLOAT cutoff =
                             atom->cutneighsq[type_i * atom->ntypes + type_j];
 #else
@@ -785,17 +781,17 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                     MD_SIMD_MASK bound_mask = simd_mask_i32_cond_lt(
                         simd_i32_add(simd_i32_broadcast(m), simd_i32_seq()),
                         bincount_vec);
-                    MD_SIMD_INT jvec   = simd_i32_mask_load(&loc_bin[m], bound_mask);
+                    MD_SIMD_INT jvec = simd_i32_mask_load(&loc_bin[m], bound_mask);
 
 #ifdef ATOM_POSITION_AOS
-                    MD_SIMD_INT j3     = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
-                    MD_SIMD_FLOAT xj   = simd_real_gather(j3,
+                    MD_SIMD_INT j3   = simd_i32_add(simd_i32_add(jvec, jvec), jvec);
+                    MD_SIMD_FLOAT xj = simd_real_gather(j3,
                         &(atom->x[0]),
                         sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT yj   = simd_real_gather(j3,
+                    MD_SIMD_FLOAT yj = simd_real_gather(j3,
                         &(atom->x[1]),
                         sizeof(MD_FLOAT));
-                    MD_SIMD_FLOAT zj   = simd_real_gather(j3,
+                    MD_SIMD_FLOAT zj = simd_real_gather(j3,
                         &(atom->x[2]),
                         sizeof(MD_FLOAT));
 #else

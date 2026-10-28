@@ -30,7 +30,8 @@
 
 /* End of the part of cl_f a kernel writes: the local i-clusters, the ghost j-clusters and
  * the dummy j-cluster that pads the neighbor lists */
-static inline int threadForcesEnd(const Atom* atom) {
+static inline int threadForcesEnd(const Atom* atom)
+{
     int ncj_all = atom->ncj + atom->Nclusters_ghost;
     if (atom->dummy_cj >= ncj_all) {
         ncj_all = atom->dummy_cj + 1;
@@ -49,7 +50,8 @@ static inline int threadForcesEnd(const Atom* atom) {
     return fi > fj ? fi : fj;
 }
 
-static inline int threadForcesMaxThreads(void) {
+static inline int threadForcesMaxThreads(void)
+{
 #ifdef _OPENMP
     return omp_get_max_threads();
 #else
@@ -58,13 +60,13 @@ static inline int threadForcesMaxThreads(void) {
 }
 
 /* Make room for the force arrays of threads 1..n-1, returns their length */
-static inline int threadForcesReserve(Atom* atom) {
+static inline int threadForcesReserve(Atom* atom)
+{
     const int nf        = threadForcesEnd(atom);
     const size_t needed = (size_t)(threadForcesMaxThreads() - 1) * (size_t)nf;
     if (needed > atom->cl_f_threads_size) {
         free(atom->cl_f_threads);
-        atom->cl_f_threads = (MD_FLOAT*)allocate(ALIGNMENT,
-            needed * sizeof(MD_FLOAT));
+        atom->cl_f_threads = (MD_FLOAT*)allocate(ALIGNMENT, needed * sizeof(MD_FLOAT));
         atom->cl_f_threads_size = needed;
     }
     return nf;
@@ -72,7 +74,8 @@ static inline int threadForcesReserve(Atom* atom) {
 
 /* Force array of the calling thread, zeroed (cl_f for thread 0, which zeroForces()
  * clears before the parallel region) */
-static inline MD_FLOAT* threadForces(Atom* atom, const int nf) {
+static inline MD_FLOAT* threadForces(Atom* atom, const int nf)
+{
 #ifdef _OPENMP
     const int tid = omp_get_thread_num();
     if (tid > 0) {
@@ -86,7 +89,8 @@ static inline MD_FLOAT* threadForces(Atom* atom, const int nf) {
 }
 
 /* Sum the force arrays of the other threads into cl_f */
-static inline void threadForcesReduce(Atom* atom, const int nf) {
+static inline void threadForcesReduce(Atom* atom, const int nf)
+{
 #ifdef _OPENMP
     const int nthreads = omp_get_num_threads();
     if (nthreads > 1) {

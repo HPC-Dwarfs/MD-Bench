@@ -86,7 +86,7 @@ void initParameter(Parameter* param)
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     param->ntypes = 1;
 #else
-    param->ntypes           = 4;
+    param->ntypes = 4;
 #endif
     param->epsilon_per_type     = NULL;
     param->sigma_per_type       = NULL;

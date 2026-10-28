@@ -332,7 +332,7 @@ int main(int argc, const char* argv[])
     const double estim_neighbors_volume = (double)(atom->Nlocal * (nneighs + 2) *
                                                    sizeof(int));
     const double estim_volume           = (double)(atom->Nlocal * 6 * sizeof(MD_FLOAT) +
-                                         estim_neighbors_volume);
+                                                   estim_neighbors_volume);
 
     if (!csv) {
         printf("Kernel: %s, MxN: %dx%d, Vector width: %d\n",
@@ -384,9 +384,9 @@ int main(int argc, const char* argv[])
     double freq_hz                     = param.proc_freq * 1.e9;
     const double atoms_updates_per_sec = (double)(atom->Nlocal) / T_accum *
                                          (double)(param.ntimes);
-    const double cycles_per_atom = T_accum / (double)(atom->Nlocal) /
-                                   (double)(param.ntimes) * freq_hz;
-    const double cycles_per_neigh = cycles_per_atom / (double)(nneighs);
+    const double cycles_per_atom       = T_accum / (double)(atom->Nlocal) /
+                                         (double)(param.ntimes) * freq_hz;
+    const double cycles_per_neigh      = cycles_per_atom / (double)(nneighs);
 
     if (!csv) {
         printf("Total time: %.4f, Mega atom updates/s: %.4f\n",

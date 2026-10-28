@@ -59,7 +59,7 @@ double computeForceLJTableRef(
     }
 
     const int nf = threadForcesReserve(atom);
-    double S = getTimeStamp();
+    double S     = getTimeStamp();
 
 #pragma omp parallel
     {
@@ -118,8 +118,8 @@ double computeForceLJTableRef(
                                                     : (ci_cj0 != cj || cii != cjj);
 #elif CLUSTER_M < CLUSTER_N
                         cond = neighbor->half_neigh
-                                               ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
-                                               : (ci_cj0 != cj ||
+                                   ? (ci_cj0 != cj || cii + CLUSTER_M * (ci & 0x1) < cjj)
+                                   : (ci_cj0 != cj ||
                                          cii + CLUSTER_M * (ci & 0x1) != cjj);
 #else
                         cond = neighbor->half_neigh
@@ -151,7 +151,7 @@ double computeForceLJTableRef(
                                 if (m > nm1) m = nm1;
                                 MD_FLOAT frac      = u - (MD_FLOAT)m;
                                 const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
-                                MD_FLOAT hrep      = cc[0] +
+                                MD_FLOAT hrep = cc[0] +
                                                 frac * (cc[1] +
                                                            frac * (cc[2] + frac * cc[3]));
                                 MD_FLOAT gdisp = cc[4] +

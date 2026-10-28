@@ -339,11 +339,17 @@ MD_ALWAYS_INLINE void prefetchJ(const Atom* atom, const int cj, const MD_FLOAT* 
         __builtin_prefetch(pf + CACHE_LINE_BYTES, PREFETCH_WRITE, PREFETCH_LOCALITY);
     }
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-    __builtin_prefetch(&atom->cl_sqrt6c6[CJ_SCALAR_BASE_INDEX(cj)], PREFETCH_READ, PREFETCH_LOCALITY);
-    __builtin_prefetch(&atom->cl_sqrt12c12[CJ_SCALAR_BASE_INDEX(cj)], PREFETCH_READ, PREFETCH_LOCALITY);
+    __builtin_prefetch(&atom->cl_sqrt6c6[CJ_SCALAR_BASE_INDEX(cj)],
+        PREFETCH_READ,
+        PREFETCH_LOCALITY);
+    __builtin_prefetch(&atom->cl_sqrt12c12[CJ_SCALAR_BASE_INDEX(cj)],
+        PREFETCH_READ,
+        PREFETCH_LOCALITY);
 #endif
 #if COULOMB_RULE != COULOMB_NONE
-    __builtin_prefetch(&atom->cl_q[CJ_SCALAR_BASE_INDEX(cj)], PREFETCH_READ, PREFETCH_LOCALITY);
+    __builtin_prefetch(&atom->cl_q[CJ_SCALAR_BASE_INDEX(cj)],
+        PREFETCH_READ,
+        PREFETCH_LOCALITY);
 #endif
 #else
     (void)atom;
