@@ -494,6 +494,15 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                     jbb_ymax = atom->jclusters[cj].bbmaxy;
 
                     while (m < c) {
+                        // Clusters in a bin are sorted by bbminz, so once one starts
+                        // beyond the cut-off above the i-cluster, all following do too
+                        // (jbb_zmin is not loaded for clusters skipped by the half-list
+                        // order check above, so read it from the cluster)
+                        dh = atom->jclusters[cj].bbminz - ibb_zmax;
+                        if (dh > 0.0 && dh * dh > cutneighsq) {
+                            break;
+                        }
+
 #ifdef CUDA_TARGET
                         if (!neighbor->half_neigh ||
                             ci_cj0 <= (cj < ncj_for_order
