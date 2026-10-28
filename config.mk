@@ -49,9 +49,9 @@ COULOMB_RULE ?= none
 # Coulomb term (the Ewald/RF exclusion correction is still applied). Defaults to true
 # whenever COULOMB_RULE is not none.
 EXCLUSIONS ?= auto
-# Refine the hardware reciprocal estimate of the cluster-pair force kernels with
-# Newton-Raphson steps (true or false). The estimate is only 12-14 bits accurate, so
-# enable this when forces have to be comparable with codes that compute 1/r^2 to
+# Refine the hardware reciprocal estimate of the SIMD force kernels (cluster-pair and
+# verlet-list with USE_SIMD_KERNEL) with Newton-Raphson steps (true or false). The
+# estimate is only 12-14 bits accurate, so enable this when forces have to be comparable with codes that compute 1/r^2 to
 # full precision, at the cost of a few extra instructions per pair.
 ACCURATE_RECIPROCAL ?= false
 # Trace memory addresses for cache simulator (true or false)
