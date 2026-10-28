@@ -54,6 +54,10 @@ EXCLUSIONS ?= auto
 # estimate is only 12-14 bits accurate, so enable this when forces have to be comparable with codes that compute 1/r^2 to
 # full precision, at the cost of a few extra instructions per pair.
 ACCURATE_RECIPROCAL ?= false
+# Software prefetch of the j-cluster data a few list entries ahead in the CPU
+# cluster-pair SIMD kernels (true or false). GROMACS does not prefetch, disable it for a
+# like-for-like comparison.
+KERNEL_PREFETCH ?= true
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
 # Trace indexes and distances for gather-md (true or false)
@@ -261,6 +265,10 @@ ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
     DEFINES += -DACCURATE_RECIPROCAL
 endif
 
+ifeq ($(strip $(KERNEL_PREFETCH)),false)
+    DEFINES += -DKERNEL_NO_PREFETCH
+endif
+
 ifeq ($(strip $(MEM_TRACER)),true)
     DEFINES += -DMEM_TRACER
 endif
@@ -371,6 +379,9 @@ ifneq ($(strip $(COULOMB_RULE)),none)
 endif
 ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
     TAG_SUFFIX := $(TAG_SUFFIX)-accrecip
+endif
+ifeq ($(strip $(OPT_SCHEME))-$(strip $(KERNEL_PREFETCH)),clusterpair-false)
+    TAG_SUFFIX := $(TAG_SUFFIX)-nopf
 endif
 ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
     ifeq ($(strip $(COULOMB_RULE)),none)
