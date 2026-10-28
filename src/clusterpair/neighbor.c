@@ -292,17 +292,13 @@ static unsigned int get_imask_simd_j8(int rdiag, int ci, int cj)
                                              : NBNXN_INTERACTION_MASK_ALL));
 }
 
-#if VECTOR_WIDTH == 2
-#define get_imask_simd_4xn get_imask_simd_j2
-#define get_imask_simd_2xn get_imask_simd_j4
-#elif VECTOR_WIDTH == 4
-#define get_imask_simd_4xn get_imask_simd_j4
-#define get_imask_simd_2xn get_imask_simd_j8
-#elif VECTOR_WIDTH == 8
-#define get_imask_simd_4xn  get_imask_simd_j8
-#define get_imask_simd_2xnn get_imask_simd_j4
-#elif VECTOR_WIDTH == 16
-#define get_imask_simd_2xnn get_imask_simd_j8
+// The mask only depends on the ratio of the cluster sizes
+#if CLUSTER_M == CLUSTER_N
+#define get_imask_simd get_imask_simd_j4
+#elif CLUSTER_M == CLUSTER_N * 2
+#define get_imask_simd get_imask_simd_j2
+#elif CLUSTER_N == CLUSTER_M * 2
+#define get_imask_simd get_imask_simd_j8
 #else
 #error "Invalid cluster configuration"
 #endif
@@ -749,14 +745,7 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                                     // false (0) the self-exclusions are not accounted
                                     // for, which  makes the optimized version to not
                                     // work!
-                                    unsigned int imask;
-#if defined(CLUSTERPAIR_KERNEL_2XNN)
-                                    imask = get_imask_simd_2xnn(1, ci, cj);
-#elif defined(CLUSTERPAIR_KERNEL_2XN)
-                                    imask = get_imask_simd_2xn(1, ci, cj);
-#else
-                                imask = get_imask_simd_4xn(1, ci, cj);
-#endif
+                                    unsigned int imask = get_imask_simd(1, ci, cj);
 
                                     if (n < neighbor->maxneighs) {
                                         if (imask == NBNXN_INTERACTION_MASK_ALL
