@@ -133,10 +133,13 @@ Several SVE2 double-precision half-neighbor horizontal operations (`simd_real_lo
 ### Kernel Variants
 
 For cluster-pair implementation, several kernel variants are available:
-- Reference kernel (scalar)
-- SIMD 4xN kernel (`force_lj_4xn.c`)
-- SIMD 2xNN kernel (`force_lj_2xnn.c`)
-- SIMD 2xN kernel (`force_lj_2xn.c`, for narrow registers such as NEON/SVE; runs on x86 only with AVX2 double precision)
+- Reference kernel (scalar, 4x4 clusters whatever the SIMD width, like the GROMACS
+  plain-C kernel; also the kernel of `SIMD=NONE` builds)
+- SIMD 4xN kernel (`force_lj_4xn.c`, SIMD width 2, 4 or 8 reals)
+- SIMD 2xNN kernel (`force_lj_2xnn.c`, SIMD width 8 or 16 reals)
+- SIMD 2xN kernel (`force_lj_2xn.c`, SIMD width 2 or 4 reals, for narrow registers such as NEON/SVE; runs on x86 only with AVX2 double precision)
+
+`force.h` stops the build with an `#error` for any other width.
 - CUDA/HIP GPU kernel (`gpusimple`)
 - CUDA/HIP super-cluster kernel
 
@@ -193,10 +196,14 @@ Things that matter for the speed and are easy to break:
   15%: GCC's default order of the dependency chains is poor. The functions in
   `pair_rows.h` are `always_inline` and must stay that way;
 - padding atoms of a cluster are at `CLUSTER_PAD_COORD` (finite), `pairForces()` multiplies
-  the zero force of a masked pair with its distance and would produce NaN with `INF`;
+  the zero force of a masked pair with its distance and would produce NaN with `INF`.
+  Padding atoms of two clusters are at distance zero, so the kernels clamp the squared
+  distance to `MIN_DISTANCE_SQ` after the cut-off check, like GROMACS
+  (`c_nbnxmMinDistanceSquared`);
 - j-cluster data of the entry 3 positions ahead in the visiting order (inner masked, then
-  inner unmasked entries; `prefetchAhead()`) is prefetched (`KERNEL_NO_PREFETCH` disables
-  it). GROMACS does not prefetch, disable it for a like-for-like comparison;
+  inner unmasked entries; `prefetchAhead()`) is prefetched (`KERNEL_PREFETCH=false`
+  disables it, the binary gets the suffix `-nopf`). GROMACS does not prefetch, disable it
+  for a like-for-like comparison;
 - without MPI, `initForce()` selects the half-shell method (`param->method`) for half
   lists of every CPU kernel (before `initNeighbor()`, which reads it) and `setup()` sets
   `atom->mybox` to the simulation box: only the ghost clusters in the positive half space
@@ -328,13 +335,13 @@ The application outputs performance metrics including:
 
 ### Automated Tests
 
-Unit tests compile into a single `mdbench-tests` binary (not part of the
-default `make` target) covering parameter parsing, atom/data layout, force
-kernels, neighbor list construction, integration, box geometry, and
-thermodynamics:
+Unit tests compile into one binary per configuration, `<benchmark binary>-tests` (not
+part of the default `make` target), covering parameter parsing, atom/data layout, force
+kernels, neighbor list construction, integration, box geometry, and thermodynamics. In
+single precision `ASSERT_NEAR` uses a relative tolerance of at least 1e-5:
 ```bash
-make mdbench-tests
-./mdbench-tests
+make OPT_SCHEME=clusterpair mdbench-tests
+./MDBench-CP-auto-GCC-X86-AVX512-SP-geometric-tests
 ```
 
 Regression tests are shell scripts under `tests/` (e.g.

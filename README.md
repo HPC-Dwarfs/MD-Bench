@@ -126,7 +126,11 @@ compare against GROMACS.
 - `SORT_ATOMS`: Resort atoms to ensure that atoms that are nearby are also close
 to each other in the data structures
 - `USE_REFERENCE_KERNEL`: Enforce usage of the C reference implementation for
-validation (automatically set for GPU and `SIMD=NONE` builds)
+validation (automatically set for GPU and `SIMD=NONE` builds). It uses 4x4 clusters
+whatever the SIMD width.
+- `KERNEL_PREFETCH` (default: true): Software prefetch of the j-cluster data in the
+CPU cluster-pair SIMD kernels. GROMACS does not prefetch, set it to false (binary
+suffix `-nopf`) for a like-for-like comparison.
 - `USE_SCALAR_KERNEL`: Use scalar version and rely on the compiler for
 auto-vectorization
 - `USE_SIMD_KERNEL`: Use hand-written SIMD intrinsic kernels for force computation
