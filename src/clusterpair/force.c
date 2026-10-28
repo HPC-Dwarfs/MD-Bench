@@ -53,18 +53,6 @@ void initForce(Parameter* param)
             computeForce = computeForceLJCuda;
         }
 #endif
-#if !defined(_MPI) && !defined(CUDA_TARGET) &&                                           \
-    (defined(CLUSTERPAIR_KERNEL_4XN) || defined(CLUSTERPAIR_KERNEL_2XNN) ||              \
-        defined(CLUSTERPAIR_KERNEL_2XN))
-        // Without MPI the periodic images are ghost clusters of the same process. A half
-        // neighbor list then keeps only half of them (half shell) and the kernels write
-        // the reaction forces into the ghost clusters, which reverse() folds back. With
-        // the plain half list every pair across a periodic boundary would be computed
-        // from both sides.
-        if (param->half_neigh && param->method == fullShell) {
-            param->method = halfShell;
-        }
-#endif
         break;
     case FF_LJ_TABLE:
 // #if defined(CLUSTERPAIR_KERNEL_REF)
@@ -101,4 +89,16 @@ void initForce(Parameter* param)
         fprintf(stderr, "Error: Unknown force field!\n");
         exit(EXIT_FAILURE);
     }
+
+#if !defined(_MPI) && !defined(CUDA_TARGET)
+    // Without MPI the periodic images are ghost clusters of the same process. A half
+    // neighbor list then keeps only half of them (half shell) and the kernels write
+    // the reaction forces into the ghost clusters, which reverse() folds back. With
+    // the plain half list every pair across a periodic boundary would be computed
+    // from both sides. This holds for every CPU kernel, so it must be decided here
+    // and before initNeighbor(), which reads param->method.
+    if (param->half_neigh && param->method == fullShell) {
+        param->method = halfShell;
+    }
+#endif
 }
