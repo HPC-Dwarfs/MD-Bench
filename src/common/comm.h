@@ -10,8 +10,8 @@
 #ifdef CLUSTER_PAIR
 #define FORWARD_SIZE  (3 * CLUSTER_N)
 #define REVERSE_SIZE  (3 * CLUSTER_N)
-#define GHOST_SIZE    (4 * CLUSTER_N + 10)
-#define EXCHANGE_SIZE 7
+#define GHOST_SIZE    (5 * CLUSTER_N + 10) // x,y,z,type,id per atom
+#define EXCHANGE_SIZE 8                    // x,y,z,vx,vy,vz,type,id
 #define JFAC          MAX(1, CLUSTER_N / CLUSTER_M)
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
 #define LOCAL (atom->Nclusters_local * SCLUSTER_SIZE)

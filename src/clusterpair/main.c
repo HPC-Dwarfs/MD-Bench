@@ -83,6 +83,8 @@ double setup(Parameter* param,
     } else {
         readAtom(atom, param);
     }
+    // Before the atoms are distributed over the MPI ranks, so the ids are global
+    initAtomIds(atom);
 #if COULOMB_RULE == COULOMB_EWALD
     param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
 #endif
@@ -207,12 +209,6 @@ static void dumpForces(Parameter* param, Atom* atom)
     fprintf(stderr, "--dump-forces is not supported for GPU builds\n");
     return;
 #endif
-    FILE* fp = fopen(param->dump_forces_file, "w");
-    if (fp == NULL) {
-        perror("Could not open the force dump file");
-        return;
-    }
-
     MD_FLOAT* f = (MD_FLOAT*)allocate(ALIGNMENT, atom->Natoms * 3 * sizeof(MD_FLOAT));
     for (int i = 0; i < atom->Natoms * 3; i++) {
         f[i] = 0.0;
@@ -227,6 +223,30 @@ static void dumpForces(Parameter* param, Atom* atom)
             f[id * 3 + 1] = atom->cl_f[ci_vec_base + CL_Y_INDEX_3D(cii)];
             f[id * 3 + 2] = atom->cl_f[ci_vec_base + CL_Z_INDEX_3D(cii)];
         }
+    }
+
+#ifdef _MPI
+    // Every atom is local to exactly one rank, the others contribute zeros
+    int me;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    MPI_Reduce(me == 0 ? MPI_IN_PLACE : f,
+        f,
+        atom->Natoms * 3,
+        sizeof(MD_FLOAT) == 4 ? MPI_FLOAT : MPI_DOUBLE,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    if (me != 0) {
+        free(f);
+        return;
+    }
+#endif
+
+    FILE* fp = fopen(param->dump_forces_file, "w");
+    if (fp == NULL) {
+        perror("Could not open the force dump file");
+        free(f);
+        return;
     }
 
     fprintf(fp, "# natoms %d\n", atom->Natoms);

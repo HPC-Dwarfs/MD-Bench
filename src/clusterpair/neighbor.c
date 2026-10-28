@@ -1857,10 +1857,7 @@ void buildClustersCPU(Atom* atom)
 
     // The atom index is used to identify molecules and to report per-atom results
     if (!atom->ids_valid) {
-        for (int i = 0; i < atom->Nlocal; i++) {
-            atom->id[i] = i;
-        }
-        atom->ids_valid = 1;
+        initAtomIds(atom);
     }
 
     /* bin local atoms */
@@ -1884,14 +1881,6 @@ void buildClustersCPU(Atom* atom)
             int ci_vec_base        = CI_VECTOR3_BASE_INDEX(ci);
             MD_FLOAT* ci_x         = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_v         = &atom->cl_v[ci_vec_base];
-            int* ci_t              = &atom->cl_t[ci_sca_base];
-            MD_FLOAT* ci_sqrt_eps  = &atom->cl_sqrt_epsilon[ci_sca_base];
-            MD_FLOAT* ci_sigma3    = &atom->cl_sigma3[ci_sca_base];
-            MD_FLOAT* ci_q         = &atom->cl_q[ci_sca_base];
-            int* ci_id             = &atom->cl_id[ci_sca_base];
-            int* ci_mol            = &atom->cl_mol[ci_sca_base];
-            MD_FLOAT* ci_sqrt6c6   = &atom->cl_sqrt6c6[ci_sca_base];
-            MD_FLOAT* ci_sqrt12c12 = &atom->cl_sqrt12c12[ci_sca_base];
             MD_FLOAT bbminx = INF, bbmaxx = -INF;
             MD_FLOAT bbminy = INF, bbmaxy = -INF;
             MD_FLOAT bbminz = INF, bbmaxz = -INF;
@@ -1932,33 +1921,16 @@ void buildClustersCPU(Atom* atom)
                         bbmaxz = ztmp;
                     }
 
-                    ci_t[cii]        = atom->type[i];
-                    int t            = atom->type[i];
-                    ci_sqrt_eps[cii] = atom->sqrt_epsilon_per_type[t];
-                    ci_sigma3[cii]   = atom->sigma3_per_type[t];
-                    // sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3,
-                    // sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6
-                    ci_sqrt6c6[cii] = LJ_SQRT_6C6_COEF * ci_sqrt_eps[cii] *
-                                      ci_sigma3[cii];
-                    ci_sqrt12c12[cii] = LJ_SQRT_12C12_COEF * ci_sqrt_eps[cii] *
-                                        ci_sigma3[cii] * ci_sigma3[cii];
-                    ci_q[cii]   = atom->q_per_type ? atom->q_per_type[t] : 0.0;
-                    ci_id[cii]  = atom->id[i];
-                    ci_mol[cii] = atom->molsize > 0 ? atom->id[i] / atom->molsize
-                                                    : atom->id[i];
+                    setClusterAtom(atom,
+                        ci_sca_base + cii,
+                        atom->type[i],
+                        atom->id[i]);
                     atom->iclusters[ci].natoms++;
                 } else {
                     ci_x[CL_X_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
                     ci_x[CL_Y_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
                     ci_x[CL_Z_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
-                    ci_t[cii]                = 0;
-                    ci_sqrt_eps[cii]         = 0.0;
-                    ci_sigma3[cii]           = 0.0;
-                    ci_q[cii]                = 0.0;
-                    ci_sqrt6c6[cii]          = 0.0;
-                    ci_sqrt12c12[cii]        = 0.0;
-                    ci_id[cii]               = -1;
-                    ci_mol[cii]              = -1;
+                    clearClusterAtom(atom, ci_sca_base + cii);
                 }
 
                 ac++;
