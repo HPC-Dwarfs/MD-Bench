@@ -68,6 +68,7 @@ int method;      // method
 int shellMethod; // If shell method exist
 // static int ghostZone(Atom*, int);
 static int halfZoneCluster(Atom*, int);
+static int eightZoneCluster(Atom*, int);
 static int ghostClusterinRange(Atom*, int, int, MD_FLOAT);
 static void neighborGhost(Atom*, Neighbor*);
 
@@ -462,7 +463,9 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                 const int c = bin_nclusters[jbin];
 
                 if (c > 0) {
-                    MD_FLOAT dl, dh, dm, dm0, d_bb_sq;
+                    // d_bb_sq starts at 0: when the first candidate is skipped by the
+                    // half-list order check, the front skip stops there
+                    MD_FLOAT dl, dh, dm, dm0, d_bb_sq = 0.0;
 
                     do {
                         m++;
@@ -1071,7 +1074,9 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                 const int c = bin_nclusters[jbin];
 
                 if (c > 0) {
-                    MD_FLOAT dl, dh, dm, dm0, d_bb_sq;
+                    // d_bb_sq starts at 0: when the first candidate is skipped by the
+                    // half-list order check, the front skip stops there
+                    MD_FLOAT dl, dh, dm, dm0, d_bb_sq = 0.0;
 
                     do {
                         m++;
@@ -2328,7 +2333,8 @@ void binJClusters(Parameter* param, Atom* atom)
             int ix = -1, iy = -1;
             MD_FLOAT xtmp, ytmp;
 
-            if (shellMethod == halfShell && !halfZoneCluster(atom, cj)) {
+            if ((method == halfShell && !halfZoneCluster(atom, cj)) ||
+                (method == eightShell && !eightZoneCluster(atom, cj))) {
                 continue;
             }
 
@@ -2485,6 +2491,14 @@ static int eightZoneCluster(Atom* atom, int cj)
     int zoneMapping[] = { 0, 1, 2, 6, 3, 5, 4, 7 };
     int zone          = 0;
     MD_FLOAT* hi      = atom->mybox.hi;
+    MD_FLOAT* lo      = atom->mybox.lo;
+
+    // The eighth shell only imports ghosts from the positive directions. Without MPI the
+    // periodic ghost clusters surround the box on all sides, the others are not used
+    if (atom->jclusters[cj].bbmaxx < lo[0] || atom->jclusters[cj].bbmaxy < lo[1] ||
+        atom->jclusters[cj].bbmaxz < lo[2]) {
+        return 0;
+    }
 
     if (atom->jclusters[cj].bbminx >= hi[0]) {
         zone += 1;

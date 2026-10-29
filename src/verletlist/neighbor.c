@@ -130,7 +130,7 @@ void setupNeighbor(Parameter* param)
     int mbinxhi, mbinyhi, mbinzhi;
     int nextx, nexty, nextz;
 
-    if (param->input_file != NULL) {
+    if (param->input_file != NULL || param->gmxbenchmark) {
         xprd = param->xprd;
         yprd = param->yprd;
         zprd = param->zprd;
@@ -151,7 +151,7 @@ void setupNeighbor(Parameter* param)
     // cutoff; this also keeps EAM (which sets its own cutneigh) on the full list.
     dcut_enabled = (param->outer_skin > 0.0) && (cutneigh_inner_sq < cutneighsq);
 
-    if (param->input_file != NULL) {
+    if (param->input_file != NULL || param->gmxbenchmark) {
         binsizex = cutneigh * 0.5;
         binsizey = cutneigh * 0.5;
         binsizez = cutneigh * 0.5;
@@ -1090,6 +1090,9 @@ void sortAtom(Atom* atom)
     MD_FLOAT* old_vx = atom->vx;
     MD_FLOAT* old_vy = atom->vy;
     MD_FLOAT* old_vz = atom->vz;
+    // The type and id move with the atom, the rest of its data derives from them
+    int* new_type = (int*)allocate(ALIGNMENT, Nmax * sizeof(int));
+    int* new_id   = (int*)allocate(ALIGNMENT, Nmax * sizeof(int));
 
     for (int mybin = 0; mybin < mbins; mybin++) {
         int start = mybin > 0 ? binpos[mybin - 1] : 0;
@@ -1097,6 +1100,8 @@ void sortAtom(Atom* atom)
         for (int k = 0; k < count; k++) {
             int new_i = start + k;
             int old_i = bins[mybin * atoms_per_bin + k];
+            new_type[new_i] = atom->type[old_i];
+            new_id[new_i]   = atom->id[old_i];
 #ifdef ATOM_POSITION_AOS
             new_x[new_i * 3 + 0]  = old_x[old_i * 3 + 0];
             new_x[new_i * 3 + 1]  = old_x[old_i * 3 + 1];
@@ -1130,6 +1135,12 @@ void sortAtom(Atom* atom)
     atom->vz = new_vz;
 #endif
 
+    for (int i = 0; i < atom->Nlocal; i++) {
+        setAtomTypeId(atom, i, new_type[i], new_id[i]);
+    }
+    free(new_type);
+    free(new_id);
+
     DEBUG_MESSAGE("sortAtom end\n");
 }
 
@@ -1152,7 +1163,14 @@ static int eightZone(Atom* atom, int i)
     // Mapping: 0->0, 1->1, 2->2, 3->6, 4->3, 5->5, 6->4, 7->7
     int zoneMapping[] = { 0, 1, 2, 6, 3, 5, 4, 7 };
     MD_FLOAT* hi      = atom->mybox.hi;
+    MD_FLOAT* lo      = atom->mybox.lo;
     int zone          = 0;
+
+    // The eighth shell only imports ghosts from the positive directions. Without MPI the
+    // periodic ghosts surround the box on all sides, the others are not used
+    if (atom_x(i) < lo[0] || atom_y(i) < lo[1] || atom_z(i) < lo[2]) {
+        return 0;
+    }
 
     if (BigOrEqual(atom_x(i), hi[0])) {
         zone += 1;
