@@ -209,6 +209,12 @@ Things that matter for the speed and are easy to break:
   `atom->mybox` to the simulation box: only the ghost clusters in the positive half space
   are kept, the kernels write the reaction forces into them (`cj < ... || param->method`)
   and `reverse()` folds them back. Every CPU kernel must scatter into ghost clusters.
+  With `-method 2` (eight shell) only the ghosts of the positive octant are used
+  (`eightZoneCluster()` drops ghosts below the box), the rest is done by the ghost-ghost
+  pairs of `computeForceGhostShell()`. The verlet lists do the same without MPI
+  (`setup()` sets `atom->mybox`, `reverseGhostForcesCPU()` in `src/verletlist/pbc.c` folds
+  the ghost forces for `-method 1/2/3`); `-method 3` (half stencil) exists only there. The
+  verlet-list GPU kernels have no shell methods.
 - half lists write j-cluster forces that other threads own: the half-list kernels write
   through `threadForces()` (`thread_forces.h`), thread 0 into `cl_f` and the others into
   per-thread arrays that `threadForcesReduce()` sums into `cl_f` (GROMACS' per-thread
@@ -218,12 +224,15 @@ Things that matter for the speed and are easy to break:
 
 `src/clusterpair/coulomb.h` holds the GROMACS-style SIMD Ewald correction
 (analytical `pmeForceCorrection` rational approximation) and the constants of the reaction
-field, used by `pairForces()` in all three SIMD kernels. The GPU kernels (`gpusimple` and
-`supercluster`) evaluate each pair with `pairForceCuda()` (`src/clusterpair/pair_cuda.h`),
-using the scalar copy of the correction in `src/common/coulomb_scalar.h`; they compare
-`cl_mol` per pair, as their lists have no masked part. `cl_q`/`cl_mol` are only copied to the
-device when `COULOMB_RULE`/`EXCLUSIONS` need them. `initForce()` aborts for the reference
-kernel when `COULOMB_RULE`/`EXCLUSIONS` are enabled.
+field, used by `pairForces()` in all three SIMD kernels. All scalar kernels evaluate a pair
+with `pairForceScalar()` (`src/common/pair_scalar.h`, host and device code, using the
+scalar copy of the correction in `src/common/coulomb_scalar.h`): the cluster-pair reference
+kernel and eight-shell ghost routine, the cluster-pair GPU kernels (`gpusimple`,
+`supercluster`; loads in `src/clusterpair/pair_cuda.h`) and the verlet-list kernels. They
+compare the molecule index per pair, as their lists have no masked part. `cl_q`/`cl_mol`
+are only copied to the GPU when `COULOMB_RULE`/`EXCLUSIONS` need them. `initForce()`
+aborts for the EAM and tabulated kernels (`-f eam`/`lj_table`) when `COULOMB_RULE`/
+`EXCLUSIONS` are enabled.
 Charges are per atom type (`atom->q_per_type`, copied to `cl_q`). Exclusions are
 molecule based: `atom->molsize` consecutive atom ids form a molecule, `cl_mol` holds the
 molecule index per cluster slot and `cl_id` the original atom index (the atom array
@@ -236,13 +245,27 @@ unmasked loop has no exclusion work. Ghost clusters copy `cl_q`/`cl_mol`/`cl_id`
 `ADDGHOST` macro (`pbc.c`). With MPI the atom ids are global (`initAtomIds()` runs before
 the domain decomposition), the ghost exchange sends type and id per atom and
 `unpackGhost()` derives the rest with `setClusterAtom()`, atom migration sends the id and
-`--dump-forces` gathers on rank 0. This path is untested (no MPI on the dev machine).
+`--dump-forces` gathers on rank 0. Ids travel in the `MD_FLOAT` buffers as two 16-bit
+halves (`packAtomId()`/`unpackAtomId()` in `util.h`), so they stay exact in single
+precision. Forces of 1 to 8 ranks match the serial run exactly (checked by hand with
+OpenMPI on the alex cluster: `module load openmpi/5.0.8-gcc11.5.0-cuda12.9`).
 
-`-gmxbench [-size N]` (`readAtomGmx()`, data in `src/common/gmxcoords.h`) builds the
-water box of `gmx nonbonded-benchmark`. That benchmark passes C6/C12 where NBNxM expects
+The verlet-list scheme has the same physics in its plain C kernels (`force_lj.c`, the
+default `USE_SIMD_KERNEL=false`) and its GPU kernels (`forceCuda.cu`): per-atom `q`, `mol`
+and `id` (`src/verletlist/atom.h`), set from the type and the original index by
+`setAtomTypeId()`, follow the atom through `copy()`, `sortAtom()`, the ghosts (`ADDGHOST`,
+`updatePbcCPU()`, `computePbcUpdate()` on the GPU) and the MPI buffers. The explicit SIMD
+kernels (`USE_SIMD_KERNEL=true`) refuse `COULOMB_RULE`/`EXCLUSIONS`. The verlet-list half
+kernel writes through per-thread force arrays like the cluster pairs
+(`src/verletlist/thread_forces.h`).
+
+`-gmxbench [-size N]` (`buildGmxBenchAtoms()` in `src/common/gmxbench.h`, shared by both
+schemes, data in `src/common/gmxcoords.h`) builds the water box of `gmx
+nonbonded-benchmark`. That benchmark passes C6/C12 where NBNxM expects
 6*C6/12*C12, so its effective LJ potential uses C6/6 and C12/12; `readAtomGmx()` does the
-same. `--kernel-bench N` times only the force kernel on the fixed lists and `--dump-forces
-f` writes per-atom forces by original index. `tests/gromacs_nonbonded/` has the exact
+same; its box sets the binning like an input file does (`setupNeighbor()`).
+`--kernel-bench N` times only the force kernel on the fixed lists and `--dump-forces f`
+writes per-atom forces by original index (both schemes, also on the GPU). `tests/gromacs_nonbonded/` has the exact
 float64 reference, the force comparison, the GROMACS patch and the comparison script.
 
 ## Core Data Structures
@@ -316,7 +339,7 @@ Common command line arguments:
 - `-r <radius>`: Cutoff radius (default 2.5)
 - `-s <skin>`: Skin for Verlet buffer (default 0.3)
 - `-p <file>`: Parameter file; `outer_skin` can be set here to enable double-cutoff pruning
-- `-gmxbench [-size N]`, `--kernel-bench N`, `--dump-forces <file>`: the water system of the GROMACS non-bonded benchmark, a kernel-only timing loop and a per-atom force dump (cluster-pair only, see below)
+- `-gmxbench [-size N]`, `--kernel-bench N`, `--dump-forces <file>`: the water system of the GROMACS non-bonded benchmark, a kernel-only timing loop and a per-atom force dump (both schemes, see below)
 
 ### Test Cases
 
@@ -402,7 +425,7 @@ Simulation test data lives in `data/`: `data/argon/input.gro` +
 
 10. **Header Dependencies**: The force.h header contains complex macro definitions that control kernel generation.
 
-11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`. Electrostatics/exclusions exist only for the SIMD CPU and GPU cluster-pair kernels, not for the reference kernel and verlet-list.
+11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`. Electrostatics/exclusions exist for all cluster-pair kernels (SIMD, reference, GPU) and for the verlet-list plain C and GPU kernels, not for the verlet-list explicit SIMD kernels (`USE_SIMD_KERNEL=true`), EAM and the tabulated kernels.
 
 12. **Multiple Kernels Per Change**: Don't assume a single force kernel; a correctness or feature change in cluster-pair may need to be applied across reference, 4xN, 2xNN, 2xN, CUDA, and super-clustering GPU variants to stay consistent.
 

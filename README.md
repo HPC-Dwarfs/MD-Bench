@@ -108,11 +108,11 @@ to `AOS` for CPU builds and `SOA` for GPU builds.
 with broadcast global parameters (fastest, no type lookup). `geometric` uses
 per-type parameters with geometric combination (default). `full` uses a full
 type-pair matrix lookup (not supported in SIMD kernels).
-- `COULOMB_RULE`: Electrostatics for the SIMD and GPU cluster-pair kernels (4xN, 2xNN,
-2xN, gpusimple, supercluster; `none` (default)/`rf`/`ewald`). `rf` is a reaction-field
-with infinite dielectric, `ewald` the real-space Ewald part with the analytical force
-correction used by GROMACS. The reference kernel, the verletlist scheme and MPI runs do
-not support it.
+- `COULOMB_RULE`: Electrostatics (`none` (default)/`rf`/`ewald`) for all cluster-pair
+kernels (SIMD, reference and GPU) and for the verletlist plain C and GPU kernels. `rf` is
+a reaction-field with infinite dielectric, `ewald` the real-space Ewald part with the
+analytical force correction used by GROMACS. The verletlist explicit SIMD kernels
+(`USE_SIMD_KERNEL=true`), EAM and the tabulated kernels do not support it.
 Atom charges are given per atom type.
 - `EXCLUSIONS` (`auto` (default)/`true`/`false`): Molecular exclusions. Atoms of the
 same molecule (consecutive atom ids, `atom->molsize` atoms per molecule) do not
@@ -221,7 +221,7 @@ force arrays that are summed afterwards
 (`src/gromacs/nbnxm/benchmark`) instead of the default testcase: 3000 SPC/E-like
 atoms with charges and intramolecular exclusions, cut-off 1.0 and no skin unless
 `-r`/`-s` are given. `-size <int>` replicates the box (power of two) as `gmx
-nonbonded-benchmark -size` does. Build with `COULOMB_RULE=ewald` (or `rf`),
+nonbonded-benchmark -size` does. Available in both schemes. Build with `COULOMB_RULE=ewald` (or `rf`),
 `CLUSTER_PAIR_KERNEL=4xN` and `ACCURATE_RECIPROCAL=true` to compare with GROMACS.
 - `--kernel-bench <int>`:  after setup only run the force kernel this many times on the
 fixed neighbor lists and report the time per call and the useful pair rate, as the
