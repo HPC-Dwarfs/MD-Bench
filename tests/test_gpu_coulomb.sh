@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Validates the electrostatics (reaction-field, Ewald) and molecular exclusions of the
 # cluster-pair GPU kernels (gpusimple and supercluster) against an exact float64
-# reference, like test_coulomb_exclusions.sh does for the CPU SIMD kernels.
+# reference, like test_coulomb_exclusions.sh does for the CPU kernels, and the same for
+# the verlet-list GPU kernel (VL).
 #
 # The system is the water box of the GROMACS non-bonded benchmark (-gmxbench), the
 # reference is tests/gromacs_nonbonded/nbnxm_reference.py. Full and half neighbor lists
@@ -42,16 +43,22 @@ trap 'rm -rf "${WORK}"' EXIT
 status=0
 for rule in rf ewald none; do
   "${PYTHON}" "${DIR}/nbnxm_reference.py" --size 1 --coulomb "${rule}" --out "${WORK}/ref_${rule}.txt"
-  for kernel in gpusimple supercluster; do
+  for kernel in gpusimple supercluster VL; do
     for dtype in SP DP; do
       if [ "${dtype}" = "DP" ]; then tol="1e-7"; else tol="5e-5"; fi
       excl=auto
       suffix="-${rule}"
       if [ "${rule}" = "none" ]; then excl=true; suffix="-excl"; fi
-      make TOOLCHAIN=NVCC ISA="${ISA}" CUDA_ARCH="${CUDA_ARCH}" DATA_TYPE="${dtype}" \
-           OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" COULOMB_RULE="${rule}" \
-           EXCLUSIONS="${excl}" >/dev/null
-      bin="./MDBench-CP-${kernel}-NVCC-${ISA}-${dtype}-geometric${suffix}"
+      if [ "${kernel}" = "VL" ]; then
+        make TOOLCHAIN=NVCC ISA="${ISA}" CUDA_ARCH="${CUDA_ARCH}" DATA_TYPE="${dtype}" \
+             OPT_SCHEME=verletlist COULOMB_RULE="${rule}" EXCLUSIONS="${excl}" >/dev/null
+        bin="./MDBench-VL-NVCC-${ISA}-${dtype}-geometric${suffix}"
+      else
+        make TOOLCHAIN=NVCC ISA="${ISA}" CUDA_ARCH="${CUDA_ARCH}" DATA_TYPE="${dtype}" \
+             OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" COULOMB_RULE="${rule}" \
+             EXCLUSIONS="${excl}" >/dev/null
+        bin="./MDBench-CP-${kernel}-NVCC-${ISA}-${dtype}-geometric${suffix}"
+      fi
       for half in 0 1; do
         "${bin}" -gmxbench -size 1 -half "${half}" -n 0 \
             --dump-forces "${WORK}/f.txt" >/dev/null

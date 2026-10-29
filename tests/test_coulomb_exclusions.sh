@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Validates the electrostatics (reaction-field, Ewald) and molecular exclusions of the
-# cluster-pair SIMD kernels (4xN, 2xNN, 2xN as far as the SIMD back-end can run them)
-# against an exact float64 reference.
+# cluster-pair SIMD kernels (4xN, 2xNN, 2xN as far as the SIMD back-end can run them), the
+# cluster-pair reference kernel (REF) and the verlet-list kernels (VL) against an exact
+# float64 reference.
 #
 # The system is the water box of the GROMACS non-bonded benchmark (-gmxbench). The
 # reference (tests/gromacs_nonbonded/nbnxm_reference.py) evaluates the same pair
@@ -40,8 +41,9 @@ else
 fi
 
 status=0
-# kernel:data type of every cluster-pair kernel the SIMD back-end can run
-CONFIGS=("4xN:DP" "4xN:SP")
+# kernel:data type of every kernel the SIMD back-end can run (REF: cluster-pair
+# reference kernel, VL: verlet lists)
+CONFIGS=("4xN:DP" "4xN:SP" "REF:DP" "REF:SP" "VL:DP" "VL:SP")
 case "${SIMD}" in
   AVX2) CONFIGS+=("2xNN:SP" "2xN:DP") ;;
   AVX512) CONFIGS+=("2xNN:SP") ;;
@@ -52,15 +54,30 @@ for rule in rf ewald none; do
     IFS=: read -r kernel dtype <<<"${config}"
     if [ "${dtype}" = "DP" ]; then tol="1e-7"; else tol="5e-5"; fi
     excl=auto
-    suffix="-${rule}-accrecip"
-    if [ "${rule}" = "none" ]; then excl=true; suffix="-accrecip-excl"; fi
-    make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}" \
-         OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" COULOMB_RULE="${rule}" \
-         EXCLUSIONS="${excl}" ACCURATE_RECIPROCAL=true >/dev/null
-    bin="./MDBench-CP-${kernel}-${TOOL_TAG}-${dtype}-geometric${suffix}"
+    suffix="-${rule}"
+    if [ "${rule}" = "none" ]; then excl=true; suffix=""; fi
+    case "${kernel}" in
+      VL)
+        make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}" \
+             OPT_SCHEME=verletlist COULOMB_RULE="${rule}" EXCLUSIONS="${excl}" >/dev/null
+        bin="./MDBench-VL-${TOOL_TAG}-${dtype}-geometric${suffix}"
+        ;;
+      REF)
+        make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}" \
+             OPT_SCHEME=clusterpair USE_REFERENCE_KERNEL=true COULOMB_RULE="${rule}" \
+             EXCLUSIONS="${excl}" >/dev/null
+        bin="./MDBench-CP-auto-${TOOL_TAG}-${dtype}-geometric${suffix}"
+        ;;
+      *)
+        make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}" \
+             OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" COULOMB_RULE="${rule}" \
+             EXCLUSIONS="${excl}" ACCURATE_RECIPROCAL=true >/dev/null
+        bin="./MDBench-CP-${kernel}-${TOOL_TAG}-${dtype}-geometric${suffix}-accrecip"
+        ;;
+    esac
+    if [ "${rule}" = "none" ]; then bin="${bin}-excl"; fi
     for half in 0 1; do
-      # Half lists scatter j-forces from several threads, which is not thread safe
-      OMP_NUM_THREADS=1 "${bin}" -gmxbench -size 1 -half "${half}" --kernel-bench 1 \
+      OMP_NUM_THREADS=4 "${bin}" -gmxbench -size 1 -half "${half}" --kernel-bench 1 \
           --dump-forces "${WORK}/f.txt" >/dev/null
       if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/ref_${rule}.txt" "${WORK}/f.txt" \
            --tol "${tol}" --tol-max "$(python3 -c "print(${tol}*10)")" \

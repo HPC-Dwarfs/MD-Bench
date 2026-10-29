@@ -117,9 +117,10 @@ static int test_pack_unpack_exchange_roundtrip(void)
     atom_vy(0)    = 0.2;
     atom_vz(0)    = 0.3;
     atom->type[0] = 7;
-    atom->id[0]   = 42;
+    // Above 2^24, which single precision cannot hold exactly as one value
+    atom->id[0]   = 20000003;
 
-    MD_FLOAT buf[8];
+    MD_FLOAT buf[9];
     int m1 = packExchange(atom, 0, buf);
 
     /* Clear atom and unpack. */
@@ -134,8 +135,8 @@ static int test_pack_unpack_exchange_roundtrip(void)
 
     int m2 = unpackExchange(atom, 0, buf);
 
-    ASSERT_INT_EQ(m1, 8, "packExchange element count");
-    ASSERT_INT_EQ(m2, 8, "unpackExchange element count");
+    ASSERT_INT_EQ(m1, 9, "packExchange element count");
+    ASSERT_INT_EQ(m2, 9, "unpackExchange element count");
 
     ASSERT_NEAR(atom_x(0), 1.0, 1e-12, "x roundtrip");
     ASSERT_NEAR(atom_y(0), 2.0, 1e-12, "y roundtrip");
@@ -144,7 +145,7 @@ static int test_pack_unpack_exchange_roundtrip(void)
     ASSERT_NEAR(atom_vy(0), 0.2, 1e-12, "vy roundtrip");
     ASSERT_NEAR(atom_vz(0), 0.3, 1e-12, "vz roundtrip");
     ASSERT_INT_EQ(atom->type[0], 7, "type roundtrip");
-    ASSERT_INT_EQ(atom->id[0], 42, "id roundtrip");
+    ASSERT_INT_EQ(atom->id[0], 20000003, "id roundtrip");
 
     free(atom->x);
 #ifndef ATOM_POSITION_AOS
