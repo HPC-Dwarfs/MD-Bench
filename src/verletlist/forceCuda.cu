@@ -25,6 +25,8 @@ extern "C" {
 #include <util.h>
 }
 
+#include <pair_scalar.h>
+
 __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -33,7 +35,8 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     DeviceNeighbor neigh,
     int* neigh_neighbors,
     int* neigh_numneigh,
-    int ntypes)
+    int ntypes,
+    CoulombScalar cs)
 {
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -58,6 +61,16 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
 #elif LJ_COMB_RULE == LJ_COMB_FULL
     const int type_i = atom->type[i];
 #endif
+#if COULOMB_RULE != COULOMB_NONE
+    const MD_FLOAT qi = cs.epsfac * atom->q[i];
+#else
+    const MD_FLOAT qi = (MD_FLOAT)0.0;
+#endif
+#if USE_EXCLUSIONS
+    const int mol_i = atom->mol[i];
+#else
+    const int mol_i = 0;
+#endif
 
     for (int k = 0; k < numneighs; k++) {
         // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
@@ -81,9 +94,17 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
 #endif
 
         if (rsq < cutforcesq) {
-            MD_FLOAT sr2   = (MD_FLOAT)1.0 / rsq;
-            MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-            MD_FLOAT force = (MD_FLOAT)48.0 * sr6 * (sr6 - (MD_FLOAT)0.5) * sr2 * epsilon;
+#if COULOMB_RULE != COULOMB_NONE
+            const MD_FLOAT qj = __ldg(&atom->q[j]);
+#else
+            const MD_FLOAT qj = (MD_FLOAT)0.0;
+#endif
+#if USE_EXCLUSIONS
+            const int mol_j = __ldg(&atom->mol[j]);
+#else
+            const int mol_j = 0;
+#endif
+            MD_FLOAT force = pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, cs);
             fix += delx * force;
             fiy += dely * force;
             fiz += delz * force;
@@ -103,7 +124,8 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     DeviceNeighbor neigh,
     int* neigh_neighbors,
     int* neigh_numneigh,
-    int ntypes)
+    int ntypes,
+    CoulombScalar cs)
 {
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -128,6 +150,16 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
 #elif LJ_COMB_RULE == LJ_COMB_FULL
     const int type_i = atom->type[i];
 #endif
+#if COULOMB_RULE != COULOMB_NONE
+    const MD_FLOAT qi = cs.epsfac * atom->q[i];
+#else
+    const MD_FLOAT qi = (MD_FLOAT)0.0;
+#endif
+#if USE_EXCLUSIONS
+    const int mol_i = atom->mol[i];
+#else
+    const int mol_i = 0;
+#endif
 
     for (int k = 0; k < numneighs; k++) {
         // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
@@ -151,9 +183,17 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
 #endif
 
         if (rsq < cutforcesq) {
-            MD_FLOAT sr2   = (MD_FLOAT)1.0 / rsq;
-            MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-            MD_FLOAT force = (MD_FLOAT)48.0 * sr6 * (sr6 - (MD_FLOAT)0.5) * sr2 * epsilon;
+#if COULOMB_RULE != COULOMB_NONE
+            const MD_FLOAT qj = __ldg(&atom->q[j]);
+#else
+            const MD_FLOAT qj = (MD_FLOAT)0.0;
+#endif
+#if USE_EXCLUSIONS
+            const int mol_j = __ldg(&atom->mol[j]);
+#else
+            const int mol_j = 0;
+#endif
+            MD_FLOAT force = pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, cs);
             MD_FLOAT partial_force_x = delx * force;
             MD_FLOAT partial_force_y = dely * force;
             MD_FLOAT partial_force_z = delz * force;
@@ -260,6 +300,7 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     MD_FLOAT cutforcesq             = param->cutforce * param->cutforce;
     MD_FLOAT sigma6                 = param->sigma6;
     MD_FLOAT epsilon                = param->epsilon;
+    const CoulombScalar cs          = coulombScalarInit(param);
 
     /*
     int nDevices;
@@ -298,7 +339,8 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             neighbor->d_neighbor,
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
-            atom->ntypes);
+            atom->ntypes,
+            cs);
     } else {
         computeForceLJCudaFullNeigh<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
@@ -308,7 +350,8 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             neighbor->d_neighbor,
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
-            atom->ntypes);
+            atom->ntypes,
+            cs);
     }
 
     cuda_assert("computeForceLJCuda", cudaPeekAtLastError());

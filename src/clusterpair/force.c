@@ -14,17 +14,19 @@ ComputeForceFunction computeForce;
 
 void initForce(Parameter* param)
 {
+#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
+    // The EAM and tabulated kernels have no electrostatics or exclusions
+    if (param->force_field != FF_LJ) {
+        fprintf(stderr,
+            "Error: electrostatics and exclusions are only supported with -f lj!\n");
+        exit(EXIT_FAILURE);
+    }
+#endif
     switch (param->force_field) {
     case FF_EAM:
         computeForce = computeForceEam;
         break;
     case FF_LJ:
-#if (COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS) && defined(CLUSTERPAIR_KERNEL_REF)
-        fprintf(stderr,
-            "Error: electrostatics and exclusions are only supported by the SIMD "
-            "kernels of the CPU (4xN, 2xNN, 2xN) and the GPU kernels!\n");
-        exit(EXIT_FAILURE);
-#endif
 #if defined(CLUSTERPAIR_KERNEL_REF)
         computeForce = computeForceLJRef;
 #elif defined(CLUSTERPAIR_KERNEL_4XN)

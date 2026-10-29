@@ -7,8 +7,10 @@
 #include <atom.h>
 #include <likwid-marker.h>
 #include <neighbor.h>
+#include <pair_scalar.h>
 #include <parameter.h>
 #include <stats.h>
+#include <thread_forces.h>
 #include <timing.h>
 #include <util.h>
 
@@ -39,9 +41,7 @@ double computeForceLJFullNeigh(
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
-    const MD_FLOAT num1  = 1.0;
-    const MD_FLOAT num48 = 48.0;
-    const MD_FLOAT num05 = 0.5;
+    const CoulombScalar cs = coulombScalarInit(param);
 
     for (int i = 0; i < nlocal; i++) {
         atom_fx(i) = 0.0;
@@ -75,6 +75,8 @@ double computeForceLJFullNeigh(
 #endif
         int* restrict neighbors_ptr      = neighbor->neighbors;
         int* restrict numneigh_inner_ptr = neighbor->numneigh_inner;
+        MD_FLOAT* restrict q_ptr         = atom->q;
+        int* restrict mol_ptr            = atom->mol;
 
         LIKWID_MARKER_START("force");
 
@@ -94,6 +96,8 @@ double computeForceLJFullNeigh(
 #elif LJ_COMB_RULE == LJ_COMB_FULL
             const int type_i = atom->type[i];
 #endif
+            const MD_FLOAT qi = cs.epsfac * q_ptr[i];
+            const int mol_i   = mol_ptr[i];
 
             MD_OMP_SIMD_REDUCTION_F
             for (int k = 0; k < numneighs; k++) {
@@ -115,9 +119,14 @@ double computeForceLJFullNeigh(
 #endif
 
                 if (rsq < cutforcesq) {
-                    MD_FLOAT sr2   = num1 / rsq;
-                    MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-                    MD_FLOAT force = num48 * sr6 * (sr6 - num05) * sr2 * epsilon;
+                    MD_FLOAT force = pairForceScalar(rsq,
+                        sigma6,
+                        epsilon,
+                        qi,
+                        q_ptr[j],
+                        mol_i,
+                        mol_ptr[j],
+                        cs);
                     fix += delx * force;
                     fiy += dely * force;
                     fiz += delz * force;
@@ -168,9 +177,7 @@ double computeForceLJHalfNeigh(
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
-    const MD_FLOAT num1  = 1.0;
-    const MD_FLOAT num48 = 48.0;
-    const MD_FLOAT num05 = 0.5;
+    const CoulombScalar cs = coulombScalarInit(param);
 
     for (int i = 0; i < nlocal + nghost; i++) {
         atom_fx(i) = 0.0;
@@ -178,30 +185,35 @@ double computeForceLJHalfNeigh(
         atom_fz(i) = 0.0;
     }
 
+    const int nf     = threadForcesReserve(atom);
     double timeStart = getTimeStamp();
 
 #pragma omp parallel
     {
+        // Reaction forces go to the force arrays of this thread, see thread_forces.h
+        const ThreadForces tf = threadForces(atom, nf);
         // See the matching comment in computeForceLJFullNeigh
 #ifdef ATOM_POSITION_AOS
         MD_FLOAT* restrict x_ptr  = atom->x;
         MD_FLOAT* y_ptr           = x_ptr;
         MD_FLOAT* z_ptr           = x_ptr;
-        MD_FLOAT* restrict fx_ptr = atom->fx;
+        MD_FLOAT* restrict fx_ptr = tf.fx;
         MD_FLOAT* fy_ptr          = fx_ptr;
         MD_FLOAT* fz_ptr          = fx_ptr;
 #else
         MD_FLOAT* restrict x_ptr  = atom->x;
         MD_FLOAT* restrict y_ptr  = atom->y;
         MD_FLOAT* restrict z_ptr  = atom->z;
-        MD_FLOAT* restrict fx_ptr = atom->fx;
-        MD_FLOAT* restrict fy_ptr = atom->fy;
-        MD_FLOAT* restrict fz_ptr = atom->fz;
+        MD_FLOAT* restrict fx_ptr = tf.fx;
+        MD_FLOAT* restrict fy_ptr = tf.fy;
+        MD_FLOAT* restrict fz_ptr = tf.fz;
 #endif
         MD_FLOAT* restrict sqrt_epsilon_ptr = atom->sqrt_epsilon;
         MD_FLOAT* restrict sigma3_ptr       = atom->sigma3;
         int* restrict neighbors_ptr         = neighbor->neighbors;
         int* restrict numneigh_inner_ptr    = neighbor->numneigh_inner;
+        MD_FLOAT* restrict q_ptr            = atom->q;
+        int* restrict mol_ptr               = atom->mol;
 
         LIKWID_MARKER_START("force");
 
@@ -221,6 +233,8 @@ double computeForceLJHalfNeigh(
 #elif LJ_COMB_RULE == LJ_COMB_FULL
             const int type_i = atom->type[i];
 #endif
+            const MD_FLOAT qi = cs.epsfac * q_ptr[i];
+            const int mol_i   = mol_ptr[i];
 
 // Pragma required to vectorize the inner loop
 #pragma omp simd reduction(+ : fix, fiy, fiz)
@@ -243,9 +257,14 @@ double computeForceLJHalfNeigh(
 #endif
 
                 if (rsq < cutforcesq) {
-                    MD_FLOAT sr2   = num1 / rsq;
-                    MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-                    MD_FLOAT force = num48 * sr6 * (sr6 - num05) * sr2 * epsilon;
+                    MD_FLOAT force = pairForceScalar(rsq,
+                        sigma6,
+                        epsilon,
+                        qi,
+                        q_ptr[j],
+                        mol_i,
+                        mol_ptr[j],
+                        cs);
                     fix += delx * force;
                     fiy += dely * force;
                     fiz += delz * force;
@@ -267,7 +286,13 @@ double computeForceLJHalfNeigh(
             addStat(stats->total_force_iters,
                 (numneighs + VECTOR_WIDTH - 1) / VECTOR_WIDTH);
         }
-        if (param->method == eightShell) computeForceGhostShell(param, atom, neighbor);
+        if (param->method == eightShell) {
+            // The ghost-ghost pairs of the eight-shell method, by one thread into the
+            // atom forces (the implicit barrier of the loop above precedes it)
+#pragma omp single
+            computeForceGhostShell(param, atom, neighbor);
+        }
+        threadForcesReduce(atom, nf);
         LIKWID_MARKER_STOP("force");
     }
 
@@ -287,9 +312,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
-    const MD_FLOAT num1  = 1.0;
-    const MD_FLOAT num48 = 48.0;
-    const MD_FLOAT num05 = 0.5;
+    const CoulombScalar cs = coulombScalarInit(param);
 
     for (int i = 0; i < Nshell; i++) {
         int numneigh  = neighbor->numNeighShell[i];
@@ -307,6 +330,8 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 #elif LJ_COMB_RULE == LJ_COMB_FULL
         const int type_i = atom->type[iatom];
 #endif
+        const MD_FLOAT qi = cs.epsfac * atom->q[iatom];
+        const int mol_i   = atom->mol[iatom];
 
         for (int k = 0; k < numneigh; k++) {
             int jatom     = neighshell(neighbor->neighshell, i, k, neighbor->maxneighs);
@@ -327,9 +352,14 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 #endif
 
             if (rsq < cutforcesq) {
-                MD_FLOAT sr2   = num1 / rsq;
-                MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-                MD_FLOAT force = num48 * sr6 * (sr6 - num05) * sr2 * epsilon;
+                MD_FLOAT force = pairForceScalar(rsq,
+                    sigma6,
+                    epsilon,
+                    qi,
+                    atom->q[jatom],
+                    mol_i,
+                    atom->mol[jatom],
+                    cs);
                 fix += delx * force;
                 fiy += dely * force;
                 fiz += delz * force;

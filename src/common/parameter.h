@@ -90,6 +90,15 @@ typedef struct {
 #define USE_EXCLUSIONS 0
 #endif
 
+// Lower limit of the squared distance in the force kernels, as GROMACS'
+// c_nbnxmMinDistanceSquared: below it 1/r^12 overflows. The padding atoms of two clusters
+// are at the same point, the limit keeps their (zero) force finite.
+#if PRECISION == 1
+#define MIN_DISTANCE_SQ ((MD_FLOAT)3.82e-07)
+#else
+#define MIN_DISTANCE_SQ ((MD_FLOAT)1.0e-36)
+#endif
+
 #if COULOMB_RULE == COULOMB_NONE
 #define COULOMB_RULE_NAME "none"
 #elif COULOMB_RULE == COULOMB_RF

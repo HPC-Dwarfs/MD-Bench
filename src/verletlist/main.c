@@ -7,9 +7,6 @@
 #include <math.h>
 
 #include <parameter.h>
-#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
-#error "Electrostatics and exclusions are only supported by the clusterpair scheme"
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,10 +74,35 @@ double setup(Parameter* param,
     initNeighbor(neighbor, param);
 
     if (param->input_file == NULL) {
-        createAtom(atom, param);
+        if (param->gmxbenchmark) {
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+            fprintf(stderr, "-gmxbench needs LJ_COMB_RULE=geometric or full\n");
+            exit(EXIT_FAILURE);
+#endif
+            readAtomGmx(atom, param);
+        } else {
+            createAtom(atom, param);
+        }
     } else {
         readAtom(atom, param);
     }
+    // Before the atoms are distributed over the MPI ranks, so the ids are global
+    initAtomIds(atom);
+#if COULOMB_RULE == COULOMB_EWALD
+    param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
+#endif
+
+#ifndef _MPI
+    // Single domain: its box is the simulation box, which the shell methods use to
+    // select the ghost atoms of their zones (see ghostZone() in neighbor.c)
+    atom->mybox.xprd  = param->xprd;
+    atom->mybox.yprd  = param->yprd;
+    atom->mybox.zprd  = param->zprd;
+    atom->mybox.lo[0] = atom->mybox.lo[1] = atom->mybox.lo[2] = 0.0;
+    atom->mybox.hi[0]                                         = param->xprd;
+    atom->mybox.hi[1]                                         = param->yprd;
+    atom->mybox.hi[2]                                         = param->zprd;
+#endif
 
     setupNeighbor(param);
 
@@ -227,6 +249,92 @@ void writeInput(Parameter* param, Atom* atom)
     fclose(fpin);
 }
 
+// Writes the forces of the local atoms, ordered by their original index
+static void dumpForces(Parameter* param, Atom* atom)
+{
+#ifdef CUDA_TARGET
+    // The forces are on the device
+    copyForceFromGPU(atom);
+#endif
+    MD_FLOAT* f = (MD_FLOAT*)allocate(ALIGNMENT, atom->Natoms * 3 * sizeof(MD_FLOAT));
+    for (int i = 0; i < atom->Natoms * 3; i++) {
+        f[i] = 0.0;
+    }
+
+    for (int i = 0; i < atom->Nlocal; i++) {
+        const int id  = atom->id[i];
+        f[id * 3 + 0] = atom_fx(i);
+        f[id * 3 + 1] = atom_fy(i);
+        f[id * 3 + 2] = atom_fz(i);
+    }
+
+#ifdef _MPI
+    // Every atom is local to exactly one rank, the others contribute zeros
+    int me;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    MPI_Reduce(me == 0 ? MPI_IN_PLACE : f,
+        f,
+        atom->Natoms * 3,
+        sizeof(MD_FLOAT) == 4 ? MPI_FLOAT : MPI_DOUBLE,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    if (me != 0) {
+        free(f);
+        return;
+    }
+#endif
+
+    FILE* fp = fopen(param->dump_forces_file, "w");
+    if (fp == NULL) {
+        perror("Could not open the force dump file");
+        free(f);
+        return;
+    }
+
+    fprintf(fp, "# natoms %d\n", atom->Natoms);
+    for (int i = 0; i < atom->Natoms; i++) {
+        fprintf(fp, "%d %.9g %.9g %.9g\n", i, f[i * 3 + 0], f[i * 3 + 1], f[i * 3 + 2]);
+    }
+
+    free(f);
+    fclose(fp);
+}
+
+// Runs only the force kernel on the fixed neighbor lists, like the GROMACS non-bonded
+// benchmark does, and reports the time per kernel call
+static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
+    double time = 0.0;
+    for (int it = 0; it < param->kernel_bench; it++) {
+        time += computeForce(param, atom, neighbor, stats);
+    }
+
+    // Same estimate of the number of useful pairs as the GROMACS benchmark uses
+    const double volume   = (double)param->xprd * param->yprd * param->zprd;
+    const double density  = atom->Natoms / volume;
+    const double rc       = param->cutforce;
+    const double pairsCut = density * 4.0 / 3.0 * M_PI * rc * rc * rc;
+    const double useful   = atom->Natoms * 0.5 * (pairsCut + 1.0);
+    const double perIter  = time / param->kernel_bench;
+
+    long long pairs = 0;
+    for (int i = 0; i < atom->Nlocal; i++) {
+        pairs += neighbor->numneigh_inner[i];
+    }
+
+    fprintf(stdout, "\nKERNEL BENCHMARK\n");
+    fprintf(stdout, "  Atoms:                 %d\n", atom->Natoms);
+    fprintf(stdout, "  Cut-off:               %g\n", rc);
+    fprintf(stdout, "  Neighbor lists:        %s\n", neighbor->half_neigh ? "half" : "full");
+    fprintf(stdout, "  Atom pairs in list:    %lld\n", pairs);
+    fprintf(stdout, "  Iterations:            %d\n", param->kernel_bench);
+    fprintf(stdout, "  Time per iteration:    %.3f us\n", perIter * 1e6);
+    fprintf(stdout, "  Useful pairs per iter: %.0f\n", useful);
+    fprintf(stdout, "  Computed pairs/us:     %.3f\n", (double)pairs / (perIter * 1e6));
+    fprintf(stdout, "  Useful pairs/us:       %.3f\n", useful / (perIter * 1e6));
+}
+
 int main(int argc, char** argv)
 {
     double timer[NUMTIMER];
@@ -245,6 +353,7 @@ int main(int argc, char** argv)
         // LIKWID_MARKER_REGISTER("pbc");
     }
 
+    int cutoffGiven = 0, skinGiven = 0;
     initComm(&argc, &argv, &comm);
     initParameter(&param);
     for (int i = 0; i < argc; i++) {
@@ -307,10 +416,32 @@ int main(int argc, char** argv)
         }
         if ((strcmp(argv[i], "-r") == 0) || (strcmp(argv[i], "--radius") == 0)) {
             param.cutforce = atof(argv[++i]);
+            cutoffGiven    = 1;
             continue;
         }
         if ((strcmp(argv[i], "-s") == 0) || (strcmp(argv[i], "--skin") == 0)) {
             param.skin = atof(argv[++i]);
+            skinGiven  = 1;
+            continue;
+        }
+        if ((strcmp(argv[i], "-gmxbench") == 0)) {
+            param.gmxbenchmark = true;
+            if (param.input_file != NULL) {
+                free(param.input_file);
+                param.input_file = NULL;
+            }
+            continue;
+        }
+        if ((strcmp(argv[i], "-size") == 0)) {
+            param.size = atoi(argv[++i]);
+            continue;
+        }
+        if ((strcmp(argv[i], "--kernel-bench") == 0)) {
+            param.kernel_bench = atoi(argv[++i]);
+            continue;
+        }
+        if ((strcmp(argv[i], "--dump-forces") == 0)) {
+            param.dump_forces_file = strdup(argv[++i]);
             continue;
         }
         if ((strcmp(argv[i], "--freq") == 0)) {
@@ -370,6 +501,15 @@ int main(int argc, char** argv)
                     "--displacement-reneigh:     rebuild neighbor list based on atom "
                     "displacement (skin/2 threshold); use --reneigh-every 0 to disable "
                     "fixed-interval rebuild\n");
+                printf("-gmxbench:                  use the water system of the GROMACS "
+                       "non-bonded benchmark (cut-off 1.0 and no skin unless -r/-s are "
+                       "given)\n");
+                printf("-size <int>:                replicate the -gmxbench system this many "
+                       "times (power of two)\n");
+                printf("--kernel-bench <int>:       after setup, only run the force kernel "
+                       "this many times on the fixed neighbor lists and report its time\n");
+                printf("--dump-forces <file>:       write the forces of a single kernel pass "
+                       "(atom id, fx, fy, fz) to a text file\n");
                 printf("-v / --verbose:             print a per-routine timing breakdown "
                        "in the performance report\n");
                 printf(HLINE);
@@ -387,6 +527,17 @@ int main(int argc, char** argv)
             "Half Shell is not supported by load balance!\n");
         endComm(&comm);
         exit(0);
+    }
+
+    if (param.gmxbenchmark) {
+        // The GROMACS benchmark builds its pair list with exactly the interaction
+        // cut-off (no buffer)
+        if (!cutoffGiven) {
+            param.cutforce = 1.0;
+        }
+        if (!skinGiven) {
+            param.skin = 0.0;
+        }
     }
 
     param.cutneigh = param.cutforce + param.skin + param.outer_skin;
@@ -437,6 +588,18 @@ int main(int argc, char** argv)
     timer[THERMO]            = 0.0;
     timer[RENEIGH_CHECK]     = 0.0;
     timer[REVERSE]           = reverse(&comm, &atom, &param);
+
+    if (param.dump_forces_file != NULL) {
+        dumpForces(&param, &atom);
+    }
+
+    if (param.kernel_bench > 0) {
+        runKernelBench(&param, &atom, &neighbor, &stats);
+        endComm(&comm);
+        LIKWID_MARKER_CLOSE;
+        return EXIT_SUCCESS;
+    }
+
     if (param.vtk_file != NULL) {
         // write_atoms_to_vtk_file(param.vtk_file, &atom, 0);
         printvtk(param.vtk_file, &comm, &atom, &param, 0);

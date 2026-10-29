@@ -13,6 +13,7 @@
 #include <allocate.h>
 #include <atom.h>
 #include <device.h>
+#include <gmxbench.h>
 #include <limits.h>
 #include <parameter.h>
 #include <unistd.h>
@@ -79,6 +80,13 @@ void initAtom(Atom* atom)
     atom->sigma3                = NULL;
     atom->sqrt_epsilon_per_type = NULL;
     atom->sigma3_per_type       = NULL;
+    atom->molsize               = 0;
+    atom->id                    = NULL;
+    atom->mol                   = NULL;
+    atom->q                     = NULL;
+    atom->q_per_type            = NULL;
+    atom->f_threads             = NULL;
+    atom->f_threads_size        = 0;
 
     DeviceAtom* d_atom   = &(atom->d_atom);
     d_atom->x            = NULL;
@@ -98,12 +106,39 @@ void initAtom(Atom* atom)
     d_atom->cutneighsq   = NULL;
     d_atom->sqrt_epsilon = NULL;
     d_atom->sigma3       = NULL;
+    d_atom->q            = NULL;
+    d_atom->mol          = NULL;
 
     Box* mybox  = &(atom->mybox);
     mybox->xprd = mybox->yprd = mybox->zprd = 0;
     mybox->lo[0] = mybox->lo[1] = mybox->lo[2] = 0;
     mybox->hi[0] = mybox->hi[1] = mybox->hi[2] = 0;
 }
+
+/* Numbers the local atoms by their current index. Must run before the atoms are
+ * distributed over MPI ranks, so the ids are global. The ids identify molecules
+ * (exclusions) and the atoms of --dump-forces. */
+void initAtomIds(Atom* atom)
+{
+    for (int i = 0; i < atom->Nlocal; i++) {
+        setAtomTypeId(atom, i, atom->type[i], i);
+    }
+}
+
+/* Per-atom data of atom i, which all derives from the type and the original index */
+void setAtomTypeId(Atom* atom, int i, int type, int id)
+{
+    atom->type[i]         = type;
+    atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[type];
+    atom->sigma3[i]       = atom->sigma3_per_type[type];
+    atom->q[i]            = atom->q_per_type ? atom->q_per_type[type] : 0.0;
+    atom->id[i]           = id;
+    atom->mol[i]          = atom->molsize > 0 ? id / atom->molsize : id;
+}
+
+/* The water system of the GROMACS non-bonded benchmark (common/gmxbench.h); the per-atom
+ * data is filled by initAtomIds() */
+int readAtomGmx(Atom* atom, Parameter* param) { return buildGmxBenchAtoms(atom, param); }
 
 void createAtom(Atom* atom, Parameter* param)
 {
@@ -851,6 +886,12 @@ void growAtom(Atom* atom)
         atom->Nmax * sizeof(MD_FLOAT),
         nold * sizeof(MD_FLOAT));
     REALLOC(sigma3, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
+    REALLOC(q, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
+    REALLOC(mol, int, atom->Nmax * sizeof(int), nold * sizeof(int));
+    atom->id = (int*)reallocate(atom->id,
+        ALIGNMENT,
+        atom->Nmax * sizeof(int),
+        nold * sizeof(int));
 
 // NUMA-aware first-touch initialization for newly allocated memory
 #ifdef _OPENMP
@@ -882,6 +923,9 @@ void growAtom(Atom* atom)
             atom->type[i]         = 0;
             atom->sqrt_epsilon[i] = 0.0;
             atom->sigma3[i]       = 0.0;
+            atom->q[i]            = 0.0;
+            atom->mol[i]          = 0;
+            atom->id[i]           = 0;
         }
     }
 #endif
@@ -916,11 +960,17 @@ void freeAtom(Atom* atom)
     FREE_ATOM(type);
     FREE_ATOM(sqrt_epsilon);
     FREE_ATOM(sigma3);
+    FREE_ATOM(q);
+    FREE_ATOM(mol);
+    free(atom->id);
+    atom->id = NULL;
     // Free per-type arrays (not on GPU)
     free(atom->sqrt_epsilon_per_type);
     free(atom->sigma3_per_type);
+    free(atom->q_per_type);
     atom->sqrt_epsilon_per_type = NULL;
     atom->sigma3_per_type       = NULL;
+    atom->q_per_type            = NULL;
 }
 
 void packForward(Atom* atom, int n, int* list, MD_FLOAT* buf, int* pbc)
@@ -953,6 +1003,7 @@ int packGhost(Atom* atom, int i, MD_FLOAT* buf, int* pbc)
     buf[m++] = atom_y(i) + pbc[1] * atom->mybox.yprd;
     buf[m++] = atom_z(i) + pbc[2] * atom->mybox.zprd;
     buf[m++] = (MD_FLOAT)atom->type[i];
+    packAtomId(buf, m, atom->id[i]);
     return m;
 }
 
@@ -967,9 +1018,8 @@ int unpackGhost(Parameter* param, Atom* atom, int i, MD_FLOAT* buf)
     atom_y(i)             = buf[m++];
     atom_z(i)             = buf[m++];
     int t                 = (int)buf[m++];
-    atom->type[i]         = t;
-    atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-    atom->sigma3[i]       = atom->sigma3_per_type[t];
+    int id                = unpackAtomId(buf, m);
+    setAtomTypeId(atom, i, t, id);
     atom->Nghost++;
     return m;
 }
@@ -1004,6 +1054,7 @@ int packExchange(Atom* atom, int i, MD_FLOAT* buf)
     buf[m++] = atom_vy(i);
     buf[m++] = atom_vz(i);
     buf[m++] = (MD_FLOAT)atom->type[i];
+    packAtomId(buf, m, atom->id[i]);
     return m;
 }
 
@@ -1021,9 +1072,8 @@ int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
     atom_vy(i)            = buf[m++];
     atom_vz(i)            = buf[m++];
     int t                 = (int)buf[m++];
-    atom->type[i]         = t;
-    atom->sqrt_epsilon[i] = atom->sqrt_epsilon_per_type[t];
-    atom->sigma3[i]       = atom->sigma3_per_type[t];
+    int id                = unpackAtomId(buf, m);
+    setAtomTypeId(atom, i, t, id);
     return m;
 }
 
@@ -1055,6 +1105,9 @@ void copy(Atom* atom, int i, int j)
     atom->type[i]         = atom->type[j];
     atom->sqrt_epsilon[i] = atom->sqrt_epsilon[j];
     atom->sigma3[i]       = atom->sigma3[j];
+    atom->q[i]            = atom->q[j];
+    atom->id[i]           = atom->id[j];
+    atom->mol[i]          = atom->mol[j];
 }
 
 bool needsReneigh(Atom* atom, Parameter* param)

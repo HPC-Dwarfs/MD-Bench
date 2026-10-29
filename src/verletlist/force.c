@@ -6,12 +6,35 @@
  */
 #include "parameter.h"
 #include <force.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 ComputeForceFunction computeForce;
 
 void initForce(Parameter* param)
 {
+#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
+    // Electrostatics and exclusions are only in the plain C (force_lj.c) and GPU kernels
+    if (param->force_field != FF_LJ) {
+        fprintf(stderr,
+            "Error: electrostatics and exclusions are only supported with -f lj!\n");
+        exit(EXIT_FAILURE);
+    }
+#ifdef __SIMD_KERNEL__
+    fprintf(stderr,
+        "Error: electrostatics and exclusions are not supported by the verlet-list "
+        "SIMD kernels, build with USE_SIMD_KERNEL=false!\n");
+    exit(EXIT_FAILURE);
+#endif
+#endif
+#ifdef CUDA_TARGET
+    // The GPU neighbor lists keep all ghosts and the reaction forces of ghosts are not
+    // folded back on the GPU
+    if (param->method) {
+        fprintf(stderr, "Error: the verlet-list GPU kernels do not support -method!\n");
+        exit(EXIT_FAILURE);
+    }
+#endif
     switch (param->force_field) {
     case FF_EAM:
         computeForce = computeForceEam;

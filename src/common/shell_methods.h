@@ -98,6 +98,13 @@ double reverse(Comm* comm, Atom* atom, Parameter* param)
         reverseGhostForcesCPU(atom, param);
     }
 #endif
+#elif !defined(CUDA_TARGET)
+    /* The verlet-list shell methods only bin part of the ghost atoms, so their
+     * kernels write the reaction forces onto the ghosts, which are folded back here
+     * (with MPI the reverse communication above does it) */
+    if (param->method != fullShell) {
+        reverseGhostForcesCPU(atom, param);
+    }
 #endif
 #endif
     E = getTimeStamp();

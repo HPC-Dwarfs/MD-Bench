@@ -275,7 +275,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
                 if (rsq < cutforcesq) {
                     const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
                                        cii;
-                    MD_FLOAT force   = pairForceCuda(rsq,
+                    MD_FLOAT force   = pairForceScalar(rsq,
                         sigma6,
                         epsilon,
                         cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
@@ -495,7 +495,7 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
                 if (rsq < cutforcesq) {
                     const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
                                        cii;
-                    MD_FLOAT force   = pairForceCuda(rsq,
+                    MD_FLOAT force   = pairForceScalar(rsq,
                         sigma6,
                         epsilon,
                         cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),

@@ -367,7 +367,7 @@ __global__ void computeForceLJCudaFullNeigh(
 
             if (rsq < cutforcesq) {
                 const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
-                MD_FLOAT force   = pairForceCuda(rsq,
+                MD_FLOAT force   = pairForceScalar(rsq,
                     sigma6,
                     epsilon,
                     qi,
@@ -525,7 +525,7 @@ __global__ void computeForceLJCudaHalfNeigh(
 
             if (rsq < cutforcesq) {
                 const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
-                MD_FLOAT force   = pairForceCuda(rsq,
+                MD_FLOAT force   = pairForceScalar(rsq,
                     sigma6,
                     epsilon,
                     qi,

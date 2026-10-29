@@ -12,6 +12,7 @@
 #include <likwid-marker.h>
 #include <math.h>
 #include <neighbor.h>
+#include <pair_scalar.h>
 #include <parameter.h>
 #include <simd.h>
 #include <stats.h>
@@ -54,8 +55,9 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
         }
     }
 
-    const int nf = threadForcesReserve(atom);
-    double S     = getTimeStamp();
+    const CoulombScalar cs = coulombScalarInit(param);
+    const int nf           = threadForcesReserve(atom);
+    double S               = getTimeStamp();
 
 #pragma omp parallel
     {
@@ -100,6 +102,9 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
 #if LJ_COMB_RULE == LJ_COMB_FULL
                     int type_i = ci_t[cii];
 #endif
+                    const int ci_sca  = CI_SCALAR_BASE_INDEX(ci) + cii;
+                    const MD_FLOAT qi = cs.epsfac * atom->cl_q[ci_sca];
+                    const int mol_i   = atom->cl_mol[ci_sca];
                     MD_FLOAT xtmp = ci_x[CL_X_INDEX_3D(cii)];
                     MD_FLOAT ytmp = ci_x[CL_Y_INDEX_3D(cii)];
                     MD_FLOAT ztmp = ci_x[CL_Z_INDEX_3D(cii)];
@@ -142,9 +147,15 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
 #endif
 
                             if (rsq < cutforcesq) {
-                                MD_FLOAT sr2   = 1.0 / MAX(rsq, MIN_DISTANCE_SQ);
-                                MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-                                MD_FLOAT force = 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
+                                const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
+                                MD_FLOAT force   = pairForceScalar(rsq,
+                                    sigma6,
+                                    epsilon,
+                                    qi,
+                                    atom->cl_q[cj_sca],
+                                    mol_i,
+                                    atom->cl_mol[cj_sca],
+                                    cs);
 
                                 if (neighbor->half_neigh || param->method) {
                                     cj_f[CL_X_INDEX_3D(cjj)] -= delx * force;
@@ -200,10 +211,15 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("computeForceLJ begin\n");
 
-    int Nshell          = neighbor->Nshell;
+    int Nshell = neighbor->Nshell;
+#if LJ_COMB_RULE != LJ_COMB_FULL
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
-    MD_FLOAT sigma6     = param->sigma6;
-    MD_FLOAT epsilon    = param->epsilon;
+#endif
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    MD_FLOAT sigma6  = param->sigma6;
+    MD_FLOAT epsilon = param->epsilon;
+#endif
+    const CoulombScalar coul = coulombScalarInit(param);
 
     for (int ci = 0; ci < Nshell; ci++) {
         int numneighs   = neighbor->numNeighShell[ci];
@@ -227,7 +243,22 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
                 MD_FLOAT fiy = 0;
                 MD_FLOAT fiz = 0;
 
+                const int cs_sca  = CJ_SCALAR_BASE_INDEX(cs) + css;
+                const MD_FLOAT qi = coul.epsfac * atom->cl_q[cs_sca];
+                const int mol_i   = atom->cl_mol[cs_sca];
+
                 for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
+                    const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+                    MD_FLOAT sigma6  = atom->cl_sigma3[cs_sca] * atom->cl_sigma3[cj_sca];
+                    MD_FLOAT epsilon = atom->cl_sqrt_epsilon[cs_sca] *
+                                       atom->cl_sqrt_epsilon[cj_sca];
+#elif LJ_COMB_RULE == LJ_COMB_FULL
+                    int type_index = atom->cl_t[cs_sca] * atom->ntypes + atom->cl_t[cj_sca];
+                    MD_FLOAT cutforcesq = atom->cutforcesq[type_index];
+                    MD_FLOAT sigma6     = atom->sigma6[type_index];
+                    MD_FLOAT epsilon    = atom->epsilon[type_index];
+#endif
 
                     MD_FLOAT delx = x - cj_x[CL_X_INDEX_3D(cjj)];
                     MD_FLOAT dely = y - cj_x[CL_Y_INDEX_3D(cjj)];
@@ -235,9 +266,14 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 
                     MD_FLOAT rsq = delx * delx + dely * dely + delz * delz;
                     if (rsq < cutforcesq) {
-                        MD_FLOAT sr2   = 1.0 / MAX(rsq, MIN_DISTANCE_SQ);
-                        MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-                        MD_FLOAT force = 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
+                        MD_FLOAT force = pairForceScalar(rsq,
+                            sigma6,
+                            epsilon,
+                            qi,
+                            atom->cl_q[cj_sca],
+                            mol_i,
+                            atom->cl_mol[cj_sca],
+                            coul);
 
                         cj_f[CL_X_INDEX_3D(cjj)] -= delx * force;
                         cj_f[CL_Y_INDEX_3D(cjj)] -= dely * force;

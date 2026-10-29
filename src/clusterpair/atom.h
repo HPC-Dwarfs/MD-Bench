@@ -42,15 +42,6 @@
 // pair with its distance without producing NaN.
 #define CLUSTER_PAD_COORD ((MD_FLOAT)1.0e10)
 
-// Lower limit of the squared distance in the force kernels, as GROMACS'
-// c_nbnxmMinDistanceSquared: below it 1/r^12 overflows. The padding atoms of two clusters
-// are at the same point, the limit keeps their (zero) force finite.
-#if PRECISION == 1
-#define MIN_DISTANCE_SQ ((MD_FLOAT)3.82e-07)
-#else
-#define MIN_DISTANCE_SQ ((MD_FLOAT)1.0e-36)
-#endif
-
 // LJ force prefactors: 6 C6 = 24 eps sigma^6 and 12 C12 = 48 eps sigma^12, and the
 // coefficients of sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3 and
 // sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6 used by the geometric combination rule.

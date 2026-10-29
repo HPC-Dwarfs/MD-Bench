@@ -81,6 +81,8 @@ __global__ void computePbcUpdate(DeviceAtom a,
     atom->type[nlocal + i]         = atom->type[border_map[i]];
     atom->sqrt_epsilon[nlocal + i] = atom->sqrt_epsilon[border_map[i]];
     atom->sigma3[nlocal + i]       = atom->sigma3[border_map[i]];
+    atom->q[nlocal + i]            = atom->q[border_map[i]];
+    atom->mol[nlocal + i]          = atom->mol[border_map[i]];
 }
 
 /* Enumerate the ghost images of one atom in the exact order of the host

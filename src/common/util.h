@@ -39,6 +39,17 @@
 
 enum { fullShell = 0, halfShell, eightShell, halfStencil };
 
+// Atom ids travel in the MD_FLOAT communication buffers. They are split into two 16-bit
+// halves, which single precision holds exactly (a float is exact for integers only up
+// to 2^24). Ids must not be negative.
+#define ATOM_ID_PACK_SIZE 2
+#define packAtomId(buf, m, id)                                                           \
+    do {                                                                                 \
+        (buf)[(m)++] = (MD_FLOAT)((id) & 0xffff);                                        \
+        (buf)[(m)++] = (MD_FLOAT)((id) >> 16);                                           \
+    } while (0)
+#define unpackAtomId(buf, m) ((m) += 2, (int)(buf)[(m) - 2] | ((int)(buf)[(m) - 1] << 16))
+
 #define BigOrEqual(a, b) (fabs((a) - (b)) < 1e-9 || (a) > (b))
 #define Equal(a, b)      (fabs((a) - (b)) < 1e-6)
 

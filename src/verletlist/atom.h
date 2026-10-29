@@ -5,6 +5,7 @@
  * license that can be found in the LICENSE file.
  */
 #include <stdbool.h>
+#include <stddef.h>
 
 #include <box.h>
 #include <parameter.h>
@@ -28,6 +29,8 @@ typedef struct {
     // Per-atom LJ params for geometric mixing (avoids indirect gathers)
     MD_FLOAT* sqrt_epsilon; // sqrt(epsilon) per atom
     MD_FLOAT* sigma3;       // sigma^3 per atom (sigma6 = sigma3_i * sigma3_j)
+    MD_FLOAT* q;            // charge per atom
+    int* mol;               // molecule index per atom (exclusions)
 } DeviceAtom;
 
 typedef struct {
@@ -49,6 +52,15 @@ typedef struct {
     // Per-type LJ params for filling per-atom arrays
     MD_FLOAT* sqrt_epsilon_per_type;
     MD_FLOAT* sigma3_per_type;
+    // Electrostatics and exclusions
+    int molsize;          // atoms per molecule, consecutive atom ids (0: no exclusions)
+    int* id;              // original atom index, follows the atom (ghosts: of the original)
+    int* mol;             // molecule index per atom (exclusions)
+    MD_FLOAT* q;          // charge per atom
+    MD_FLOAT* q_per_type; // charge per atom type (NULL: all atoms neutral)
+    // Force arrays of threads 1..n-1 for the half-list kernels (see thread_forces.h)
+    MD_FLOAT* f_threads;
+    size_t f_threads_size;
 
     // Device data
     DeviceAtom d_atom;
@@ -57,6 +69,9 @@ typedef struct {
 } Atom;
 
 extern void initAtom(Atom*);
+extern void initAtomIds(Atom*);
+extern void setAtomTypeId(Atom*, int i, int type, int id);
+extern int readAtomGmx(Atom*, Parameter*);
 extern void createAtom(Atom*, Parameter*);
 extern int readAtom(Atom*, Parameter*);
 extern int readAtom_pdb(Atom*, Parameter*);
