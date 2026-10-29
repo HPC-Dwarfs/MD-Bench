@@ -108,10 +108,11 @@ to `AOS` for CPU builds and `SOA` for GPU builds.
 with broadcast global parameters (fastest, no type lookup). `geometric` uses
 per-type parameters with geometric combination (default). `full` uses a full
 type-pair matrix lookup (not supported in SIMD kernels).
-- `COULOMB_RULE`: Electrostatics for the SIMD cluster-pair kernels (4xN, 2xNN, 2xN;
-`none` (default)/`rf`/`ewald`). `rf` is a reaction-field with infinite dielectric, `ewald`
-the real-space Ewald part with the analytical force correction used by GROMACS. The
-reference and GPU kernels, the verletlist scheme and MPI runs do not support it.
+- `COULOMB_RULE`: Electrostatics for the SIMD and GPU cluster-pair kernels (4xN, 2xNN,
+2xN, gpusimple, supercluster; `none` (default)/`rf`/`ewald`). `rf` is a reaction-field
+with infinite dielectric, `ewald` the real-space Ewald part with the analytical force
+correction used by GROMACS. The reference kernel, the verletlist scheme and MPI runs do
+not support it.
 Atom charges are given per atom type.
 - `EXCLUSIONS` (`auto` (default)/`true`/`false`): Molecular exclusions. Atoms of the
 same molecule (consecutive atom ids, `atom->molsize` atoms per molecule) do not

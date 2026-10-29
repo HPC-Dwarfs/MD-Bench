@@ -30,6 +30,8 @@ extern "C" {
 #include <util.h>
 }
 
+#include <pair_cuda.h>
+
 extern "C" {
 extern MD_FLOAT* cuda_cl_x;
 extern MD_FLOAT* cuda_cl_v;
@@ -58,6 +60,8 @@ extern MD_FLOAT* cuda_epsilon;
 extern MD_FLOAT* cuda_cl_sqrt_epsilon;
 extern MD_FLOAT* cuda_cl_sigma3;
 #endif
+extern MD_FLOAT* cuda_cl_q;
+extern int* cuda_cl_mol;
 }
 
 __global__ void cudaInitialIntegrateSup_warp(MD_FLOAT* cuda_cl_x,
@@ -150,6 +154,9 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     unsigned int* cuda_neighs_imask,
     int* cuda_border_map,
     int maxneighs,
+    MD_FLOAT* cuda_cl_q,
+    int* cuda_cl_mol,
+    CoulombScalar cs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -222,7 +229,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
         MD_FLOAT* cj_f = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
 #else
-        fcj_buf = float3 { 0.0f, 0.0f, 0.0f };
+        fcj_buf.x = fcj_buf.y = fcj_buf.z = (MD_FLOAT)0.0;
 #endif
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
@@ -233,6 +240,9 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         int type_j      = cuda_cl_t[cj_sca_base + cjj];
 #endif
+        const int cj_sca  = CJ_SCALAR_BASE_INDEX(cj) + cjj;
+        const MD_FLOAT qj = chargeCuda(cuda_cl_q, cj_sca);
+        const int mol_j   = moleculeCuda(cuda_cl_mol, cj_sca);
 
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
@@ -263,10 +273,16 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #endif
 
                 if (rsq < cutforcesq) {
-                    MD_FLOAT sr2   = (MD_FLOAT)(1.0) / rsq;
-                    MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-                    MD_FLOAT force = (MD_FLOAT)(48.0) * sr6 * (sr6 - (MD_FLOAT)(0.5)) *
-                                     sr2 * epsilon;
+                    const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
+                                       cii;
+                    MD_FLOAT force   = pairForceCuda(rsq,
+                        sigma6,
+                        epsilon,
+                        cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
+                        qj,
+                        moleculeCuda(cuda_cl_mol, ai_sca),
+                        mol_j,
+                        cs);
                     MD_FLOAT fx = delx * force;
                     MD_FLOAT fy = dely * force;
                     MD_FLOAT fz = delz * force;
@@ -367,6 +383,9 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
     int* cuda_neighs,
     unsigned int* cuda_neighs_imask,
     int maxneighs,
+    MD_FLOAT* cuda_cl_q,
+    int* cuda_cl_mol,
+    CoulombScalar cs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -442,6 +461,9 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
         int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
         int type_j      = cuda_cl_t[cj_sca_base + cjj];
 #endif
+        const int cj_sca  = CJ_SCALAR_BASE_INDEX(cj) + cjj;
+        const MD_FLOAT qj = chargeCuda(cuda_cl_q, cj_sca);
+        const int mol_j   = moleculeCuda(cuda_cl_mol, cj_sca);
 
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
@@ -471,9 +493,16 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
 #endif
 
                 if (rsq < cutforcesq) {
-                    MD_FLOAT sr2   = 1.0f / rsq;
-                    MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
-                    MD_FLOAT force = 48.0f * sr6 * (sr6 - 0.5f) * sr2 * epsilon;
+                    const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
+                                       cii;
+                    MD_FLOAT force   = pairForceCuda(rsq,
+                        sigma6,
+                        epsilon,
+                        cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
+                        qj,
+                        moleculeCuda(cuda_cl_mol, ai_sca),
+                        mol_j,
+                        cs);
                     MD_FLOAT fx    = delx * force;
                     MD_FLOAT fy    = dely * force;
                     MD_FLOAT fz    = delz * force;
@@ -615,6 +644,7 @@ extern "C" double computeForceLJCudaSup(
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
+    const CoulombScalar cs = coulombScalarInit(param);
 
     memsetGPU(cuda_cl_f,
         0,
@@ -634,6 +664,9 @@ extern "C" double computeForceLJCudaSup(
             cuda_neighbors_imask,
             cuda_border_map,
             neighbor->maxneighs,
+            cuda_cl_q,
+            cuda_cl_mol,
+            cs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,
@@ -658,6 +691,9 @@ extern "C" double computeForceLJCudaSup(
             cuda_neighbors,
             cuda_neighbors_imask,
             neighbor->maxneighs,
+            cuda_cl_q,
+            cuda_cl_mol,
+            cs,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,

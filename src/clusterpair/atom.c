@@ -1109,7 +1109,7 @@ void growClusters(Atom* atom, int super_clustering)
     atom->cl_sigma3       = (MD_FLOAT*)reallocateHostPinned(atom->cl_sigma3,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
-    // Electrostatics/exclusion data is only consumed by the CPU kernels
+    // Electrostatics/exclusion data, copied to the GPU only when it is compiled in
     atom->cl_q         = (MD_FLOAT*)reallocate(atom->cl_q,
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),

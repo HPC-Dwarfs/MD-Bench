@@ -88,7 +88,7 @@ Key configuration options in `config.mk`:
 - `ATOM_DATA_LAYOUT`: Data layout (AOS for array-of-structures, SOA for structure-of-arrays)
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU and SOA for GPU
 - `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `full` for full pair matrix)
-- `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`), 4xN cluster-pair kernel only; adds `-<rule>` to the binary tag
+- `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`), cluster-pair SIMD (4xN, 2xNN, 2xN) and GPU kernels; adds `-<rule>` to the binary tag
 - `EXCLUSIONS`: Molecular exclusions (`auto`/`true`/`false`), `auto` = on when `COULOMB_RULE` is not `none`
 - `ACCURATE_RECIPROCAL`: Newton-refine the 12-14 bit `simd_real_reciprocal`/rsqrt estimates used by the SIMD kernels, cluster-pair and verlet-list (`USE_SIMD_KERNEL`) (`src/common/simd_math.h`; default off, adds `-accrecip` to the tag)
 - `ENABLE_MPI`: Enable MPI parallelization
@@ -218,9 +218,12 @@ Things that matter for the speed and are easy to break:
 
 `src/clusterpair/coulomb.h` holds the GROMACS-style SIMD Ewald correction
 (analytical `pmeForceCorrection` rational approximation) and the constants of the reaction
-field, used by `pairForces()` in all three SIMD kernels;
-`initForce()` aborts for the reference and GPU kernels when `COULOMB_RULE`/`EXCLUSIONS` are
-enabled.
+field, used by `pairForces()` in all three SIMD kernels. The GPU kernels (`gpusimple` and
+`supercluster`) evaluate each pair with `pairForceCuda()` (`src/clusterpair/pair_cuda.h`),
+using the scalar copy of the correction in `src/common/coulomb_scalar.h`; they compare
+`cl_mol` per pair, as their lists have no masked part. `cl_q`/`cl_mol` are only copied to the
+device when `COULOMB_RULE`/`EXCLUSIONS` need them. `initForce()` aborts for the reference
+kernel when `COULOMB_RULE`/`EXCLUSIONS` are enabled.
 Charges are per atom type (`atom->q_per_type`, copied to `cl_q`). Exclusions are
 molecule based: `atom->molsize` consecutive atom ids form a molecule, `cl_mol` holds the
 molecule index per cluster slot and `cl_id` the original atom index (the atom array
@@ -351,15 +354,20 @@ binary configurations and compare their output. Two of them compare per-atom for
 `test_halfshell.sh` (half vs. full lists for 4xN, 2xNN and 2xN, argon and water) and
 `test_coulomb_exclusions.sh` (reaction-field, Ewald and exclusions of the three SIMD
 kernels against the exact float64 reference in `tests/gromacs_nonbonded/`; both need
-python3 with numpy, the second also scipy, and skip otherwise). Run everything with:
+python3 with numpy, the second also scipy, and skip otherwise). `test_gpu_coulomb.sh` is
+the same check for the GPU kernels; it needs nvcc and a GPU and is not part of `make
+test`. With the NVIDIA HPC SDK module, nvcc and the CUDA runtime are not on the default
+paths: add `$NVHPC_ROOT/Linux_x86_64/<version>/cuda/<cuda version>/bin` to `PATH` and
+its `lib64` to `LD_LIBRARY_PATH`. `SUPERCLUSTER_INVERSE_THREAD_MAPPING` is not part of the
+binary tag, so switching it needs a clean build. Run everything with:
 ```bash
 make test                                  # unit tests + all regression scripts
 make SIMD=NONE test                        # test a specific configuration
 bash tests/sim_argon_regression.sh ./MDBench-VL-GCC-X86-AVX512-DP
 ```
-There is no automated coverage for the cluster-pair GPU/super-clustering path
-(`CLUSTER_PAIR_KERNEL=gpusimple`/`supercluster`) — those require manual
-verification on real GPU hardware.
+Apart from `test_gpu_coulomb.sh`, which has to be run by hand on a GPU node, there is no
+automated coverage for the cluster-pair GPU/super-clustering path
+(`CLUSTER_PAIR_KERNEL=gpusimple`/`supercluster`).
 
 Comparing with a real GROMACS needs a build of `gmx` with
 `tests/gromacs_nonbonded/gromacs-force-dump.patch` and is done by
@@ -394,7 +402,7 @@ Simulation test data lives in `data/`: `data/argon/input.gro` +
 
 10. **Header Dependencies**: The force.h header contains complex macro definitions that control kernel generation.
 
-11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`. Electrostatics/exclusions exist only for the SIMD CPU cluster-pair kernels (4xN, 2xNN, 2xN), not for the reference and GPU kernels and verlet-list.
+11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`. Electrostatics/exclusions exist only for the SIMD CPU and GPU cluster-pair kernels, not for the reference kernel and verlet-list.
 
 12. **Multiple Kernels Per Change**: Don't assume a single force kernel; a correctness or feature change in cluster-pair may need to be applied across reference, 4xN, 2xNN, 2xN, CUDA, and super-clustering GPU variants to stay consistent.
 

@@ -206,14 +206,31 @@ double updateAtoms(Comm* comm, Atom* atom, Parameter* param)
 static void dumpForces(Parameter* param, Atom* atom)
 {
 #ifdef CUDA_TARGET
-    fprintf(stderr, "--dump-forces is not supported for GPU builds\n");
-    return;
+    // The forces, with the ghost reaction forces folded back, are on the device
+    copyForceFromGPU(atom);
 #endif
     MD_FLOAT* f = (MD_FLOAT*)allocate(ALIGNMENT, atom->Natoms * 3 * sizeof(MD_FLOAT));
     for (int i = 0; i < atom->Natoms * 3; i++) {
         f[i] = 0.0;
     }
 
+#ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+    // Nclusters_local counts the super-clusters, each holds SCLUSTER_SIZE clusters
+    for (int sci = 0; sci < atom->Nclusters_local; sci++) {
+        const int sci_vec_base = SCI_VECTOR3_BASE_INDEX(sci);
+        const int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
+        for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
+            const int ci = sci * SCLUSTER_SIZE + sci_ci;
+            for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
+                const int ai  = sci_ci * CLUSTER_M + cii;
+                const int id  = atom->cl_id[sci_sca_base + ai];
+                f[id * 3 + 0] = atom->cl_f[sci_vec_base + CL_X_INDEX_3D(ai)];
+                f[id * 3 + 1] = atom->cl_f[sci_vec_base + CL_Y_INDEX_3D(ai)];
+                f[id * 3 + 2] = atom->cl_f[sci_vec_base + CL_Z_INDEX_3D(ai)];
+            }
+        }
+    }
+#else
     for (int ci = 0; ci < atom->Nclusters_local; ci++) {
         const int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
         const int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
@@ -224,6 +241,7 @@ static void dumpForces(Parameter* param, Atom* atom)
             f[id * 3 + 2] = atom->cl_f[ci_vec_base + CL_Z_INDEX_3D(cii)];
         }
     }
+#endif
 
 #ifdef _MPI
     // Every atom is local to exactly one rank, the others contribute zeros

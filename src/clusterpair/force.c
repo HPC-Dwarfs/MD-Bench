@@ -19,11 +19,10 @@ void initForce(Parameter* param)
         computeForce = computeForceEam;
         break;
     case FF_LJ:
-#if (COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS) &&                                  \
-    (defined(CLUSTERPAIR_KERNEL_REF) || defined(CUDA_TARGET))
+#if (COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS) && defined(CLUSTERPAIR_KERNEL_REF)
         fprintf(stderr,
             "Error: electrostatics and exclusions are only supported by the SIMD "
-            "kernels of the CPU (4xN, 2xNN, 2xN)!\n");
+            "kernels of the CPU (4xN, 2xNN, 2xN) and the GPU kernels!\n");
         exit(EXIT_FAILURE);
 #endif
 #if defined(CLUSTERPAIR_KERNEL_REF)
