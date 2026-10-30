@@ -12,6 +12,10 @@
 #define GPU_J_SLICES 4
 #endif
 
+#ifndef K_SLICE
+#define K_SLICE 3.05
+#endif
+
 extern "C" {
 
 #include <stdio.h>
@@ -601,6 +605,33 @@ __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     }
 }
 
+static int chooseJSlicesHalf(const Atom* atom, const Neighbor* neighbor)
+{
+    static int nsm = 0;
+    if (nsm == 0) {                                   // N_SM
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
+    }
+
+    const int nsc = atom->Nclusters_local;            // N_sc
+    if (nsc <= 0) return 1;
+
+    long n_tot = 0;
+    int  n_max = 1;
+    for (int sci = 0; sci < nsc; sci++) {
+        const int n = neighbor->numneigh[sci];        // total number of neighbors for this cluster
+        n_tot += n;
+        if (n > n_max) n_max = n;
+    }
+
+    int S = (int)lround(K_SLICE * sqrt((double)nsm) * sqrt((double)n_tot) / (double)nsc);
+    if (S < 1)     S = 1;
+    if (S > n_max) S = n_max;
+    if (S > 65535) S = 65535;                         // gridDim.y limit
+    return S;
+}
+
 extern "C" double computeForceLJCudaSup(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
@@ -624,6 +655,7 @@ extern "C" double computeForceLJCudaSup(
     LIKWID_MARKER_START("force");
 
     if (neighbor->half_neigh) {
+        grid_size.y = chooseJSlicesHalf(atom, neighbor); 
         computeForceLJCudaSup_halfwarp<<<grid_size, block_size>>>(cuda_cl_x,
             cuda_cl_f,
             atom->Nclusters_local,
