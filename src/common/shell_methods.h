@@ -98,6 +98,13 @@ double reverse(Comm* comm, Atom* atom, Parameter* param)
         reverseGhostForcesCPU(atom, param);
     }
 #endif
+#elif !defined(CUDA_TARGET)
+    /* The verlet-list shell methods only bin part of the ghost atoms, so their
+     * kernels write the reaction forces onto the ghosts, which are folded back here
+     * (with MPI the reverse communication above does it) */
+    if (param->method != fullShell) {
+        reverseGhostForcesCPU(atom, param);
+    }
 #endif
 #endif
     E = getTimeStamp();
@@ -144,9 +151,9 @@ void addDummyCluster(Parameter* param, Atom* atom)
     MD_FLOAT* cjX = &atom->cl_x[cjVecBase];
 
     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
-        cjX[CL_X_INDEX(cjj)] = INF;
-        cjX[CL_Y_INDEX(cjj)] = INF;
-        cjX[CL_Z_INDEX(cjj)] = INF;
+        cjX[CL_X_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cjX[CL_Y_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cjX[CL_Z_INDEX(cjj)] = CLUSTER_PAD_COORD;
     }
 }
 #endif

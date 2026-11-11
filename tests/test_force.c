@@ -271,8 +271,8 @@ static int test_lj_table_force_at_minimum(void)
     const double cut = 2.5;
     build_test_table(cut, 1000);
 
-    const double r    = pow(2.0, 1.0 / 6.0);
-    double ftab       = table_fpair(r, 1.0, 1.0);
+    const double r = pow(2.0, 1.0 / 6.0);
+    double ftab    = table_fpair(r, 1.0, 1.0);
     ASSERT_NEAR(ftab, 0.0, 1e-3, "tabulated LJ force near zero at minimum");
     return 0;
 }

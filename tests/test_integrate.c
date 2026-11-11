@@ -31,7 +31,7 @@ static int alloc_clusters(Atom* atom, int nci, int atoms_per_cluster)
     int total = nci * cl_vec_size;
 
     atom->Nclusters_local = nci;
-    atom->iclusters        = (Cluster*)calloc(nci, sizeof(Cluster));
+    atom->iclusters       = (Cluster*)calloc(nci, sizeof(Cluster));
     ASSERT_TRUE(atom->iclusters != NULL, "alloc iclusters");
 
     for (int ci = 0; ci < nci; ci++) {
@@ -67,7 +67,7 @@ static int test_integrate_free_particle(void)
     memset(&atom, 0, sizeof(Atom));
     alloc_clusters(&atom, 1, 1);
 
-    int base = CI_VECTOR3_BASE_INDEX(0);
+    int base     = CI_VECTOR3_BASE_INDEX(0);
     MD_FLOAT vx0 = 1.0, vy0 = 2.0, vz0 = 3.0;
     MD_FLOAT x0 = 10.0, y0 = 20.0, z0 = 30.0;
 
@@ -82,24 +82,38 @@ static int test_integrate_free_particle(void)
     initialIntegrateCPU(&param, &atom);
 
     /* Velocity unchanged (dtforce * 0 = 0) */
-    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)], vx0, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)],
+        vx0,
+        1e-12,
         "free particle: vx unchanged");
-    ASSERT_NEAR(atom.cl_v[base + CL_Y_INDEX_3D(0)], vy0, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_Y_INDEX_3D(0)],
+        vy0,
+        1e-12,
         "free particle: vy unchanged");
-    ASSERT_NEAR(atom.cl_v[base + CL_Z_INDEX_3D(0)], vz0, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_Z_INDEX_3D(0)],
+        vz0,
+        1e-12,
         "free particle: vz unchanged");
 
     /* Position: x_new = x0 + dt * v */
-    ASSERT_NEAR(atom.cl_x[base + CL_X_INDEX_3D(0)], x0 + param.dt * vx0, 1e-12,
+    ASSERT_NEAR(atom.cl_x[base + CL_X_INDEX_3D(0)],
+        x0 + param.dt * vx0,
+        1e-12,
         "free particle: x advanced");
-    ASSERT_NEAR(atom.cl_x[base + CL_Y_INDEX_3D(0)], y0 + param.dt * vy0, 1e-12,
+    ASSERT_NEAR(atom.cl_x[base + CL_Y_INDEX_3D(0)],
+        y0 + param.dt * vy0,
+        1e-12,
         "free particle: y advanced");
-    ASSERT_NEAR(atom.cl_x[base + CL_Z_INDEX_3D(0)], z0 + param.dt * vz0, 1e-12,
+    ASSERT_NEAR(atom.cl_x[base + CL_Z_INDEX_3D(0)],
+        z0 + param.dt * vz0,
+        1e-12,
         "free particle: z advanced");
 
     /* finalIntegrate with F=0 should also leave velocity unchanged */
     finalIntegrateCPU(&param, &atom);
-    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)], vx0, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)],
+        vx0,
+        1e-12,
         "free particle final: vx unchanged");
 
     free_clusters(&atom);
@@ -122,7 +136,7 @@ static int test_integrate_constant_force(void)
     memset(&atom, 0, sizeof(Atom));
     alloc_clusters(&atom, 1, 1);
 
-    int base   = CI_VECTOR3_BASE_INDEX(0);
+    int base    = CI_VECTOR3_BASE_INDEX(0);
     MD_FLOAT x0 = 1.0, y0 = 2.0, z0 = 3.0;
     MD_FLOAT vx0 = 0.5, vy0 = -0.3, vz0 = 0.7;
     MD_FLOAT fx = 2.0, fy = -1.0, fz = 0.5;
@@ -144,11 +158,17 @@ static int test_integrate_constant_force(void)
     MD_FLOAT vy_half = vy0 + param.dtforce * fy;
     MD_FLOAT vz_half = vz0 + param.dtforce * fz;
 
-    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)], vx_half, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)],
+        vx_half,
+        1e-12,
         "const force: vx after initial");
-    ASSERT_NEAR(atom.cl_x[base + CL_X_INDEX_3D(0)], x0 + param.dt * vx_half, 1e-12,
+    ASSERT_NEAR(atom.cl_x[base + CL_X_INDEX_3D(0)],
+        x0 + param.dt * vx_half,
+        1e-12,
         "const force: x after initial");
-    ASSERT_NEAR(atom.cl_x[base + CL_Y_INDEX_3D(0)], y0 + param.dt * vy_half, 1e-12,
+    ASSERT_NEAR(atom.cl_x[base + CL_Y_INDEX_3D(0)],
+        y0 + param.dt * vy_half,
+        1e-12,
         "const force: y after initial");
 
     /* finalIntegrate: v += dtforce*f  (force unchanged for constant F) */
@@ -158,31 +178,37 @@ static int test_integrate_constant_force(void)
     MD_FLOAT vy_full = vy_half + param.dtforce * fy;
     MD_FLOAT vz_full = vz_half + param.dtforce * fz;
 
-    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)], vx_full, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)],
+        vx_full,
+        1e-12,
         "const force: vx after full step");
-    ASSERT_NEAR(atom.cl_v[base + CL_Y_INDEX_3D(0)], vy_full, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_Y_INDEX_3D(0)],
+        vy_full,
+        1e-12,
         "const force: vy after full step");
-    ASSERT_NEAR(atom.cl_v[base + CL_Z_INDEX_3D(0)], vz_full, 1e-12,
+    ASSERT_NEAR(atom.cl_v[base + CL_Z_INDEX_3D(0)],
+        vz_full,
+        1e-12,
         "const force: vz after full step");
 
     /* v(dt) should equal v0 + dt*a */
-    ASSERT_NEAR(vx_full, vx0 + param.dt * fx, 1e-12,
-        "const force: v = v0 + dt*a (x)");
-    ASSERT_NEAR(vy_full, vy0 + param.dt * fy, 1e-12,
-        "const force: v = v0 + dt*a (y)");
-    ASSERT_NEAR(vz_full, vz0 + param.dt * fz, 1e-12,
-        "const force: v = v0 + dt*a (z)");
+    ASSERT_NEAR(vx_full, vx0 + param.dt * fx, 1e-12, "const force: v = v0 + dt*a (x)");
+    ASSERT_NEAR(vy_full, vy0 + param.dt * fy, 1e-12, "const force: v = v0 + dt*a (y)");
+    ASSERT_NEAR(vz_full, vz0 + param.dt * fz, 1e-12, "const force: v = v0 + dt*a (z)");
 
     /* x(dt) should equal x0 + dt*v0 + 0.5*dt^2*a */
     double dt2a_half = 0.5 * param.dt * param.dt;
     ASSERT_NEAR(atom.cl_x[base + CL_X_INDEX_3D(0)],
-        x0 + param.dt * vx0 + dt2a_half * fx, 1e-12,
+        x0 + param.dt * vx0 + dt2a_half * fx,
+        1e-12,
         "const force: x = x0 + dt*v0 + 0.5*dt^2*a (x)");
     ASSERT_NEAR(atom.cl_x[base + CL_Y_INDEX_3D(0)],
-        y0 + param.dt * vy0 + dt2a_half * fy, 1e-12,
+        y0 + param.dt * vy0 + dt2a_half * fy,
+        1e-12,
         "const force: x = x0 + dt*v0 + 0.5*dt^2*a (y)");
     ASSERT_NEAR(atom.cl_x[base + CL_Z_INDEX_3D(0)],
-        z0 + param.dt * vz0 + dt2a_half * fz, 1e-12,
+        z0 + param.dt * vz0 + dt2a_half * fz,
+        1e-12,
         "const force: x = x0 + dt*v0 + 0.5*dt^2*a (z)");
 
     free_clusters(&atom);
@@ -205,7 +231,7 @@ static int test_integrate_time_reversible(void)
     memset(&atom, 0, sizeof(Atom));
     alloc_clusters(&atom, 1, 1);
 
-    int base   = CI_VECTOR3_BASE_INDEX(0);
+    int base    = CI_VECTOR3_BASE_INDEX(0);
     MD_FLOAT x0 = 5.0, y0 = 6.0, z0 = 7.0;
     MD_FLOAT vx0 = 1.2, vy0 = -0.8, vz0 = 0.4;
     MD_FLOAT fx = 3.0, fy = -2.0, fz = 1.5;
@@ -234,19 +260,22 @@ static int test_integrate_time_reversible(void)
     finalIntegrateCPU(&param, &atom);
 
     /* Position should return to x0 */
-    ASSERT_NEAR(atom.cl_x[base + CL_X_INDEX_3D(0)], x0, 1e-10,
-        "reversible: x returned");
-    ASSERT_NEAR(atom.cl_x[base + CL_Y_INDEX_3D(0)], y0, 1e-10,
-        "reversible: y returned");
-    ASSERT_NEAR(atom.cl_x[base + CL_Z_INDEX_3D(0)], z0, 1e-10,
-        "reversible: z returned");
+    ASSERT_NEAR(atom.cl_x[base + CL_X_INDEX_3D(0)], x0, 1e-10, "reversible: x returned");
+    ASSERT_NEAR(atom.cl_x[base + CL_Y_INDEX_3D(0)], y0, 1e-10, "reversible: y returned");
+    ASSERT_NEAR(atom.cl_x[base + CL_Z_INDEX_3D(0)], z0, 1e-10, "reversible: z returned");
 
     /* Velocity should be -v0 */
-    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)], -vx0, 1e-10,
+    ASSERT_NEAR(atom.cl_v[base + CL_X_INDEX_3D(0)],
+        -vx0,
+        1e-10,
         "reversible: vx negated");
-    ASSERT_NEAR(atom.cl_v[base + CL_Y_INDEX_3D(0)], -vy0, 1e-10,
+    ASSERT_NEAR(atom.cl_v[base + CL_Y_INDEX_3D(0)],
+        -vy0,
+        1e-10,
         "reversible: vy negated");
-    ASSERT_NEAR(atom.cl_v[base + CL_Z_INDEX_3D(0)], -vz0, 1e-10,
+    ASSERT_NEAR(atom.cl_v[base + CL_Z_INDEX_3D(0)],
+        -vz0,
+        1e-10,
         "reversible: vz negated");
 
     free_clusters(&atom);

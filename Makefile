@@ -28,6 +28,7 @@ SASS       = $(CU_OBJS:.o=.sass)
 FORCE_SASS = $(foreach o,$(CU_OBJS),$(if $(findstring force_lj_cuda,$o),$(o:.o=-force.sass)))
 endif
 SOURCES   =  $(wildcard $(SRC_DIR)/*.h $(SRC_DIR)/*.c $(COMMON_DIR)/*.c $(COMMON_DIR)/*.h)
+FORMAT_SOURCES = $(shell find $(SRC_ROOT) tests -name '*.c' -o -name '*.h')
 CPPFLAGS := $(CPPFLAGS) $(DEFINES) $(OPTIONS) $(INCLUDES)
 c := ,
 clist = $(subst $(eval) ,$c,$(strip $1))
@@ -42,6 +43,10 @@ ifneq ($(VARIANT),)
 	.DEFAULT_GOAL := ${TARGET}-$(VARIANT)
     DEFINES += -DVARIANT=$(VARIANT)
 endif
+
+# Flags only for the SIMD force kernels, empty unless the toolchain defines them
+KERNEL_OBJ = $(addprefix $(BUILD_DIR)/,force_lj_4xn.o force_lj_2xnn.o force_lj_2xn.o)
+$(KERNEL_OBJ): CFLAGS += $(KERNEL_CFLAGS)
 
 ${TARGET}: $(BUILD_DIR) .clangd $(OBJ) $(SRC_DIR)/main.c
 	@echo "===>  LINKING  $(TARGET)"
@@ -82,7 +87,7 @@ $(BUILD_DIR)/%.o:  %.s
 	$(info ===>  ASSEMBLE  $@)
 	$(Q)$(AS) $< -o $@
 
-.PHONY: clean distclean cleanall tags format info asm sass test
+.PHONY: clean distclean cleanall tags format info asm sass test mdbench-tests
 
 clean:
 	$(info ===>  CLEAN)
@@ -96,7 +101,7 @@ cleanall:
 
 distclean: clean
 	$(info ===>  DIST CLEAN)
-	@rm -f $(TARGET)
+	@rm -f $(TARGET) $(TEST_BIN)
 	@rm -f tags .clangd
 
 info:
@@ -145,13 +150,16 @@ tags:
 	$(Q)ctags -R
 
 format:
-	@for src in $(SOURCES) ; do \
+	@for src in $(FORMAT_SOURCES) ; do \
 		echo "Formatting $$src" ; \
 		clang-format -i $$src ; \
 	done
 	@echo "Done"
 
-TEST_BIN := mdbench-tests
+# Unit tests, tagged like the benchmark binary so every configuration gets its own
+TEST_BIN = $(TARGET)-tests
+
+mdbench-tests: $(TEST_BIN)
 
 test: $(TEST_BIN) $(TARGET)
 	@echo "===>  RUNNING  $(TEST_BIN)"
@@ -184,11 +192,18 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_displacement_reneigh.sh
 	@echo "===>  RUNNING  test_main_stub"
 	@bash tests/test_main_stub.sh
+	@echo "===>  RUNNING  test_coulomb_exclusions"
+	@bash tests/test_coulomb_exclusions.sh
+	@echo "===>  RUNNING  test_halfshell"
+	@bash tests/test_halfshell.sh
 
 TEST_COMMON_SRCS := $(COMMON_DIR)/parameter.c $(COMMON_DIR)/box.c $(COMMON_DIR)/thermo.c $(COMMON_DIR)/allocate.c $(COMMON_DIR)/util.c $(COMMON_DIR)/ljtable.c $(COMMON_DIR)/device.c
 TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neighbor.c $(SRC_ROOT)/clusterpair/pbc.c $(SRC_ROOT)/clusterpair/integrate.c
 
-$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS)
+TEST_HEADERS     := $(wildcard $(SRC_ROOT)/clusterpair/*.h $(COMMON_DIR)/*.h $(COMMON_DIR)/simd/*.h)
+
+$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS) $(TEST_HEADERS)
+	@mkdir -p $(dir $(TEST_BIN))
 	@echo "===>  BUILDING $(TEST_BIN)"
 	$(Q)$(CC) -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) -DCLUSTER_PAIR -DCLUSTERPAIR_KERNEL_AUTO \
 		tests/main.c tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c \

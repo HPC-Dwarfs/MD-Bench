@@ -95,9 +95,9 @@ static int test_neighbor_vs_bruteforce_bounding_boxes(void)
 
     const MD_FLOAT cutneigh   = param.cutneigh;
     const MD_FLOAT cutneighsq = cutneigh * cutneigh;
-    const int nci       = atom.Nclusters_local;
-    const int ncj_total = atom.ncj + atom.Nclusters_ghost;
-    const int nbM       = nci;
+    const int nci             = atom.Nclusters_local;
+    const int ncj_total       = atom.ncj + atom.Nclusters_ghost;
+    const int nbM             = nci;
 
     /* If no clusters or neighbor arrays are present (e.g., degenerate setup),
        skip this check without failing the whole test suite. */
@@ -174,7 +174,7 @@ static int test_store_and_check_displacement(void)
 
     // Move one atom by less than skin/2 — threshold = (skin/2)^2.
     // skin defaults to 0.3, so threshold = 0.0225; move by 0.14 → sq=0.0196, no trigger.
-    int base                        = CI_VECTOR3_BASE_INDEX(0);
+    int base = CI_VECTOR3_BASE_INDEX(0);
     atom.cl_x[base + CL_X_INDEX_3D(0)] += (MD_FLOAT)0.14;
     ASSERT_TRUE(!needsReneigh(&atom, &param),
         "needsReneigh false when displacement < skin/2");

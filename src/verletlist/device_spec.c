@@ -55,6 +55,9 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->cutforcesq,
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     memcpyToGPU(d_atom->type, atom->type, sizeof(int) * atom->Nmax);
+    // Charges and molecules (electrostatics, exclusions); growAtom() allocated them
+    memcpyToGPU(d_atom->q, atom->q, sizeof(MD_FLOAT) * atom->Nmax);
+    memcpyToGPU(d_atom->mol, atom->mol, sizeof(int) * atom->Nmax);
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     memcpyToGPU(d_atom->sqrt_epsilon, atom->sqrt_epsilon, sizeof(MD_FLOAT) * atom->Nmax);
     memcpyToGPU(d_atom->sigma3, atom->sigma3, sizeof(MD_FLOAT) * atom->Nmax);

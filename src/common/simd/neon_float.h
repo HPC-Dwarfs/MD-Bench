@@ -18,6 +18,11 @@ static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return vsubq_f32(a, b);
 }
+
+static inline MD_SIMD_FLOAT simd_real_max(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
+{
+    return vmaxq_f32(a, b);
+}
 static inline MD_SIMD_FLOAT simd_real_load(const float* ptr) { return vld1q_f32(ptr); }
 static inline void simd_real_store(MD_FLOAT* ptr, MD_SIMD_FLOAT vec)
 {
@@ -100,17 +105,17 @@ static inline float simd_real_incr_reduced_sum(
 }
 
 static inline float simd_real_incr_reduced_sum_j2(
-     float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
- {
-    float32x4_t sum0 = vpaddq_f32(v0, v1); 
-    float32x2_t sum = vpadd_f32(vget_low_f32(sum0), vget_high_f32(sum0)); 
- 
-     float32x2_t mem = vld1_f32(m); 
-     sum             = vadd_f32(sum, mem); 
-     vst1_f32(m, sum);  
-     
-     return vget_lane_f32(vpadd_f32(sum, sum), 0); 
- }
+    float* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    float32x4_t sum0 = vpaddq_f32(v0, v1);
+    float32x2_t sum  = vpadd_f32(vget_low_f32(sum0), vget_high_f32(sum0));
+
+    float32x2_t mem = vld1_f32(m);
+    sum             = vadd_f32(sum, mem);
+    vst1_f32(m, sum);
+
+    return vget_lane_f32(vpadd_f32(sum, sum), 0);
+}
 
 static inline MD_SIMD_FLOAT simd_real_masked_add(
     MD_SIMD_FLOAT a, MD_SIMD_FLOAT b, MD_SIMD_MASK m)

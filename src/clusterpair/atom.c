@@ -14,8 +14,13 @@
 #include <atom.h>
 #include <device.h>
 #include <force.h>
+#include <gmxbench.h>
 #include <parameter.h>
 #include <util.h>
+
+// Random numbers skipped between two velocity components
+#define RANDOM_SKIP 5
+
 
 inline int get_ncj_from_nci(int nci)
 {
@@ -90,6 +95,20 @@ void initAtom(Atom* atom)
     atom->cluster_bin           = NULL;
     atom->siclusters            = NULL;
 
+    atom->molsize           = 0;
+    atom->ids_valid         = 0;
+    atom->id                = NULL;
+    atom->q_per_type        = NULL;
+    atom->cl_q              = NULL;
+    atom->cl_id             = NULL;
+    atom->cl_mol            = NULL;
+    atom->cl_sqrt6c6        = NULL;
+    atom->cl_sqrt12c12      = NULL;
+    atom->ljc6x6            = NULL;
+    atom->ljc12x12          = NULL;
+    atom->cl_f_threads      = NULL;
+    atom->cl_f_threads_size = 0;
+
     initMasks(atom);
     // MPI New features
     Box* mybox      = &(atom->mybox);
@@ -106,6 +125,48 @@ void initAtom(Atom* atom)
     mybox->hi[0]    = 0;
     mybox->hi[1]    = 0;
     mybox->hi[2]    = 0;
+}
+
+/* Global atom ids: the index in the full system, assigned before the atoms are
+ * distributed over MPI ranks (every rank creates or reads the full system and discards
+ * what lies outside its domain). They identify molecules and the atoms of
+ * --dump-forces. */
+void initAtomIds(Atom* atom)
+{
+    for (int i = 0; i < atom->Nlocal; i++) {
+        atom->id[i] = i;
+    }
+    atom->ids_valid = 1;
+}
+
+/* Per-atom data of the cluster slot sca, which all derives from the type and global id */
+void setClusterAtom(Atom* atom, const int sca, const int type, const int id)
+{
+    atom->cl_t[sca]            = type;
+    atom->cl_sqrt_epsilon[sca] = atom->sqrt_epsilon_per_type[type];
+    atom->cl_sigma3[sca]       = atom->sigma3_per_type[type];
+    // sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3,
+    // sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6
+    atom->cl_sqrt6c6[sca]   = LJ_SQRT_6C6_COEF * atom->cl_sqrt_epsilon[sca] *
+                              atom->cl_sigma3[sca];
+    atom->cl_sqrt12c12[sca] = LJ_SQRT_12C12_COEF * atom->cl_sqrt_epsilon[sca] *
+                              atom->cl_sigma3[sca] * atom->cl_sigma3[sca];
+    atom->cl_q[sca]         = atom->q_per_type ? atom->q_per_type[type] : 0.0;
+    atom->cl_id[sca]        = id;
+    atom->cl_mol[sca]       = atom->molsize > 0 ? id / atom->molsize : id;
+}
+
+/* A padding slot: no interactions, no exclusions */
+void clearClusterAtom(Atom* atom, const int sca)
+{
+    atom->cl_t[sca]            = 0;
+    atom->cl_sqrt_epsilon[sca] = 0.0;
+    atom->cl_sigma3[sca]       = 0.0;
+    atom->cl_sqrt6c6[sca]      = 0.0;
+    atom->cl_sqrt12c12[sca]    = 0.0;
+    atom->cl_q[sca]            = 0.0;
+    atom->cl_id[sca]           = -1;
+    atom->cl_mol[sca]          = -1;
 }
 
 void createAtom(Atom* atom, Parameter* param)
@@ -190,15 +251,15 @@ void createAtom(Atom* atom, Parameter* param)
                     ztmp >= zlo && ztmp < zhi) {
                     n = k * (2 * param->ny) * (2 * param->nx) + j * (2 * param->nx) + i +
                         1;
-                    for (m = 0; m < 5; m++) {
+                    for (m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     vxtmp = myrandom(&n);
-                    for (m = 0; m < 5; m++) {
+                    for (m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     vytmp = myrandom(&n);
-                    for (m = 0; m < 5; m++) {
+                    for (m = 0; m < RANDOM_SKIP; m++) {
                         myrandom(&n);
                     }
                     vztmp = myrandom(&n);
@@ -284,6 +345,8 @@ int readAtom(Atom* atom, Parameter* param)
     exit(-1);
     return -1;
 }
+
+int readAtomGmx(Atom* atom, Parameter* param) { return buildGmxBenchAtoms(atom, param); }
 
 int readAtomPdb(Atom* atom, Parameter* param)
 {
@@ -446,15 +509,16 @@ int readAtomGro(Atom* atom, Parameter* param)
         memcpy(type_field, line + 10, 5);
         type_field[5]    = '\0';
         char* type_start = type_field;
-        while (*type_start == ' ') type_start++;
-        int type         = typeStr2int(type_start);
-        int atomId       = readAtoms;
-        MD_FLOAT in_x    = atof(strtok(line + 20, " "));
-        MD_FLOAT in_y    = atof(strtok(NULL, " "));
-        MD_FLOAT in_z    = atof(strtok(NULL, " "));
-        MD_FLOAT in_vx   = atof(strtok(NULL, " "));
-        MD_FLOAT in_vy   = atof(strtok(NULL, " "));
-        MD_FLOAT in_vz   = atof(strtok(NULL, " "));
+        while (*type_start == ' ')
+            type_start++;
+        int type       = typeStr2int(type_start);
+        int atomId     = readAtoms;
+        MD_FLOAT in_x  = atof(strtok(line + 20, " "));
+        MD_FLOAT in_y  = atof(strtok(NULL, " "));
+        MD_FLOAT in_z  = atof(strtok(NULL, " "));
+        MD_FLOAT in_vx = atof(strtok(NULL, " "));
+        MD_FLOAT in_vy = atof(strtok(NULL, " "));
+        MD_FLOAT in_vz = atof(strtok(NULL, " "));
         while (atomId + 1 >= atom->Nmax) {
             growAtom(atom);
         }
@@ -782,7 +846,7 @@ void initMasks(Atom* atom)
             atom->masks_4xn_fn[cond0 * 8 + cond1 * 4 + 3] = (unsigned int)(0xff -
                                                                            0x8 * cond0 -
                                                                            0x80 * cond1);
-            
+
             atom->masks_2xn_hn[cond0 * 4 + cond1 * 2 + 0] = (unsigned int)(0xf -
                                                                            0x1 * cond0 -
                                                                            0x7 * cond1);
@@ -861,6 +925,8 @@ void growAtom(Atom* atom)
         nold * sizeof(MD_FLOAT));
     atom->type = (int*)
         reallocate(atom->type, ALIGNMENT, atom->Nmax * sizeof(int), nold * sizeof(int));
+    atom->id = (int*)
+        reallocate(atom->id, ALIGNMENT, atom->Nmax * sizeof(int), nold * sizeof(int));
 }
 
 void growClusters(Atom* atom, int super_clustering)
@@ -870,15 +936,15 @@ void growClusters(Atom* atom, int super_clustering)
     int jterm = MAX(1, CLUSTER_N / CLUSTER_M);
 
     atom->Nclusters_max += DELTA;
-    atom->iclusters       = (Cluster*)reallocate(atom->iclusters,
+    atom->iclusters   = (Cluster*)reallocate(atom->iclusters,
         ALIGNMENT,
         atom->Nclusters_max * SCLUSTER_SIZE * sizeof(Cluster),
         nold * SCLUSTER_SIZE * sizeof(Cluster));
-    atom->jclusters       = (Cluster*)reallocate(atom->jclusters,
+    atom->jclusters   = (Cluster*)reallocate(atom->jclusters,
         ALIGNMENT,
         atom->Nclusters_max * SCLUSTER_SIZE * jterm * sizeof(Cluster),
         nold * SCLUSTER_SIZE * jterm * sizeof(Cluster));
-    atom->cluster_bin     = (int*)reallocate(atom->cluster_bin,
+    atom->cluster_bin = (int*)reallocate(atom->cluster_bin,
         ALIGNMENT,
         atom->Nclusters_max * sizeof(int),
         nold * sizeof(int));
@@ -886,7 +952,7 @@ void growClusters(Atom* atom, int super_clustering)
     // GPU every reneighbor step (copyDataToCUDADevice()), so they come from
     // pinned host memory when USE_PINNED_MEMORY is set; cl_x_ref/cl_f/etc.
     // never cross that boundary and stay on regular pageable memory.
-    atom->cl_x = (MD_FLOAT*)reallocateHostPinned(atom->cl_x,
+    atom->cl_x            = (MD_FLOAT*)reallocateHostPinned(atom->cl_x,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
     atom->cl_x_ref        = (MD_FLOAT*)reallocate(atom->cl_x_ref,
@@ -897,16 +963,37 @@ void growClusters(Atom* atom, int super_clustering)
         ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-    atom->cl_v = (MD_FLOAT*)reallocateHostPinned(atom->cl_v,
+    atom->cl_v            = (MD_FLOAT*)reallocateHostPinned(atom->cl_v,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-    atom->cl_t = (int*)reallocateHostPinned(atom->cl_t,
+    atom->cl_t            = (int*)reallocateHostPinned(atom->cl_t,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
     atom->cl_sqrt_epsilon = (MD_FLOAT*)reallocateHostPinned(atom->cl_sqrt_epsilon,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
-    atom->cl_sigma3 = (MD_FLOAT*)reallocateHostPinned(atom->cl_sigma3,
+    atom->cl_sigma3       = (MD_FLOAT*)reallocateHostPinned(atom->cl_sigma3,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+    // Electrostatics/exclusion data, copied to the GPU only when it is compiled in
+    atom->cl_q         = (MD_FLOAT*)reallocate(atom->cl_q,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+    atom->cl_id        = (int*)reallocate(atom->cl_id,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
+    atom->cl_mol       = (int*)reallocate(atom->cl_mol,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
+    atom->cl_sqrt6c6   = (MD_FLOAT*)reallocate(atom->cl_sqrt6c6,
+        ALIGNMENT,
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
+        nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
+    atom->cl_sqrt12c12 = (MD_FLOAT*)reallocate(atom->cl_sqrt12c12,
+        ALIGNMENT,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT),
         nold * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 
@@ -1008,6 +1095,17 @@ void freeAtom(Atom* atom)
     atom->vz = NULL;
     free(atom->type);
     atom->type = NULL;
+    free(atom->id);
+    atom->id = NULL;
+    free(atom->q_per_type);
+    atom->q_per_type = NULL;
+    free(atom->ljc6x6);
+    atom->ljc6x6 = NULL;
+    free(atom->ljc12x12);
+    atom->ljc12x12 = NULL;
+    free(atom->cl_f_threads);
+    atom->cl_f_threads      = NULL;
+    atom->cl_f_threads_size = 0;
 }
 
 void growPbc(Atom* atom)
@@ -1105,6 +1203,7 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc)
             buf[m++] = ytmp;
             buf[m++] = ztmp;
             buf[m++] = (MD_FLOAT)atom->cl_t[cj_sca_base + cjj];
+            packAtomId(buf, m, atom->cl_id[cj_sca_base + cjj]);
 
             if (bbminx > xtmp) {
                 bbminx = xtmp;
@@ -1131,6 +1230,8 @@ int packGhost(Atom* atom, int cj, MD_FLOAT* buf, int* pbc)
             buf[m++] = -1.0; // y
             buf[m++] = -1.0; // z
             buf[m++] = -1.0; // type
+            buf[m++] = -1.0; // id (2 values)
+            buf[m++] = -1.0;
         }
 
         buf[m++] = bbminx;
@@ -1171,19 +1272,21 @@ int unpackGhost(Parameter* param, Atom* atom, int cj, MD_FLOAT* buf)
 
     atom->jclusters[cj].natoms = (int)buf[m++];
     for (int cjj = 0; cjj < atom->jclusters[cj].natoms; cjj++) {
-        cj_x[CL_X_INDEX(cjj)]         = buf[m++];
-        cj_x[CL_Y_INDEX(cjj)]         = buf[m++];
-        cj_x[CL_Z_INDEX(cjj)]         = buf[m++];
-        atom->cl_t[cj_sca_base + cjj] = (int)buf[m++];
+        cj_x[CL_X_INDEX(cjj)] = buf[m++];
+        cj_x[CL_Y_INDEX(cjj)] = buf[m++];
+        cj_x[CL_Z_INDEX(cjj)] = buf[m++];
+        const int type        = (int)buf[m++];
+        const int id          = unpackAtomId(buf, m);
+        setClusterAtom(atom, cj_sca_base + cjj, type, id);
         atom->Nghost++;
     }
 
     for (int cjj = atom->jclusters[cj].natoms; cjj < CLUSTER_N; cjj++) {
-        cj_x[CL_X_INDEX(cjj)]         = INF;
-        cj_x[CL_Y_INDEX(cjj)]         = INF;
-        cj_x[CL_Z_INDEX(cjj)]         = INF;
-        atom->cl_t[cj_sca_base + cjj] = 0;
-        m += 4;
+        cj_x[CL_X_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cj_x[CL_Y_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        cj_x[CL_Z_INDEX(cjj)] = CLUSTER_PAD_COORD;
+        clearClusterAtom(atom, cj_sca_base + cjj);
+        m += 6;
     }
 
     atom->jclusters[cj].bbminx        = buf[m++];
@@ -1247,6 +1350,7 @@ int packExchange(Atom* atom, int i, MD_FLOAT* buf)
     buf[m++] = atom_vy(i);
     buf[m++] = atom_vz(i);
     buf[m++] = atom->type[i];
+    packAtomId(buf, m, atom->id[i]);
     return m;
 }
 
@@ -1264,6 +1368,7 @@ int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
     atom_vy(i)    = buf[m++];
     atom_vz(i)    = buf[m++];
     atom->type[i] = buf[m++];
+    atom->id[i]   = unpackAtomId(buf, m);
     return m;
 }
 
@@ -1291,6 +1396,7 @@ void copy(Atom* atom, int i, int j)
     atom_vy(i)    = atom_vy(j);
     atom_vz(i)    = atom_vz(j);
     atom->type[i] = atom->type[j];
+    atom->id[i]   = atom->id[j];
 }
 
 bool needsReneigh(Atom* atom, Parameter* param)
@@ -1306,8 +1412,11 @@ bool needsReneigh(Atom* atom, Parameter* param)
                           atom->cl_x_ref[base + CL_Y_INDEX_3D(cii)];
             MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)] -
                           atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
-            MD_FLOAT d = dx * dx + dy * dy + dz * dz;
-            if (d > max_sq) max_sq = d;
+            MD_FLOAT d  = dx * dx + dy * dy + dz * dz;
+
+            if (d > max_sq) {
+                max_sq = d;
+            }
         }
     }
 #ifdef _MPI

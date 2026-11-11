@@ -68,6 +68,10 @@ SERIAL_BIN="${SERIAL_BIN}-serial"
 
 # Step 2: Build MPI binary
 echo "Building MPI Verlet-list binary..."
+# MPI and non-MPI builds share the build directory (the tag does not include MPI), so
+# remove the MPI objects on exit, or the next non-MPI build links against them
+trap 'make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+     DATA_TYPE="${DATA_TYPE}" clean >/dev/null 2>&1 || true' EXIT
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
 if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \

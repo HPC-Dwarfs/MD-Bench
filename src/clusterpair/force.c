@@ -8,11 +8,20 @@
 #include <parameter.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <util.h>
 
 ComputeForceFunction computeForce;
 
 void initForce(Parameter* param)
 {
+#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
+    // The EAM and tabulated kernels have no electrostatics or exclusions
+    if (param->force_field != FF_LJ) {
+        fprintf(stderr,
+            "Error: electrostatics and exclusions are only supported with -f lj!\n");
+        exit(EXIT_FAILURE);
+    }
+#endif
     switch (param->force_field) {
     case FF_EAM:
         computeForce = computeForceEam;
@@ -33,11 +42,11 @@ void initForce(Parameter* param)
             computeForce = computeForceLJ2xnnFullNeigh;
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XN)
-         if (param->half_neigh) {
-             computeForce = computeForceLJ2xnHalfNeigh;
-         } else {
-             computeForce = computeForceLJ2xnFullNeigh;
-         }
+        if (param->half_neigh) {
+            computeForce = computeForceLJ2xnHalfNeigh;
+        } else {
+            computeForce = computeForceLJ2xnFullNeigh;
+        }
 #elif defined(CLUSTERPAIR_KERNEL_GPU)
         if (param->super_clustering) {
             computeForce = computeForceLJCudaSup;
@@ -81,4 +90,16 @@ void initForce(Parameter* param)
         fprintf(stderr, "Error: Unknown force field!\n");
         exit(EXIT_FAILURE);
     }
+
+#if !defined(_MPI) && !defined(CUDA_TARGET)
+    // Without MPI the periodic images are ghost clusters of the same process. A half
+    // neighbor list then keeps only half of them (half shell) and the kernels write
+    // the reaction forces into the ghost clusters, which reverse() folds back. With
+    // the plain half list every pair across a periodic boundary would be computed
+    // from both sides. This holds for every CPU kernel, so it must be decided here
+    // and before initNeighbor(), which reads param->method.
+    if (param->half_neigh && param->method == fullShell) {
+        param->method = halfShell;
+    }
+#endif
 }

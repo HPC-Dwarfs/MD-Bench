@@ -222,9 +222,9 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                                          rhor_spline[m * 7 + 1]) *
                                          p +
                                      rhor_spline[m * 7 + 2];
-                    MD_FLOAT z2p = (z2r_spline[m * 7 + 0] * p + z2r_spline[m * 7 + 1]) *
-                                       p +
-                                   z2r_spline[m * 7 + 2];
+                    MD_FLOAT z2p   = (z2r_spline[m * 7 + 0] * p + z2r_spline[m * 7 + 1]) *
+                                         p +
+                                     z2r_spline[m * 7 + 2];
                     MD_FLOAT z2 = ((z2r_spline[m * 7 + 3] * p + z2r_spline[m * 7 + 4]) *
                                           p +
                                       z2r_spline[m * 7 + 5]) *

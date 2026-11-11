@@ -201,7 +201,8 @@ int main(int argc, const char* argv[])
             masked = 1;
             continue;
         }
-        if ((strcmp(argv[i], "-sc") == 0) || (strcmp(argv[i], "--super-clustering") == 0)) {
+        if ((strcmp(argv[i], "-sc") == 0) ||
+            (strcmp(argv[i], "--super-clustering") == 0)) {
             param.super_clustering = atoi(argv[++i]);
             continue;
         }
@@ -318,9 +319,9 @@ int main(int argc, const char* argv[])
         }
 
         for (int cii = iclusters_natoms; cii < CLUSTER_M; cii++) {
-            ci_x[CL_X_INDEX_3D(cii)] = INF;
-            ci_x[CL_Y_INDEX_3D(cii)] = INF;
-            ci_x[CL_Z_INDEX_3D(cii)] = INF;
+            ci_x[CL_X_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
+            ci_x[CL_Y_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
+            ci_x[CL_Z_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
         }
 
         atom->iclusters[ci].natoms = iclusters_natoms;
@@ -331,7 +332,7 @@ int main(int argc, const char* argv[])
     const double estim_neighbors_volume = (double)(atom->Nlocal * (nneighs + 2) *
                                                    sizeof(int));
     const double estim_volume           = (double)(atom->Nlocal * 6 * sizeof(MD_FLOAT) +
-                                         estim_neighbors_volume);
+                                                   estim_neighbors_volume);
 
     if (!csv) {
         printf("Kernel: %s, MxN: %dx%d, Vector width: %d\n",
@@ -383,9 +384,9 @@ int main(int argc, const char* argv[])
     double freq_hz                     = param.proc_freq * 1.e9;
     const double atoms_updates_per_sec = (double)(atom->Nlocal) / T_accum *
                                          (double)(param.ntimes);
-    const double cycles_per_atom = T_accum / (double)(atom->Nlocal) /
-                                   (double)(param.ntimes) * freq_hz;
-    const double cycles_per_neigh = cycles_per_atom / (double)(nneighs);
+    const double cycles_per_atom       = T_accum / (double)(atom->Nlocal) /
+                                         (double)(param.ntimes) * freq_hz;
+    const double cycles_per_neigh      = cycles_per_atom / (double)(nneighs);
 
     if (!csv) {
         printf("Total time: %.4f, Mega atom updates/s: %.4f\n",
