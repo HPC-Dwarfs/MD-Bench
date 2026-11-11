@@ -8,14 +8,39 @@
 #define FULL_WARP_MASK 0xffffffffU
 #endif
 
-// Overridable via config.mk's SUPERCLUSTER_J_SLICES (-DGPU_J_SLICES=...);
-// this fallback only applies when compiling outside that build system.
+/* j-slices per i-supercluster (grid.y) of the force kernels, config.mk's SUPERCLUSTER_J_SLICES
+ * (-DGPU_J_SLICES=...; this fallback only applies outside that build system). 0: chosen per
+ * force call from the neighbor list as
+ *     S = K * sqrt(N_SM * n_tot) / N_sc    (n_tot: j-entries of all N_sc superclusters),
+ * at most SLICE_MAX_WAVES waves of resident blocks; > 0: fixed S for both kernels. */
 #ifndef GPU_J_SLICES
-#define GPU_J_SLICES 4
+#define GPU_J_SLICES 0
 #endif
 
-#ifndef K_SLICE
-#define K_SLICE 3.05
+/* K per list type and thread mapping, tuned on GH200 (argon 1k-1M atoms, r 0.9-2.8: mean loss
+ * against the best S of each case 0.9-1.5%). With the inverse mapping the half kernel adds every
+ * j-force atomically, which wants few slices. */
+#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+#ifndef K_SLICE_HALF
+#define K_SLICE_HALF 0.6
+#endif
+#ifndef K_SLICE_FULL
+#define K_SLICE_FULL 1.5
+#endif
+#else
+#ifndef K_SLICE_HALF
+#define K_SLICE_HALF 3.05
+#endif
+#ifndef K_SLICE_FULL
+#define K_SLICE_FULL 2.5
+#endif
+#endif
+
+/* A wave is the number of blocks all SMs hold at once. Beyond about 10 waves the tail is already
+ * small and further slices only add per-block overhead (half list, 1M atoms: one block per
+ * supercluster, about 7 waves, is 4-6% faster than the 13-34 waves of the formula alone) */
+#ifndef SLICE_MAX_WAVES
+#define SLICE_MAX_WAVES 10
 #endif
 
 extern "C" {
@@ -826,14 +851,34 @@ __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     }
 }
 
-static int chooseJSlicesHalf(const Atom* atom, const Neighbor* neighbor)
+#if GPU_J_SLICES == 0
+// Resident blocks per SM of a force kernel (registers, shared memory): one wave is N_SM of these
+static int residentBlocksPerSM(const void* kernel)
 {
-    static int nsm = 0;
+    int n = 0;
+    cuda_assert("cudaOccupancyMaxActiveBlocksPerMultiprocessor",
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, kernel, CLUSTER_N * CLUSTER_M, 0));
+    return n > 0 ? n : 1;
+}
+#endif
+
+// j-slices (grid.y) of this force call, see GPU_J_SLICES
+static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
+{
+#if GPU_J_SLICES > 0
+    return GPU_J_SLICES;
+#else
+    static int nsm = 0, bps_half = 0, bps_full = 0;
     if (nsm == 0) {                                   // N_SM
         int dev = 0;
         cudaGetDevice(&dev);
         cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
+        // follows the kernels' register counts
+        bps_half = residentBlocksPerSM((const void*)computeForceLJCudaSup_halfwarp);
+        bps_full = residentBlocksPerSM((const void*)computeForceLJCudaSup_fullwarp);
     }
+    const double k_slice    = neighbor->half_neigh ? K_SLICE_HALF : K_SLICE_FULL;
+    const int blocks_per_sm = neighbor->half_neigh ? bps_half : bps_full;
 
     const int nsc = atom->Nclusters_local;            // N_sc
     if (nsc <= 0) return 1;
@@ -846,11 +891,15 @@ static int chooseJSlicesHalf(const Atom* atom, const Neighbor* neighbor)
         if (n > n_max) n_max = n;
     }
 
-    int S = (int)lround(K_SLICE * sqrt((double)nsm) * sqrt((double)n_tot) / (double)nsc);
+    int S = (int)lround(k_slice * sqrt((double)nsm) * sqrt((double)n_tot) / (double)nsc);
+    // At most SLICE_MAX_WAVES waves: the formula keeps adding slices as the system grows
+    const long max_blocks = (long)SLICE_MAX_WAVES * nsm * blocks_per_sm;
+    if (S > max_blocks / nsc) S = (int)(max_blocks / nsc);
     if (S < 1)     S = 1;
     if (S > n_max) S = n_max;
     if (S > 65535) S = 65535;                         // gridDim.y limit
     return S;
+#endif
 }
 
 extern "C" double computeForceLJCudaSup(
@@ -878,7 +927,7 @@ extern "C" double computeForceLJCudaSup(
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 *
             sizeof(MD_FLOAT));
     dim3 block_size = dim3(CLUSTER_N, CLUSTER_M, 1);
-    dim3 grid_size  = dim3(atom->Nclusters_local, GPU_J_SLICES, 1);
+    dim3 grid_size  = dim3(atom->Nclusters_local, 1, 1);
     double S        = getTimeStamp();
     LIKWID_MARKER_START("force");
 
@@ -891,8 +940,8 @@ extern "C" double computeForceLJCudaSup(
         cuda_assert("packXqSup", cudaPeekAtLastError());
     }
 
+    grid_size.y = chooseJSlices(atom, neighbor);
     if (neighbor->half_neigh) {
-        grid_size.y = chooseJSlicesHalf(atom, neighbor);
         computeForceLJCudaSup_halfwarp<<<grid_size, block_size>>>(sup_xq,
             sup_par,
             cuda_cl_f,
