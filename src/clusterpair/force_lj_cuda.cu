@@ -57,6 +57,10 @@ extern __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     int Nclusters_local,
     int Nclusters_ghost);
 
+// Packed per-atom data of the half-list super-cluster kernel (force_lj_cuda_sup.cu)
+extern "C" void packSupData(Parameter* param, Atom* atom, Neighbor* neighbor);
+extern "C" void freeSupData(void);
+
 extern "C" {
 MD_FLOAT* cuda_cl_x;
 MD_FLOAT* cuda_cl_v;
@@ -222,6 +226,7 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         memcpyToGPU(cuda_neighbors_imask,
             neighbor->neighbors_imask,
             atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
+        packSupData(param, atom, neighbor);
     } else {
         // Unused by the non-super GPU force kernel.
         memsetGPU(cuda_neighbors_imask,
@@ -272,6 +277,7 @@ extern "C" void cudaDeviceFree(Parameter* param)
 
     freeHostPinned(natoms);
     freeHostPinned(ngatoms);
+    freeSupData();
 }
 
 __global__ void computeForceLJCudaFullNeigh(
