@@ -874,12 +874,10 @@ extern "C" void pruneNeighborCUDASup(Parameter* param, Atom* atom, Neighbor* nei
     DEBUG_MESSAGE("pruneNeighborCUDASup start\n");
 
     if (param->outer_skin <= 0.0) {
+        // The build-time per-sub-cluster imask (copied with the list) stays valid.
         memcpyOnGPU(cuda_numneigh_inner,
             cuda_numneigh,
             atom->Nclusters_local * sizeof(int));
-        memsetGPU(cuda_neighbors_imask,
-            0xff,
-            atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
         return;
     }
 
