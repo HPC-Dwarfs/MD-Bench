@@ -35,6 +35,7 @@ extern int* stencil; // stencil list of bin offsets
 static int* c_stencil       = NULL;
 static int* c_resize_needed = NULL;
 static int* c_new_maxneighs = NULL;
+static long c_neigh_total   = 0; // neighbor entries of all local atoms, last build
 static Binning c_binning {
     .bincount = NULL, .bins = NULL, .mbins = 0, .atoms_per_bin = 0
 };
@@ -623,6 +624,22 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     // double-cutoff scheme is disabled) after a full rebuild.
     pruneNeighborDevice(atom, neighbor);
 
+    // Total number of neighbor entries, for the j-slices of the force kernels
+    {
+        const int nlocal = atom->Nlocal;
+        int* h_numneigh  = (int*)malloc(nlocal * sizeof(int));
+        memcpyFromGPU(h_numneigh, d_neighbor->numneigh, nlocal * sizeof(int));
+        long total = 0;
+        for (int ii = 0; ii < nlocal; ii++) {
+            total += h_numneigh[ii];
+        }
+        free(h_numneigh);
+        c_neigh_total = total;
+    }
+
     GPU_PROFILE_STOP();
     DEBUG_MESSAGE("buildNeighborCUDA end\n");
 }
+
+// Neighbor entries of all local atoms after the last list build (forceCuda.cu)
+extern "C" long numNeighborsTotalCUDA(void) { return c_neigh_total; }

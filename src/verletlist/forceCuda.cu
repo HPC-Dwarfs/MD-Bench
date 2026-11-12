@@ -72,11 +72,12 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     const int mol_i = 0;
 #endif
 
-    for (int k = 0; k < numneighs; k++) {
+    // One neighbor of atom i
+    auto pair = [&](int k) {
         // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
         // here, but the compiler cannot prove they don't alias fx, so it won't
         // use the read-only cache on its own
-        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, neighbor));
+        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, &neigh));
         MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
         MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
         MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
@@ -109,11 +110,32 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
             fiy += dely * force;
             fiz += delz * force;
         }
+    };
+
+    // j-slices: block (bx, s) handles the neighbors s, s+S, s+2S, ... of its atoms
+    // (S = gridDim.y). Without slices the loop keeps unit stride, which nvcc unrolls;
+    // the strided loop is not unrolled by itself and up to 46% slower at S = 1
+    if (gridDim.y == 1) {
+        for (int k = 0; k < numneighs; k++) {
+            pair(k);
+        }
+    } else {
+#pragma unroll 2
+        for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
+            pair(k);
+        }
     }
 
-    atom_fx(i) = fix;
-    atom_fy(i) = fiy;
-    atom_fz(i) = fiz;
+    if (gridDim.y == 1) {
+        atom_fx(i) = fix;
+        atom_fy(i) = fiy;
+        atom_fz(i) = fiz;
+    } else {
+        // several j-slices add to the same atom
+        atomicAdd(&atom_fx(i), fix);
+        atomicAdd(&atom_fy(i), fiy);
+        atomicAdd(&atom_fz(i), fiz);
+    }
 }
 
 __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
@@ -161,11 +183,12 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     const int mol_i = 0;
 #endif
 
-    for (int k = 0; k < numneighs; k++) {
+    // One neighbor of atom i
+    auto pair = [&](int k) {
         // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
         // here, but the compiler cannot prove they don't alias fx, so it won't
         // use the read-only cache on its own
-        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, neighbor));
+        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, &neigh));
         MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
         MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
         MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
@@ -205,6 +228,20 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
             fix += partial_force_x;
             fiy += partial_force_y;
             fiz += partial_force_z;
+        }
+    };
+
+    // j-slices: block (bx, s) handles the neighbors s, s+S, s+2S, ... of its atoms
+    // (S = gridDim.y). Without slices the loop keeps unit stride, which nvcc unrolls;
+    // the strided loop is not unrolled by itself and up to 46% slower at S = 1
+    if (gridDim.y == 1) {
+        for (int k = 0; k < numneighs; k++) {
+            pair(k);
+        }
+    } else {
+#pragma unroll 2
+        for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
+            pair(k);
         }
     }
 
@@ -290,6 +327,79 @@ void initialIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom)
     DEBUG_MESSAGE("initialIntegrateCUDA end\n");
 }
 
+// Neighbor entries of all local atoms after the last list build (neighborCuda.cu)
+extern "C" long numNeighborsTotalCUDA(void);
+
+/* j-slices (grid.y) of the force kernels, one thread per atom and slice; N_b blocks without
+ * slices, n_tot neighbor entries, bps resident blocks per SM:
+ *     K > 0:  S = K * sqrt(N_SM * n_tot) / N_b    (as the cluster-pair kernels)
+ *     K = 0:  S = W * N_SM * bps / N_b            (W waves of resident blocks)
+ * at most SLICE_MAX_WAVES waves. Tuned on GH200 (argon 1k-1M atoms, r 0.9-2.8; mean loss
+ * against the best S of each case 0.06-1.6%): the half kernel with SOA gains from slices up to
+ * 125k atoms (per-pair j-force atomics), the other variants stop gaining at about 0.3 waves.
+ * CSR (contiguous per atom like AOS) uses the AOS values, not tuned. */
+#if defined(NBLIST_AOS) || defined(NBLIST_CSR)
+#define VL_SLICE_K_HALF 0.0
+#define VL_SLICE_W_HALF 0.35
+#define VL_SLICE_K_FULL 0.0
+#define VL_SLICE_W_FULL 0.23
+#else
+#define VL_SLICE_K_HALF 0.13
+#define VL_SLICE_W_HALF 0.0
+#define VL_SLICE_K_FULL 0.0
+#define VL_SLICE_W_FULL 0.3
+#endif
+#ifndef SLICE_MAX_WAVES
+#define SLICE_MAX_WAVES 10
+#endif
+
+// Resident blocks per SM of a force kernel: one wave is N_SM of these. Queried once per kernel.
+static int residentBlocksPerSMVL(const void* kernel, int threads)
+{
+    static const void* kernels[4];
+    static int blocks[4];
+    static int nkernels = 0;
+    for (int i = 0; i < nkernels; i++) {
+        if (kernels[i] == kernel) return blocks[i];
+    }
+    int n = 0;
+    cuda_assert("cudaOccupancyMaxActiveBlocksPerMultiprocessor",
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, kernel, threads, 0));
+    if (n < 1) n = 1;
+    if (nkernels < 4) {
+        kernels[nkernels] = kernel;
+        blocks[nkernels]  = n;
+        nkernels++;
+    }
+    return n;
+}
+
+static int chooseJSlicesVL(const Neighbor* neighbor, int nblocks, int threads)
+{
+    static int nsm = 0;
+    if (nsm == 0) {
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
+    }
+    if (nblocks <= 0) return 1;
+    const void* kernel  = neighbor->half_neigh ? (const void*)computeForceLJCudaHalfNeigh
+                                               : (const void*)computeForceLJCudaFullNeigh;
+    const int bps       = residentBlocksPerSMVL(kernel, threads);
+    const double k      = neighbor->half_neigh ? VL_SLICE_K_HALF : VL_SLICE_K_FULL;
+    const double w      = neighbor->half_neigh ? VL_SLICE_W_HALF : VL_SLICE_W_FULL;
+    const double s      = k > 0.0 ? k * sqrt((double)nsm) * sqrt((double)numNeighborsTotalCUDA()) /
+                                   (double)nblocks
+                                  : w * nsm * bps / (double)nblocks;
+    int S               = (int)lround(s);
+    const long max_blocks = (long)SLICE_MAX_WAVES * nsm * bps;
+    if (S > max_blocks / nblocks) S = (int)(max_blocks / nblocks);
+    if (S < 1) S = 1;
+    if (S > neighbor->maxneighs) S = neighbor->maxneighs > 0 ? neighbor->maxneighs : 1;
+    if (S > 65535) S = 65535;                         // gridDim.y limit
+    return S;
+}
+
 double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJCUDA begin\n");
@@ -323,7 +433,8 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     double S             = getTimeStamp();
     LIKWID_MARKER_START("force");
 
-    if (neighbor->half_neigh) {
+    const dim3 grid(num_blocks, chooseJSlicesVL(neighbor, num_blocks, num_threads_per_block), 1);
+    if (neighbor->half_neigh || grid.y > 1) { // these add to the forces
 #ifdef ATOM_POSITION_AOS
         memsetGPU(atom->d_atom.fx, 0, sizeof(MD_FLOAT) * Nmax * 3);
 #else
@@ -331,7 +442,9 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
         memsetGPU(atom->d_atom.fy, 0, sizeof(MD_FLOAT) * Nmax);
         memsetGPU(atom->d_atom.fz, 0, sizeof(MD_FLOAT) * Nmax);
 #endif
-        computeForceLJCudaHalfNeigh<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+    }
+    if (neighbor->half_neigh) {
+        computeForceLJCudaHalfNeigh<<<grid, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,
@@ -342,7 +455,7 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             atom->ntypes,
             cs);
     } else {
-        computeForceLJCudaFullNeigh<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+        computeForceLJCudaFullNeigh<<<grid, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,
