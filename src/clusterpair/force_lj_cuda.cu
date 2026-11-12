@@ -339,7 +339,8 @@ __global__ void computeForceLJCudaFullNeigh(
     const MD_FLOAT qi = cs.epsfac * chargeCuda(cuda_cl_q, ci_sca);
     const int mol_i   = moleculeCuda(cuda_cl_mol, ci_sca);
 
-    for (int k = 0; k < numneighs; k++) {
+    // One j-cluster of the neighbor list
+    auto jcluster = [&](int k) {
         int cj          = neighs_gpu(cuda_neighs, ci, k, Nclusters_local, maxneighs);
         int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
         MD_FLOAT* cj_x  = &cuda_cl_x[cj_vec_base];
@@ -385,6 +386,20 @@ __global__ void computeForceLJCudaFullNeigh(
                 fiz += delz * force;
             }
         }
+    };
+
+    // j-slices: block (ci, s) handles neighbors s, s+S, s+2S, ... (S = gridDim.y). Without
+    // slices the loop keeps unit stride, which nvcc unrolls better (the strided loop is
+    // 3.7% slower at S = 1, 1M atoms, even unrolled)
+    if (gridDim.y == 1) {
+        for (int k = 0; k < numneighs; k++) {
+            jcluster(k);
+        }
+    } else {
+#pragma unroll 2
+        for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
+            jcluster(k);
+        }
     }
 
     // If M is less than the warp size, we perform forces reduction via
@@ -407,9 +422,16 @@ __global__ void computeForceLJCudaFullNeigh(
     }
 
     if (cjj == 0) {
-        ci_f[CL_X_INDEX_3D(cii)] = fix;
-        ci_f[CL_Y_INDEX_3D(cii)] = fiy;
-        ci_f[CL_Z_INDEX_3D(cii)] = fiz;
+        if (gridDim.y == 1) {
+            ci_f[CL_X_INDEX_3D(cii)] = fix;
+            ci_f[CL_Y_INDEX_3D(cii)] = fiy;
+            ci_f[CL_Z_INDEX_3D(cii)] = fiz;
+        } else {
+            // several j-slices add to the same i-cluster
+            atomicAdd(&ci_f[CL_X_INDEX_3D(cii)], fix);
+            atomicAdd(&ci_f[CL_Y_INDEX_3D(cii)], fiy);
+            atomicAdd(&ci_f[CL_Z_INDEX_3D(cii)], fiz);
+        }
     }
 #else
     fix += __shfl_down_sync(mask, fix, CLUSTER_M);
@@ -473,6 +495,7 @@ __global__ void computeForceLJCudaHalfNeigh(
 #else
     int cii = threadIdx.x;
     int cjj = threadIdx.y;
+    MD_FLOAT3 fcj_buf; // j-force of this thread's j-atom from one j-cluster
 #endif
     int ci_cj0     = CJ0_FROM_CI(ci);
     MD_FLOAT* ci_x = &cuda_cl_x[CI_VECTOR_BASE_INDEX(ci)];
@@ -497,10 +520,17 @@ __global__ void computeForceLJCudaHalfNeigh(
     const MD_FLOAT qi = cs.epsfac * chargeCuda(cuda_cl_q, ci_sca);
     const int mol_i   = moleculeCuda(cuda_cl_mol, ci_sca);
 
-    for (int k = 0; k < numneighs; k++) {
+    // j-slices: block (ci, s) handles neighbors s, s+S, s+2S, ... (S = gridDim.y); the
+    // i-forces below are written with atomics, so slices of the same ci can overlap. nvcc
+    // does not unroll this loop by itself (5-12% slower)
+#pragma unroll 2
+    for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
         int cj         = neighs_gpu(cuda_neighs, ci, k, Nclusters_local, maxneighs);
         MD_FLOAT* cj_x = &cuda_cl_x[CJ_VECTOR_BASE_INDEX(cj)];
         MD_FLOAT* cj_f = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
+#ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+        fcj_buf.x = fcj_buf.y = fcj_buf.z = (MD_FLOAT)0.0;
+#endif
 
         int cond;
 #if CLUSTER_M == CLUSTER_N
@@ -541,15 +571,54 @@ __global__ void computeForceLJCudaHalfNeigh(
                 MD_FLOAT partial_force_y = dely * force;
                 MD_FLOAT partial_force_z = delz * force;
 
+#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
                 atomicAdd(&cj_f[CL_X_INDEX_3D(cjj)], -partial_force_x);
                 atomicAdd(&cj_f[CL_Y_INDEX_3D(cjj)], -partial_force_y);
                 atomicAdd(&cj_f[CL_Z_INDEX_3D(cjj)], -partial_force_z);
+#else
+                fcj_buf.x -= partial_force_x;
+                fcj_buf.y -= partial_force_y;
+                fcj_buf.z -= partial_force_z;
+#endif
 
                 fix += partial_force_x;
                 fiy += partial_force_y;
                 fiz += partial_force_z;
             }
         }
+
+#ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+        /* The 8 i-atoms (cii) of a j-atom (cjj) sit in 8 consecutive lanes, so the j-force is
+         * reduced over cii with warp shuffles (as reduce_force_j_warp_shfl in GROMACS) and
+         * written with one atomic per component instead of three atomics per pair. All lanes
+         * reach this point, as the shuffles need the full warp. */
+        auto jmask = FULL_WARP_MASK;
+
+        fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 1);
+        fcj_buf.y += __shfl_up_sync(jmask, fcj_buf.y, 1);
+        fcj_buf.z += __shfl_down_sync(jmask, fcj_buf.z, 1);
+
+        if (cii & 1) {
+            fcj_buf.x = fcj_buf.y;
+        }
+
+        fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 2);
+        fcj_buf.z += __shfl_up_sync(jmask, fcj_buf.z, 2);
+
+        if (cii & 2) {
+            fcj_buf.x = fcj_buf.z;
+        }
+
+        fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 4);
+
+        // Lanes cii = 0, 1, 2 now hold the x, y, z component of the j-force
+        if (cii < 3) {
+            const int comp = (cii == 0)   ? CL_X_INDEX_3D(cjj)
+                             : (cii == 1) ? CL_Y_INDEX_3D(cjj)
+                                          : CL_Z_INDEX_3D(cjj);
+            atomicAdd(&cj_f[comp], fcj_buf.x);
+        }
+#endif
     }
 
     // If M is less than the warp size, we perform forces reduction via
@@ -896,6 +965,32 @@ extern "C" void pruneNeighborCUDA(Parameter* param, Atom* atom, Neighbor* neighb
     DEBUG_MESSAGE("pruneNeighborCUDA end\n");
 }
 
+// j-slices from the neighbor-list size, with the wave cap of the super-cluster kernels
+// (force_lj_cuda_sup.cu)
+extern "C" int chooseJSlicesK(
+    const Atom* atom, const Neighbor* neighbor, double k_slice, const void* kernel);
+
+/* K of the gpusimple kernels, S = K * sqrt(N_SM * n_tot) / N_ci (supercluster: K_SLICE_HALF and
+ * K_SLICE_FULL in force_lj_cuda_sup.cu), tuned on an RTX 2080. With the inverse mapping the half
+ * kernel writes j-forces with per-pair atomics, which contend more with more slices; full lists
+ * have about twice as many entries, so the same constant would pick about sqrt(2) times more
+ * slices. */
+#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+#ifndef K_SLICE_SIMPLE_HALF
+#define K_SLICE_SIMPLE_HALF 2.0
+#endif
+#ifndef K_SLICE_SIMPLE_FULL
+#define K_SLICE_SIMPLE_FULL 2.0
+#endif
+#else
+#ifndef K_SLICE_SIMPLE_HALF
+#define K_SLICE_SIMPLE_HALF 3.3
+#endif
+#ifndef K_SLICE_SIMPLE_FULL
+#define K_SLICE_SIMPLE_FULL 2.5
+#endif
+#endif
+
 extern "C" double computeForceLJCuda(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
@@ -921,6 +1016,10 @@ extern "C" double computeForceLJCuda(
     LIKWID_MARKER_START("force");
 
     if (neighbor->half_neigh) {
+        grid_size.y = chooseJSlicesK(atom,
+            neighbor,
+            K_SLICE_SIMPLE_HALF,
+            (const void*)computeForceLJCudaHalfNeigh);
         computeForceLJCudaHalfNeigh<<<grid_size, block_size>>>(
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
@@ -948,6 +1047,10 @@ extern "C" double computeForceLJCuda(
             cuda_cl_mol,
             cs);
     } else {
+        grid_size.y = chooseJSlicesK(atom,
+            neighbor,
+            K_SLICE_SIMPLE_FULL,
+            (const void*)computeForceLJCudaFullNeigh);
         computeForceLJCudaFullNeigh<<<grid_size, block_size>>>(
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,

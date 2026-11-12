@@ -851,54 +851,80 @@ __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     }
 }
 
-#if GPU_J_SLICES == 0
-// Resident blocks per SM of a force kernel (registers, shared memory): one wave is N_SM of these
+// Resident blocks per SM of a force kernel (registers, shared memory): one wave is N_SM of
+// these. Queried once per kernel, so it follows the kernel's register count.
 static int residentBlocksPerSM(const void* kernel)
 {
+    static const void* kernels[8];
+    static int blocks[8];
+    static int nkernels = 0;
+    for (int i = 0; i < nkernels; i++) {
+        if (kernels[i] == kernel) return blocks[i];
+    }
+
     int n = 0;
     cuda_assert("cudaOccupancyMaxActiveBlocksPerMultiprocessor",
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, kernel, CLUSTER_N * CLUSTER_M, 0));
-    return n > 0 ? n : 1;
+    if (n < 1) n = 1;
+    if (nkernels < 8) {
+        kernels[nkernels] = kernel;
+        blocks[nkernels]  = n;
+        nkernels++;
+    }
+    return n;
 }
-#endif
 
-// j-slices (grid.y) of this force call, see GPU_J_SLICES
+/* j-slices (grid.y) S = K * sqrt(N_SM * n_tot) / N_c of a force kernel with one block of
+ * CLUSTER_N x CLUSTER_M threads per i-(super)cluster (N_c of them, n_tot j-entries in all), at
+ * most SLICE_MAX_WAVES waves of the kernel's resident blocks. Also used by the gpusimple
+ * kernels (force_lj_cuda.cu). */
+extern "C" int chooseJSlicesK(
+    const Atom* atom, const Neighbor* neighbor, double k_slice, const void* kernel)
+{
+    static int nsm = 0;
+    if (nsm == 0) {                                   // N_SM
+        int dev = 0;
+        cudaGetDevice(&dev);
+        cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
+    }
+    const int blocks_per_sm = residentBlocksPerSM(kernel);
+
+    const int nc = atom->Nclusters_local;             // N_c
+    if (nc <= 0) return 1;
+
+    long n_tot = 0;
+    int  n_max = 1;
+    for (int ci = 0; ci < nc; ci++) {
+        const int n = neighbor->numneigh[ci];         // total number of neighbors for this cluster
+        n_tot += n;
+        if (n > n_max) n_max = n;
+    }
+
+    int S = (int)lround(k_slice * sqrt((double)nsm) * sqrt((double)n_tot) / (double)nc);
+    // At most SLICE_MAX_WAVES waves: the formula keeps adding slices as the system grows
+    const long max_blocks = (long)SLICE_MAX_WAVES * nsm * blocks_per_sm;
+    if (S > max_blocks / nc) S = (int)(max_blocks / nc);
+    if (S < 1)     S = 1;
+    if (S > n_max) S = n_max;
+    if (S > 65535) S = 65535;                         // gridDim.y limit
+    return S;
+}
+
+// j-slices (grid.y) of this super-cluster force call, see GPU_J_SLICES
 static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
 {
 #if GPU_J_SLICES > 0
     return GPU_J_SLICES;
 #else
-    static int nsm = 0, bps_half = 0, bps_full = 0;
-    if (nsm == 0) {                                   // N_SM
-        int dev = 0;
-        cudaGetDevice(&dev);
-        cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
-        // follows the kernels' register counts
-        bps_half = residentBlocksPerSM((const void*)computeForceLJCudaSup_halfwarp);
-        bps_full = residentBlocksPerSM((const void*)computeForceLJCudaSup_fullwarp);
-    }
-    const double k_slice    = neighbor->half_neigh ? K_SLICE_HALF : K_SLICE_FULL;
-    const int blocks_per_sm = neighbor->half_neigh ? bps_half : bps_full;
-
-    const int nsc = atom->Nclusters_local;            // N_sc
-    if (nsc <= 0) return 1;
-
-    long n_tot = 0;
-    int  n_max = 1;
-    for (int sci = 0; sci < nsc; sci++) {
-        const int n = neighbor->numneigh[sci];        // total number of neighbors for this cluster
-        n_tot += n;
-        if (n > n_max) n_max = n;
-    }
-
-    int S = (int)lround(k_slice * sqrt((double)nsm) * sqrt((double)n_tot) / (double)nsc);
-    // At most SLICE_MAX_WAVES waves: the formula keeps adding slices as the system grows
-    const long max_blocks = (long)SLICE_MAX_WAVES * nsm * blocks_per_sm;
-    if (S > max_blocks / nsc) S = (int)(max_blocks / nsc);
-    if (S < 1)     S = 1;
-    if (S > n_max) S = n_max;
-    if (S > 65535) S = 65535;                         // gridDim.y limit
-    return S;
+    return neighbor->half_neigh
+               ? chooseJSlicesK(atom,
+                     neighbor,
+                     K_SLICE_HALF,
+                     (const void*)computeForceLJCudaSup_halfwarp)
+               : chooseJSlicesK(atom,
+                     neighbor,
+                     K_SLICE_FULL,
+                     (const void*)computeForceLJCudaSup_fullwarp);
 #endif
 }
 
