@@ -27,6 +27,84 @@ extern "C" {
 
 #include <pair_scalar.h>
 
+/* Packed per-atom data of the force kernels, after LAMMPS' GPU package (x and type in one
+ * float4): a neighbor costs one 16-byte load per array instead of up to seven scalar gathers
+ * from five arrays (x, y, z, sqrt_epsilon, sigma3, q, mol).
+ *   xq[i]  = {x, y, z, q}                                         every force call
+ *   par[i] = {sqrt_epsilon, sigma3, mol, 0} (geometric) or
+ *            {type, 0, mol, 0} (full matrix)                       after each list build
+ * Integers (type, mol) are stored bitwise. With LJ_COMB_SINGLE and no exclusions the kernels
+ * need no per-atom parameters and par is not used. */
+#if LJ_COMB_RULE == LJ_COMB_GEOM || LJ_COMB_RULE == LJ_COMB_FULL || USE_EXCLUSIONS
+#define VL_PACK_PAR 1
+#else
+#define VL_PACK_PAR 0
+#endif
+
+#if PRECISION == 1
+#define make_md_float4(x, y, z, w) make_float4((x), (y), (z), (w))
+#define int_as_md_float(i)         __int_as_float(i)
+#define md_float_as_int(f)         __float_as_int(f)
+#else
+#define make_md_float4(x, y, z, w) make_double4((x), (y), (z), (w))
+#define int_as_md_float(i)         __longlong_as_double((long long)(i))
+#define md_float_as_int(f)         ((int)__double_as_longlong(f))
+#endif
+
+// Read-only 16/32-byte load (there is no __ldg overload for double4)
+static __device__ __forceinline__ MD_FLOAT4 ldg_md_float4(const MD_FLOAT4* p)
+{
+#if PRECISION == 1
+    return __ldg(p);
+#else
+    const double2 lo = __ldg((const double2*)p);
+    const double2 hi = __ldg((const double2*)p + 1);
+    return make_double4(lo.x, lo.y, hi.x, hi.y);
+#endif
+}
+
+__global__ void packAtomsVL(DeviceAtom a,
+    int n,
+    MD_FLOAT4* __restrict__ xq,
+    MD_FLOAT4* __restrict__ par,
+    int pack_par)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) {
+        return;
+    }
+    DeviceAtom* atom = &a;
+#if COULOMB_RULE != COULOMB_NONE
+    const MD_FLOAT q = atom->q[i];
+#else
+    const MD_FLOAT q = (MD_FLOAT)0.0;
+#endif
+    xq[i] = make_md_float4(atom_x(i), atom_y(i), atom_z(i), q);
+#if VL_PACK_PAR
+    if (pack_par) {
+#if LJ_COMB_RULE == LJ_COMB_GEOM
+        const MD_FLOAT p0 = atom->sqrt_epsilon[i];
+        const MD_FLOAT p1 = atom->sigma3[i];
+#elif LJ_COMB_RULE == LJ_COMB_FULL
+        const MD_FLOAT p0 = int_as_md_float(atom->type[i]);
+        const MD_FLOAT p1 = (MD_FLOAT)0.0;
+#else
+        const MD_FLOAT p0 = (MD_FLOAT)0.0;
+        const MD_FLOAT p1 = (MD_FLOAT)0.0;
+#endif
+#if USE_EXCLUSIONS
+        const MD_FLOAT p2 = int_as_md_float(atom->mol[i]);
+#else
+        const MD_FLOAT p2 = (MD_FLOAT)0.0;
+#endif
+        par[i] = make_md_float4(p0, p1, p2, (MD_FLOAT)0.0);
+    }
+#else
+    (void)par;
+    (void)pack_par;
+#endif
+}
+
 __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -36,7 +114,9 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     int* neigh_neighbors,
     int* neigh_numneigh,
     int ntypes,
-    CoulombScalar cs)
+    CoulombScalar cs,
+    const MD_FLOAT4* __restrict__ xq,
+    const MD_FLOAT4* __restrict__ par)
 {
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -47,48 +127,51 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     DeviceAtom* atom         = &a;
     const int numneighs      = neigh_numneigh[i];
 
-    MD_FLOAT xtmp = atom_x(i);
-    MD_FLOAT ytmp = atom_y(i);
-    MD_FLOAT ztmp = atom_z(i);
-
+    const MD_FLOAT4 xqi = xq[i];
     MD_FLOAT fix = 0;
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
+#if VL_PACK_PAR
+    const MD_FLOAT4 pi = par[i];
+#endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-    const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
-    const MD_FLOAT sigma3_i   = atom->sigma3[i];
+    const MD_FLOAT sqrt_eps_i = pi.x;
+    const MD_FLOAT sigma3_i   = pi.y;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
-    const int type_i = atom->type[i];
+    const int type_i = md_float_as_int(pi.x);
 #endif
 #if COULOMB_RULE != COULOMB_NONE
-    const MD_FLOAT qi = cs.epsfac * atom->q[i];
+    const MD_FLOAT qi = cs.epsfac * xqi.w;
 #else
     const MD_FLOAT qi = (MD_FLOAT)0.0;
 #endif
 #if USE_EXCLUSIONS
-    const int mol_i = atom->mol[i];
+    const int mol_i = md_float_as_int(pi.z);
 #else
     const int mol_i = 0;
 #endif
 
     // One neighbor of atom i
     auto pair = [&](int k) {
-        // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
-        // here, but the compiler cannot prove they don't alias fx, so it won't
-        // use the read-only cache on its own
-        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, &neigh));
-        MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
-        MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
-        MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
-        MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
+        // __ldg: neighbor indices and packed atom data are read-only here, but the
+        // compiler cannot prove they don't alias fx, so it won't use the read-only
+        // cache on its own
+        const int j        = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, &neigh));
+        const MD_FLOAT4 xqj = ldg_md_float4(&xq[j]);
+        MD_FLOAT delx       = xqi.x - xqj.x;
+        MD_FLOAT dely       = xqi.y - xqj.y;
+        MD_FLOAT delz       = xqi.z - xqj.z;
+        MD_FLOAT rsq        = delx * delx + dely * dely + delz * delz;
 
+#if VL_PACK_PAR
+        const MD_FLOAT4 pj = ldg_md_float4(&par[j]);
+#endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-        const MD_FLOAT sigma6  = sigma3_i * __ldg(&atom->sigma3[j]);
-        const MD_FLOAT epsilon = sqrt_eps_i * __ldg(&atom->sqrt_epsilon[j]);
+        const MD_FLOAT sigma6  = sigma3_i * pj.y;
+        const MD_FLOAT epsilon = sqrt_eps_i * pj.x;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
-        const int type_j          = __ldg(&atom->type[j]);
-        const int type_ij         = type_i * ntypes + type_j;
+        const int type_ij         = type_i * ntypes + md_float_as_int(pj.x);
         const MD_FLOAT cutforcesq = __ldg(&atom->cutforcesq[type_ij]);
         const MD_FLOAT sigma6     = __ldg(&atom->sigma6[type_ij]);
         const MD_FLOAT epsilon    = __ldg(&atom->epsilon[type_ij]);
@@ -96,12 +179,12 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
 
         if (rsq < cutforcesq) {
 #if COULOMB_RULE != COULOMB_NONE
-            const MD_FLOAT qj = __ldg(&atom->q[j]);
+            const MD_FLOAT qj = xqj.w;
 #else
             const MD_FLOAT qj = (MD_FLOAT)0.0;
 #endif
 #if USE_EXCLUSIONS
-            const int mol_j = __ldg(&atom->mol[j]);
+            const int mol_j = md_float_as_int(pj.z);
 #else
             const int mol_j = 0;
 #endif
@@ -147,7 +230,9 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     int* neigh_neighbors,
     int* neigh_numneigh,
     int ntypes,
-    CoulombScalar cs)
+    CoulombScalar cs,
+    const MD_FLOAT4* __restrict__ xq,
+    const MD_FLOAT4* __restrict__ par)
 {
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -158,48 +243,51 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     DeviceAtom* atom         = &a;
     const int numneighs      = neigh_numneigh[i];
 
-    MD_FLOAT xtmp = atom_x(i);
-    MD_FLOAT ytmp = atom_y(i);
-    MD_FLOAT ztmp = atom_z(i);
-
+    const MD_FLOAT4 xqi = xq[i];
     MD_FLOAT fix = 0;
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
+#if VL_PACK_PAR
+    const MD_FLOAT4 pi = par[i];
+#endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-    const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
-    const MD_FLOAT sigma3_i   = atom->sigma3[i];
+    const MD_FLOAT sqrt_eps_i = pi.x;
+    const MD_FLOAT sigma3_i   = pi.y;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
-    const int type_i = atom->type[i];
+    const int type_i = md_float_as_int(pi.x);
 #endif
 #if COULOMB_RULE != COULOMB_NONE
-    const MD_FLOAT qi = cs.epsfac * atom->q[i];
+    const MD_FLOAT qi = cs.epsfac * xqi.w;
 #else
     const MD_FLOAT qi = (MD_FLOAT)0.0;
 #endif
 #if USE_EXCLUSIONS
-    const int mol_i = atom->mol[i];
+    const int mol_i = md_float_as_int(pi.z);
 #else
     const int mol_i = 0;
 #endif
 
     // One neighbor of atom i
     auto pair = [&](int k) {
-        // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
-        // here, but the compiler cannot prove they don't alias fx, so it won't
-        // use the read-only cache on its own
-        int j         = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, &neigh));
-        MD_FLOAT delx = xtmp - __ldg(&atom_x(j));
-        MD_FLOAT dely = ytmp - __ldg(&atom_y(j));
-        MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
-        MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
+        // __ldg: neighbor indices and packed atom data are read-only here, but the
+        // compiler cannot prove they don't alias fx, so it won't use the read-only
+        // cache on its own
+        const int j        = __ldg(&neighs(neigh_neighbors, i, k, Nlocal, &neigh));
+        const MD_FLOAT4 xqj = ldg_md_float4(&xq[j]);
+        MD_FLOAT delx       = xqi.x - xqj.x;
+        MD_FLOAT dely       = xqi.y - xqj.y;
+        MD_FLOAT delz       = xqi.z - xqj.z;
+        MD_FLOAT rsq        = delx * delx + dely * dely + delz * delz;
 
+#if VL_PACK_PAR
+        const MD_FLOAT4 pj = ldg_md_float4(&par[j]);
+#endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
-        const MD_FLOAT sigma6  = sigma3_i * __ldg(&atom->sigma3[j]);
-        const MD_FLOAT epsilon = sqrt_eps_i * __ldg(&atom->sqrt_epsilon[j]);
+        const MD_FLOAT sigma6  = sigma3_i * pj.y;
+        const MD_FLOAT epsilon = sqrt_eps_i * pj.x;
 #elif LJ_COMB_RULE == LJ_COMB_FULL
-        const int type_j          = __ldg(&atom->type[j]);
-        const int type_ij         = type_i * ntypes + type_j;
+        const int type_ij         = type_i * ntypes + md_float_as_int(pj.x);
         const MD_FLOAT cutforcesq = __ldg(&atom->cutforcesq[type_ij]);
         const MD_FLOAT sigma6     = __ldg(&atom->sigma6[type_ij]);
         const MD_FLOAT epsilon    = __ldg(&atom->epsilon[type_ij]);
@@ -207,12 +295,12 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
 
         if (rsq < cutforcesq) {
 #if COULOMB_RULE != COULOMB_NONE
-            const MD_FLOAT qj = __ldg(&atom->q[j]);
+            const MD_FLOAT qj = xqj.w;
 #else
             const MD_FLOAT qj = (MD_FLOAT)0.0;
 #endif
 #if USE_EXCLUSIONS
-            const int mol_j = __ldg(&atom->mol[j]);
+            const int mol_j = md_float_as_int(pj.z);
 #else
             const int mol_j = 0;
 #endif
@@ -329,6 +417,35 @@ void initialIntegrateCUDA(bool reneigh, Parameter* param, Atom* atom)
 
 // Neighbor entries of all local atoms after the last list build (neighborCuda.cu)
 extern "C" long numNeighborsTotalCUDA(void);
+extern "C" int neighborBuildCountCUDA(void);
+
+/* Packs xq every call and par after each list build (atoms are only reordered, exchanged and
+ * given new ghosts together with a build), for all local and ghost atoms. */
+static void packAtomsForForceVL(Atom* atom, MD_FLOAT4** xq, MD_FLOAT4** par)
+{
+    static MD_FLOAT4* d_xq  = NULL;
+    static MD_FLOAT4* d_par = NULL;
+    static int nalloc       = 0;
+    static int packed_build = -1;
+    const int n             = atom->Nlocal + atom->Nghost;
+    int pack_par            = neighborBuildCountCUDA() != packed_build;
+    if (n > nalloc) {
+        nalloc = atom->Nmax > n ? atom->Nmax : n;
+        d_xq   = (MD_FLOAT4*)reallocateGPU(d_xq, sizeof(MD_FLOAT4) * nalloc);
+#if VL_PACK_PAR
+        d_par = (MD_FLOAT4*)reallocateGPU(d_par, sizeof(MD_FLOAT4) * nalloc);
+#endif
+        pack_par = 1;
+    }
+    if (n > 0) {
+        const int threads = 256;
+        packAtomsVL<<<(n + threads - 1) / threads, threads>>>(atom->d_atom, n, d_xq, d_par, pack_par);
+        cuda_assert("packAtomsVL", cudaPeekAtLastError());
+    }
+    packed_build = neighborBuildCountCUDA();
+    *xq          = d_xq;
+    *par         = d_par;
+}
 
 /* j-slices (grid.y) of the force kernels, one thread per atom and slice; N_b blocks without
  * slices, n_tot neighbor entries, bps resident blocks per SM:
@@ -433,6 +550,9 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     double S             = getTimeStamp();
     LIKWID_MARKER_START("force");
 
+    MD_FLOAT4 *xq, *par;
+    packAtomsForForceVL(atom, &xq, &par);
+
     const dim3 grid(num_blocks, chooseJSlicesVL(neighbor, num_blocks, num_threads_per_block), 1);
     if (neighbor->half_neigh || grid.y > 1) { // these add to the forces
 #ifdef ATOM_POSITION_AOS
@@ -453,7 +573,9 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
             atom->ntypes,
-            cs);
+            cs,
+            xq,
+            par);
     } else {
         computeForceLJCudaFullNeigh<<<grid, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
@@ -464,7 +586,9 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
             atom->ntypes,
-            cs);
+            cs,
+            xq,
+            par);
     }
 
     cuda_assert("computeForceLJCuda", cudaPeekAtLastError());

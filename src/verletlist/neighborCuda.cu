@@ -36,6 +36,7 @@ static int* c_stencil       = NULL;
 static int* c_resize_needed = NULL;
 static int* c_new_maxneighs = NULL;
 static long c_neigh_total   = 0; // neighbor entries of all local atoms, last build
+static int c_build_count    = 0; // list builds so far (atom order/ghosts may change)
 static Binning c_binning {
     .bincount = NULL, .bins = NULL, .mbins = 0, .atoms_per_bin = 0
 };
@@ -636,6 +637,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
         free(h_numneigh);
         c_neigh_total = total;
     }
+    c_build_count++;
 
     GPU_PROFILE_STOP();
     DEBUG_MESSAGE("buildNeighborCUDA end\n");
@@ -643,3 +645,6 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
 
 // Neighbor entries of all local atoms after the last list build (forceCuda.cu)
 extern "C" long numNeighborsTotalCUDA(void) { return c_neigh_total; }
+
+// Number of list builds so far: atom order and ghosts are only changed together with a build
+extern "C" int neighborBuildCountCUDA(void) { return c_build_count; }
