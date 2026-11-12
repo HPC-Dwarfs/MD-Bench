@@ -105,6 +105,10 @@ __global__ void packAtomsVL(DeviceAtom a,
 #endif
 }
 
+/* Full-list kernel with T = 2^VL_TPA_LOG2_FULL lanes per atom (TPA, as the half-list kernel
+ * below): lane t of atom i handles the neighbors t, t+T, t+2T, ... (chunks of T, interleaved
+ * in SOA lists, see neighs), the partial forces of i are summed over the T lanes with warp
+ * shuffles and written once: no atomics without j-slices. */
 __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -119,10 +123,15 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     const MD_FLOAT4* __restrict__ par)
 {
 
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    constexpr int LGT = VL_TPA_LOG2_FULL; // T = 2^LGT lanes per atom
+    constexpr int T   = 1 << LGT;
+    const int gtid    = blockIdx.x * blockDim.x + threadIdx.x;
+    const int i       = gtid >> LGT;
+    const int t       = gtid & (T - 1);
     if (i >= Nlocal) {
-        return;
+        return; // all lanes of an atom leave together
     }
+    neigh.tpa_log2 = LGT; // the list layout as a constant: index arithmetic with immediates
 
     DeviceAtom* atom         = &a;
     const int numneighs      = neigh_numneigh[i];
@@ -195,32 +204,60 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
         }
     };
 
-    // j-slices: block (bx, s) handles the neighbors s, s+S, s+2S, ... of its atoms
-    // (S = gridDim.y). Without slices the loop keeps unit stride, which nvcc unrolls;
-    // the strided loop is not unrolled by itself and up to 46% slower at S = 1
+    // Chunks of T neighbors; j-slices: block (bx, s) handles the chunks s, s+S, s+2S, ... of
+    // its atoms (S = gridDim.y). Without slices the loop keeps unit stride, which nvcc
+    // unrolls; the strided loop is not unrolled by itself and up to 46% slower at S = 1
+    const int nchunks = (numneighs + T - 1) >> LGT;
     if (gridDim.y == 1) {
-        for (int k = 0; k < numneighs; k++) {
-            pair(k);
+        for (int c = 0; c < nchunks; c++) {
+            const int k = (c << LGT) + t;
+            if (T == 1 || k < numneighs) {
+                pair(k);
+            }
         }
     } else {
 #pragma unroll 2
-        for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
-            pair(k);
+        for (int c = blockIdx.y; c < nchunks; c += gridDim.y) {
+            const int k = (c << LGT) + t;
+            if (T == 1 || k < numneighs) {
+                pair(k);
+            }
         }
     }
 
-    if (gridDim.y == 1) {
-        atom_fx(i) = fix;
-        atom_fy(i) = fiy;
-        atom_fz(i) = fiz;
-    } else {
-        // several j-slices add to the same atom
-        atomicAdd(&atom_fx(i), fix);
-        atomicAdd(&atom_fy(i), fiy);
-        atomicAdd(&atom_fz(i), fiz);
+    if (T > 1) {
+        // the T lanes of an atom are consecutive lanes of one warp
+        const unsigned int lane  = threadIdx.x & 31;
+        const unsigned int group = T >= 32 ? 0xffffffffu : ((1u << (T % 32)) - 1u);
+        const unsigned int mask  = group << (lane & ~(unsigned int)(T - 1));
+#pragma unroll
+        for (int off = T / 2; off > 0; off /= 2) {
+            fix += __shfl_down_sync(mask, fix, off, T);
+            fiy += __shfl_down_sync(mask, fiy, off, T);
+            fiz += __shfl_down_sync(mask, fiz, off, T);
+        }
+    }
+    if (t == 0) {
+        if (gridDim.y == 1) {
+            atom_fx(i) = fix;
+            atom_fy(i) = fiy;
+            atom_fz(i) = fiz;
+        } else {
+            // several j-slices add to the same atom
+            atomicAdd(&atom_fx(i), fix);
+            atomicAdd(&atom_fy(i), fiy);
+            atomicAdd(&atom_fz(i), fiz);
+        }
     }
 }
 
+/* Half-list kernel with T = 2^VL_TPA_LOG2_HALF lanes per atom (TPA, after the LAMMPS GPU
+ * package and KOKKOS neigh/thread): lane t of atom i handles the neighbors t, t+T, t+2T, ...
+ * (chunks of T, interleaved in SOA lists, see neighs), the partial forces of i are summed over
+ * the T lanes with warp shuffles and added once. The reaction on a neighbor j is added
+ * atomically, but only for local j: the GPU half list keeps all ghosts (pairs across the
+ * boundary are computed by both sides) and ghost forces are not folded back (force.c), as
+ * LAMMPS' half list with newton off. */
 __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -235,10 +272,15 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     const MD_FLOAT4* __restrict__ par)
 {
 
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    constexpr int LGT = VL_TPA_LOG2_HALF; // T = 2^LGT lanes per atom
+    constexpr int T   = 1 << LGT;
+    const int gtid    = blockIdx.x * blockDim.x + threadIdx.x;
+    const int i       = gtid >> LGT;
+    const int t       = gtid & (T - 1);
     if (i >= Nlocal) {
-        return;
+        return; // all lanes of an atom leave together
     }
+    neigh.tpa_log2 = LGT; // the list layout as a constant: index arithmetic with immediates
 
     DeviceAtom* atom         = &a;
     const int numneighs      = neigh_numneigh[i];
@@ -309,9 +351,11 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
             MD_FLOAT partial_force_y = dely * force;
             MD_FLOAT partial_force_z = delz * force;
 
-            atomicAdd(&atom_fx(j), -partial_force_x);
-            atomicAdd(&atom_fy(j), -partial_force_y);
-            atomicAdd(&atom_fz(j), -partial_force_z);
+            if (j < Nlocal) { // ghost forces are not folded back
+                atomicAdd(&atom_fx(j), -partial_force_x);
+                atomicAdd(&atom_fy(j), -partial_force_y);
+                atomicAdd(&atom_fz(j), -partial_force_z);
+            }
 
             fix += partial_force_x;
             fiy += partial_force_y;
@@ -319,23 +363,44 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
         }
     };
 
-    // j-slices: block (bx, s) handles the neighbors s, s+S, s+2S, ... of its atoms
-    // (S = gridDim.y). Without slices the loop keeps unit stride, which nvcc unrolls;
-    // the strided loop is not unrolled by itself and up to 46% slower at S = 1
+    // Chunks of T neighbors; j-slices: block (bx, s) handles the chunks s, s+S, s+2S, ... of
+    // its atoms (S = gridDim.y). Without slices the loop keeps unit stride, which nvcc
+    // unrolls; the strided loop is not unrolled by itself and up to 46% slower at S = 1
+    const int nchunks = (numneighs + T - 1) >> LGT;
     if (gridDim.y == 1) {
-        for (int k = 0; k < numneighs; k++) {
-            pair(k);
+        for (int c = 0; c < nchunks; c++) {
+            const int k = (c << LGT) + t;
+            if (T == 1 || k < numneighs) {
+                pair(k);
+            }
         }
     } else {
 #pragma unroll 2
-        for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
-            pair(k);
+        for (int c = blockIdx.y; c < nchunks; c += gridDim.y) {
+            const int k = (c << LGT) + t;
+            if (T == 1 || k < numneighs) {
+                pair(k);
+            }
         }
     }
 
-    atomicAdd(&atom_fx(i), fix);
-    atomicAdd(&atom_fy(i), fiy);
-    atomicAdd(&atom_fz(i), fiz);
+    if (T > 1) {
+        // the T lanes of an atom are consecutive lanes of one warp
+        const unsigned int lane = threadIdx.x & 31;
+        const unsigned int group = T >= 32 ? 0xffffffffu : ((1u << (T % 32)) - 1u);
+        const unsigned int mask  = group << (lane & ~(unsigned int)(T - 1));
+#pragma unroll
+        for (int off = T / 2; off > 0; off /= 2) {
+            fix += __shfl_down_sync(mask, fix, off, T);
+            fiy += __shfl_down_sync(mask, fiy, off, T);
+            fiz += __shfl_down_sync(mask, fiz, off, T);
+        }
+    }
+    if (t == 0) {
+        atomicAdd(&atom_fx(i), fix);
+        atomicAdd(&atom_fy(i), fiy);
+        atomicAdd(&atom_fz(i), fiz);
+    }
 }
 
 __global__ void kernel_initial_integrate(
@@ -473,8 +538,8 @@ static void packAtomsForForceVL(Atom* atom, MD_FLOAT4** xq, MD_FLOAT4** par)
 // Resident blocks per SM of a force kernel: one wave is N_SM of these. Queried once per kernel.
 static int residentBlocksPerSMVL(const void* kernel, int threads)
 {
-    static const void* kernels[4];
-    static int blocks[4];
+    static const void* kernels[16];
+    static int blocks[16];
     static int nkernels = 0;
     for (int i = 0; i < nkernels; i++) {
         if (kernels[i] == kernel) return blocks[i];
@@ -483,7 +548,7 @@ static int residentBlocksPerSMVL(const void* kernel, int threads)
     cuda_assert("cudaOccupancyMaxActiveBlocksPerMultiprocessor",
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, kernel, threads, 0));
     if (n < 1) n = 1;
-    if (nkernels < 4) {
+    if (nkernels < 16) {
         kernels[nkernels] = kernel;
         blocks[nkernels]  = n;
         nkernels++;
@@ -491,8 +556,16 @@ static int residentBlocksPerSMVL(const void* kernel, int threads)
     return n;
 }
 
-static int chooseJSlicesVL(const Neighbor* neighbor, int nblocks, int threads)
+static int chooseJSlicesVL(const Neighbor* neighbor, const void* kernel, int nblocks, int threads)
 {
+    static int forced = -2; // VL_JSLICES=S fixes S (S >= 1)
+    if (forced == -2) {
+        const char* e = getenv("VL_JSLICES");
+        forced        = e != NULL ? atoi(e) : -1;
+    }
+    if (forced >= 1) {
+        return forced;
+    }
     static int nsm = 0;
     if (nsm == 0) {
         int dev = 0;
@@ -500,8 +573,6 @@ static int chooseJSlicesVL(const Neighbor* neighbor, int nblocks, int threads)
         cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
     }
     if (nblocks <= 0) return 1;
-    const void* kernel  = neighbor->half_neigh ? (const void*)computeForceLJCudaHalfNeigh
-                                               : (const void*)computeForceLJCudaFullNeigh;
     const int bps       = residentBlocksPerSMVL(kernel, threads);
     const double k      = neighbor->half_neigh ? VL_SLICE_K_HALF : VL_SLICE_K_FULL;
     const double w      = neighbor->half_neigh ? VL_SLICE_W_HALF : VL_SLICE_W_FULL;
@@ -546,15 +617,25 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     // memsetGPU(atom->d_atom.fx, 0, sizeof(MD_FLOAT) * Nlocal * 3);
 
     GPU_PROFILE_START("force_lj");
-    const int num_blocks = ceil((float)Nlocal / (float)num_threads_per_block);
-    double S             = getTimeStamp();
+    double S = getTimeStamp();
     LIKWID_MARKER_START("force");
 
     MD_FLOAT4 *xq, *par;
     packAtomsForForceVL(atom, &xq, &par);
 
-    const dim3 grid(num_blocks, chooseJSlicesVL(neighbor, num_blocks, num_threads_per_block), 1);
-    if (neighbor->half_neigh || grid.y > 1) { // these add to the forces
+    // Lanes per atom, fixed per list type (VL_TPA_LOG2_HALF/FULL in neighbor.h)
+    const int half     = neighbor->half_neigh;
+    const int lanes    = 1 << (half ? VL_TPA_LOG2_HALF : VL_TPA_LOG2_FULL);
+    const void* kernel = half ? (const void*)computeForceLJCudaHalfNeigh
+                              : (const void*)computeForceLJCudaFullNeigh;
+    if (num_threads_per_block % lanes != 0) { // the lanes of an atom must stay in one block
+        fprintf(stderr, "Error: NUM_THREADS must be a multiple of %d!\n", lanes);
+        exit(EXIT_FAILURE);
+    }
+    const int bx = (int)(((long)Nlocal * lanes + num_threads_per_block - 1) /
+                         num_threads_per_block);
+    const dim3 grid(bx, chooseJSlicesVL(neighbor, kernel, bx, num_threads_per_block), 1);
+    if (half || grid.y > 1) { // these add to the forces
 #ifdef ATOM_POSITION_AOS
         memsetGPU(atom->d_atom.fx, 0, sizeof(MD_FLOAT) * Nmax * 3);
 #else
@@ -563,8 +644,9 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
         memsetGPU(atom->d_atom.fz, 0, sizeof(MD_FLOAT) * Nmax);
 #endif
     }
-    if (neighbor->half_neigh) {
-        computeForceLJCudaHalfNeigh<<<grid, num_threads_per_block>>>(atom->d_atom,
+    if (half) {
+        computeForceLJCudaHalfNeigh<<<grid, num_threads_per_block>>>(
+            atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,
@@ -577,7 +659,8 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             xq,
             par);
     } else {
-        computeForceLJCudaFullNeigh<<<grid, num_threads_per_block>>>(atom->d_atom,
+        computeForceLJCudaFullNeigh<<<grid, num_threads_per_block>>>(
+            atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,

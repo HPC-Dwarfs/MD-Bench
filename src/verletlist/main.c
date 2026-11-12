@@ -128,6 +128,10 @@ double setup(Parameter* param,
     // initDevice must precede setupPbc: the CUDA setupPbc reads positions on
     // the device, so the initial H2D upload has to happen first.
     initDevice(param, atom, neighbor);
+#if defined(CUDA_TARGET) && !defined(_MPI)
+    // Spatial order of the local atoms (VL_GPU_SORT), before the ghosts are made
+    sortAtomsCUDA(atom);
+#endif
     setupPbc(atom, param);
 
 #ifdef _MPI
@@ -152,6 +156,12 @@ double reneighbour(
     timeStart = getTimeStamp();
     LIKWID_MARKER_START("reneighbour");
     // updateAtomsPbc(atom, param, true); function called at updateAtoms
+#if defined(CUDA_TARGET) && !defined(_MPI)
+    // Spatial order of the local atoms (VL_GPU_SORT), before the ghosts are made
+    stepStart = getTimeStamp();
+    sortAtomsCUDA(atom);
+    timer[NEIGH_SORT] += getTimeStamp() - stepStart;
+#endif
     stepStart = getTimeStamp();
 #ifdef _MPI
     ghostNeighbor(comm, atom, param);

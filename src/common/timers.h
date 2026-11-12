@@ -27,7 +27,7 @@ typedef enum {
     NEIGH_PBC,         // setupPbc()/updatePbc() (verletlist) or ghostNeighbor() (MPI)
     NEIGH_BUILD,       // buildNeighbor()
     NEIGH_PRUNE,       // pruneNeighbor()/pruneNeighborCUDA()
-    NEIGH_SORT,        // sortAtom() (verletlist, SORT_ATOMS only)
+    NEIGH_SORT,        // sortAtom() (verletlist, SORT_ATOMS) or sortAtomsCUDA() (VL_GPU_SORT)
     NEIGH_CLUSTERS,    // buildClusters()+defineJClusters() (clusterpair only)
     NEIGH_BIN,         // binJClusters() (clusterpair only)
     INTEGRATE_INITIAL, // initialIntegrate()

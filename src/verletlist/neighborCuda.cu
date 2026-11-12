@@ -7,8 +7,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 //---
 
+// thrust before device.h, which defines error_t as a macro
+#include <thrust/execution_policy.h>
+#include <thrust/gather.h>
+#include <thrust/sequence.h>
+#include <thrust/sort.h>
 #include <device.h>
 #include <gpu_profiler.h>
 
@@ -363,11 +369,8 @@ __global__ void prune_neighborhood(
 
         if (rsq < cutsq) {
             if (hi != lo) {
-                neighs(neighbor->neighbors,
-                    i,
-                    hi,
-                    nlocal,
-                    neighbor) = neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
+                neighs(neighbor->neighbors, i, hi, nlocal, neighbor) =
+                    neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
                 neighs(neighbor->neighbors, i, lo, nlocal, neighbor) = j;
             }
             lo++;
@@ -474,6 +477,20 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
         d_neighbor->numneigh_inner = (int*)reallocateGPU(d_neighbor->numneigh_inner,
             nmax * sizeof(int));
     }
+
+    // Lanes per atom of the force kernel, the layout of this list (see neighs)
+    d_neighbor->tpa_log2 = neighbor->half_neigh ? VL_TPA_LOG2_HALF : VL_TPA_LOG2_FULL;
+#ifndef NBLIST_CSR
+    // the interleaved groups of SOA lists need maxneighs to be a multiple of 32
+    if (neighbor->maxneighs % 32 != 0) {
+        neighbor->maxneighs   = (neighbor->maxneighs + 31) / 32 * 32;
+        d_neighbor->maxneighs = neighbor->maxneighs;
+        const int nalloc      = nmax > atom->Nmax ? nmax : atom->Nmax;
+        d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
+            (size_t)nalloc * neighbor->maxneighs * sizeof(int));
+        neighbor->neighbors   = d_neighbor->neighbors;
+    }
+#endif
 
     // TODO move all of this initialization into its own method
     if (c_stencil == NULL) {
@@ -611,7 +628,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
 
         if (resize) {
             printf("RESIZE %d\n", neighbor->maxneighs);
-            neighbor->maxneighs   = new_maxneighs * 1.2;
+            neighbor->maxneighs   = ((int)(new_maxneighs * 1.2) + 31) / 32 * 32;
             d_neighbor->maxneighs = neighbor->maxneighs;
             printf("NEW SIZE %d\n", neighbor->maxneighs);
             d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
@@ -648,3 +665,117 @@ extern "C" long numNeighborsTotalCUDA(void) { return c_neigh_total; }
 
 // Number of list builds so far: atom order and ghosts are only changed together with a build
 extern "C" int neighborBuildCountCUDA(void) { return c_build_count; }
+
+/* -----------------------------------------------------------------------------------------
+ * Spatial sort of the local atoms, as LAMMPS' atom_modify sort: before the ghosts and the
+ * neighbor list of a rebuild are made (main.c), the local atoms are ordered by the bins of the
+ * list build in row-major order. The 32 atoms of a warp then sit in one or two bins, their
+ * neighbor lists overlap and the gathers of xq[j] in the force kernel share cache lines (the
+ * input files keep no spatial order). The sort is stable, so the permutation is the one of
+ * LAMMPS' Atom::sort. On the host only the original ids (dumpForces) and the types follow the
+ * atoms; positions and velocities are copied back from the device where the host needs them.
+ * On by default (no MPI); VL_GPU_SORT=0 disables it.
+ * ----------------------------------------------------------------------------------------- */
+
+// Row-major index of the list-build bin of each local atom
+__global__ void binIndexKernel(DeviceAtom a,
+    int nlocal,
+    MD_FLOAT invx,
+    MD_FLOAT invy,
+    MD_FLOAT invz,
+    int nbx,
+    int nby,
+    int nbz,
+    unsigned int* bin)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nlocal) {
+        return;
+    }
+    DeviceAtom* atom = &a;
+    const int ix     = min(max((int)(atom_x(i) * invx), 0), nbx - 1);
+    const int iy     = min(max((int)(atom_y(i) * invy), 0), nby - 1);
+    const int iz     = min(max((int)(atom_z(i) * invz), 0), nbz - 1);
+    bin[i]           = (unsigned int)((iz * nby + iy) * nbx + ix);
+}
+
+// arr[i] = arr[perm[i]] for the first n entries
+template <typename T>
+static void permuteOnDevice(T* arr, const int* perm, int n, void* scratch)
+{
+    thrust::gather(thrust::device, perm, perm + n, arr, (T*)scratch);
+    memcpyOnGPU(arr, scratch, sizeof(T) * n);
+}
+
+extern "C" void sortAtomsCUDA(Atom* atom)
+{
+    static int enabled         = -1;
+    static int cap             = 0;
+    static unsigned int* d_bin = NULL;
+    static int* d_perm         = NULL;
+    static void* d_scratch     = NULL;
+    static int* h_perm         = NULL;
+    static int* h_tmp          = NULL;
+    if (enabled < 0) {
+        const char* e = getenv("VL_GPU_SORT");
+        enabled       = e == NULL || atoi(e) != 0;
+    }
+    const int n = atom->Nlocal;
+    if (!enabled || n < 2) {
+        return;
+    }
+    if (n > cap) {
+        cap       = atom->Nmax > n ? atom->Nmax : n;
+        d_bin     = (unsigned int*)reallocateGPU(d_bin, sizeof(unsigned int) * cap);
+        d_perm    = (int*)reallocateGPU(d_perm, sizeof(int) * cap);
+        d_scratch = reallocateGPU(d_scratch, sizeof(MD_FLOAT3) * cap); // largest per-atom data
+        h_perm    = (int*)realloc(h_perm, sizeof(int) * cap);
+        h_tmp     = (int*)realloc(h_tmp, sizeof(int) * cap);
+    }
+    GPU_PROFILE_START("sort_atoms");
+
+    // d_perm[new index] = old index, the atoms ordered by bin
+    const int threads = 256;
+    binIndexKernel<<<(n + threads - 1) / threads, threads>>>(atom->d_atom,
+        n,
+        bininvx,
+        bininvy,
+        bininvz,
+        nbinx,
+        nbiny,
+        nbinz,
+        d_bin);
+    thrust::sequence(thrust::device, d_perm, d_perm + n);
+    thrust::stable_sort_by_key(thrust::device, d_bin, d_bin + n, d_perm);
+
+    // Device data of the local atoms (forces are recomputed and ghosts rebuilt after the sort)
+    DeviceAtom* d = &atom->d_atom;
+#ifdef ATOM_POSITION_AOS
+    permuteOnDevice((MD_FLOAT3*)d->x, d_perm, n, d_scratch);
+    permuteOnDevice((MD_FLOAT3*)d->vx, d_perm, n, d_scratch);
+#else
+    permuteOnDevice(d->x, d_perm, n, d_scratch);
+    permuteOnDevice(d->y, d_perm, n, d_scratch);
+    permuteOnDevice(d->z, d_perm, n, d_scratch);
+    permuteOnDevice(d->vx, d_perm, n, d_scratch);
+    permuteOnDevice(d->vy, d_perm, n, d_scratch);
+    permuteOnDevice(d->vz, d_perm, n, d_scratch);
+#endif
+    permuteOnDevice(d->type, d_perm, n, d_scratch);
+    permuteOnDevice(d->sqrt_epsilon, d_perm, n, d_scratch);
+    permuteOnDevice(d->sigma3, d_perm, n, d_scratch);
+    permuteOnDevice(d->q, d_perm, n, d_scratch);
+    permuteOnDevice(d->mol, d_perm, n, d_scratch);
+
+    // Host: the original ids (dumpForces) and the types follow the atoms
+    memcpyFromGPU(h_perm, d_perm, sizeof(int) * n);
+    for (int i = 0; i < n; i++) {
+        h_tmp[i] = atom->id[h_perm[i]];
+    }
+    memcpy(atom->id, h_tmp, sizeof(int) * n);
+    for (int i = 0; i < n; i++) {
+        h_tmp[i] = atom->type[h_perm[i]];
+    }
+    memcpy(atom->type, h_tmp, sizeof(int) * n);
+    GPU_PROFILE_STOP();
+}

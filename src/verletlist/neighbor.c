@@ -97,6 +97,7 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
     bins                     = NULL;
     bincount                 = NULL;
     neighbor->maxneighs      = 100;
+    neighbor->tpa_log2       = 0;
     neighbor->numneigh       = NULL;
     neighbor->numneigh_inner = NULL;
     neighbor->neighbors      = NULL;
