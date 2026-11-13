@@ -9,10 +9,16 @@
  *   cuda_cl_xq   {x, y, z, q}, packed every step
  *   cuda_cl_par  AtomParam, packed on list upload
  *   cuda_nbfp    {cutforcesq, sigma6, epsilon, 0} per type pair (full rule) */
-#ifndef __NBDATA_GPU_H_
-#define __NBDATA_GPU_H_
+#ifndef __FORCE_LJ_CUDA_COMMON_H_
+#define __FORCE_LJ_CUDA_COMMON_H_
 
 #include <pair_cuda.h>
+
+#ifdef __HIP_PLATFORM_AMD__
+#define FULL_WARP_MASK 0xffffffffffffffffULL
+#else
+#define FULL_WARP_MASK 0xffffffffU
+#endif
 
 // Per-atom parameters (one 16-byte load), unused fields are 0
 typedef struct __align__(4 * sizeof(MD_FLOAT)) {
@@ -22,7 +28,7 @@ typedef struct __align__(4 * sizeof(MD_FLOAT)) {
     int type;              // full rule
 } AtomParam;
 
-// Device buffers, defined in force_lj_cuda.cu
+// Device buffers, defined in force_lj_cuda_common.cu
 extern "C" {
 extern MD_FLOAT* cuda_cl_x;
 extern MD_FLOAT* cuda_cl_v;
@@ -108,5 +114,20 @@ static __device__ __forceinline__ LjPair ljPair(
 #endif
     return p;
 }
+
+// force_lj_cuda_common.cu
+extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par);
+extern "C" int chooseJSlicesK(
+    const Atom* atom, const Neighbor* neighbor, double k_slice, const void* kernel);
+
+// force_lj_cuda.cu (gpusimple) and force_lj_cuda_sup.cu (super-cluster)
+extern "C" void updatePbcCUDASimple(Atom* atom, Parameter* param);
+extern "C" void updatePbcCUDASup(Atom* atom, Parameter* param);
+extern "C" void reverseGhostForcesCUDASimple(Atom* atom, Parameter* param);
+extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param);
+extern "C" void pruneNeighborCUDASimple(Parameter* param, Atom* atom, Neighbor* neighbor);
+extern "C" void pruneNeighborCUDASup(Parameter* param, Atom* atom, Neighbor* neighbor);
+extern "C" void packSupData(Parameter* param, Atom* atom, Neighbor* neighbor);
+extern "C" void freeSupData(void);
 
 #endif

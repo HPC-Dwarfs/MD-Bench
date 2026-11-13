@@ -2,37 +2,11 @@
 #error "Super-clustering CUDA kernels are not supported with NBLIST_DATA_LAYOUT=CSR"
 #endif
 
-#ifdef __HIP_PLATFORM_AMD__
-#define FULL_WARP_MASK 0xffffffffffffffffULL
-#else
-#define FULL_WARP_MASK 0xffffffffU
-#endif
+// Super-cluster GPU kernels: one block per i-super-cluster and j-slice
 
 // j-slices per i-supercluster (grid.y): 0 = chosen per force call, > 0 = fixed
 #ifndef GPU_J_SLICES
 #define GPU_J_SLICES 0
-#endif
-
-// K of S = K * sqrt(N_SM * n_tot) / N_sc per list type and thread mapping (GH200)
-#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-#ifndef K_SLICE_HALF
-#define K_SLICE_HALF 0.6
-#endif
-#ifndef K_SLICE_FULL
-#define K_SLICE_FULL 1.5
-#endif
-#else
-#ifndef K_SLICE_HALF
-#define K_SLICE_HALF 3.05
-#endif
-#ifndef K_SLICE_FULL
-#define K_SLICE_FULL 2.5
-#endif
-#endif
-
-// At most this many waves of resident blocks
-#ifndef SLICE_MAX_WAVES
-#define SLICE_MAX_WAVES 10
 #endif
 
 extern "C" {
@@ -51,10 +25,7 @@ extern "C" {
 #include <util.h>
 }
 
-#include <nbdata_gpu.h>
-
-// Packs cuda_cl_xq (and cuda_cl_par with pack_par), see force_lj_cuda.cu
-extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par);
+#include <force_lj_cuda_common.h>
 
 // Neighbor list of the super-cluster kernels, {cj, sub-cluster mask} per entry
 static int2* sup_nbl      = NULL;
@@ -239,7 +210,6 @@ static __device__ __forceinline__ void loadSciToShared(
     }
     __syncthreads();
 }
-
 
 __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
 {
@@ -542,6 +512,29 @@ __global__ void cudaUpdatePbcSup_warp(MD_FLOAT* cuda_cl_x,
     }
 }
 
+// Updates the ghost positions (mapping from setupPbc)
+extern "C" void updatePbcCUDASup(Atom* atom, Parameter* param)
+{
+    const int N           = atom->Nclusters_ghost;
+    const int threads_num = 64;
+    dim3 block_size       = dim3(threads_num, 1, 1);
+    dim3 grid_size        = dim3((N + threads_num - 1) / threads_num, 1, 1);
+
+    cudaUpdatePbcSup_warp<<<grid_size, block_size>>>(cuda_cl_x,
+        cuda_border_map,
+        cuda_jclusters_natoms,
+        cuda_PBCx,
+        cuda_PBCy,
+        cuda_PBCz,
+        atom->Nclusters_local,
+        atom->Nclusters_ghost,
+        param->xprd,
+        param->yprd,
+        param->zprd);
+    cuda_assert("cudaUpdatePbcSup", cudaPeekAtLastError());
+    cuda_assert("cudaUpdatePbcSup", cudaDeviceSynchronize());
+}
+
 // Adds the ghost forces to their real clusters (atomic: several ghosts per cluster)
 __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     int* cuda_border_map,
@@ -567,59 +560,20 @@ __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     }
 }
 
-// Resident blocks per SM of a force kernel (one wave = N_SM of these)
-static int residentBlocksPerSM(const void* kernel)
+// Adds the ghost forces to their real clusters
+extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param)
 {
-    static const void* kernels[8];
-    static int blocks[8];
-    static int nkernels = 0;
-    for (int i = 0; i < nkernels; i++) {
-        if (kernels[i] == kernel) return blocks[i];
-    }
+    const int N           = atom->Nclusters_ghost;
+    const int threads_num = 64;
+    dim3 block_size       = dim3(threads_num, 1, 1);
+    dim3 grid_size        = dim3((N + threads_num - 1) / threads_num, 1, 1);
 
-    int n = 0;
-    cuda_assert("cudaOccupancyMaxActiveBlocksPerMultiprocessor",
-        cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, kernel, CLUSTER_N * CLUSTER_M, 0));
-    if (n < 1) n = 1;
-    if (nkernels < 8) {
-        kernels[nkernels] = kernel;
-        blocks[nkernels]  = n;
-        nkernels++;
-    }
-    return n;
-}
-
-// j-slices S = K * sqrt(N_SM * n_tot) / N_c, capped at SLICE_MAX_WAVES waves
-extern "C" int chooseJSlicesK(
-    const Atom* atom, const Neighbor* neighbor, double k_slice, const void* kernel)
-{
-    static int nsm = 0;
-    if (nsm == 0) {                                  
-        int dev = 0;
-        cudaGetDevice(&dev);
-        cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
-    }
-    const int blocks_per_sm = residentBlocksPerSM(kernel);
-
-    const int nc = atom->Nclusters_local;             
-    if (nc <= 0) return 1;
-
-    long n_tot = 0;
-    int  n_max = 1;
-    for (int ci = 0; ci < nc; ci++) {
-        const int n = neighbor->numneigh[ci];      
-        n_tot += n;
-        if (n > n_max) n_max = n;
-    }
-
-    int S = (int)lround(k_slice * sqrt((double)nsm) * sqrt((double)n_tot) / (double)nc);
-    // At most SLICE_MAX_WAVES waves
-    const long max_blocks = (long)SLICE_MAX_WAVES * nsm * blocks_per_sm;
-    if (S > max_blocks / nc) S = (int)(max_blocks / nc);
-    if (S < 1)     S = 1;
-    if (S > n_max) S = n_max;
-    if (S > 65535) S = 65535;                   
-    return S;
+    cudaReverseGhostForcesSup_warp<<<grid_size, block_size>>>(cuda_cl_f,
+        cuda_border_map,
+        atom->Nclusters_local,
+        atom->Nclusters_ghost);
+    cuda_assert("cudaReverseGhostForcesSup", cudaPeekAtLastError());
+    cuda_assert("cudaReverseGhostForcesSup", cudaDeviceSynchronize());
 }
 
 // j-slices (grid.y) of this super-cluster force call, see GPU_J_SLICES
@@ -628,14 +582,20 @@ static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
 #if GPU_J_SLICES > 0
     return GPU_J_SLICES;
 #else
+    // K per list type and thread mapping, tuned on GH200
+#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+    const double k_half = 0.6, k_full = 1.5;
+#else
+    const double k_half = 3.05, k_full = 2.5;
+#endif
     return neighbor->half_neigh
                ? chooseJSlicesK(atom,
                      neighbor,
-                     K_SLICE_HALF,
+                     k_half,
                      (const void*)computeForceLJCudaSup_halfwarp)
                : chooseJSlicesK(atom,
                      neighbor,
-                     K_SLICE_FULL,
+                     k_full,
                      (const void*)computeForceLJCudaSup_fullwarp);
 #endif
 }
