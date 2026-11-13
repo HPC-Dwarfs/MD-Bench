@@ -574,6 +574,30 @@ extern "C" void pruneNeighborCUDASimple(Parameter* param, Atom* atom, Neighbor* 
     DEBUG_MESSAGE("pruneNeighborCUDA end\n");
 }
 
+// j-slices (grid.y) of this gpusimple force call, see GPU_J_SLICES
+static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
+{
+#if GPU_J_SLICES > 0
+    return GPU_J_SLICES;
+#else
+    // K per list type and thread mapping, tuned on an RTX 2080
+#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+    const double k_half = 2.0, k_full = 2.0;
+#else
+    const double k_half = 3.3, k_full = 2.5;
+#endif
+    return neighbor->half_neigh
+               ? chooseJSlicesK(atom,
+                     neighbor,
+                     k_half,
+                     (const void*)computeForceLJCudaHalfNeigh)
+               : chooseJSlicesK(atom,
+                     neighbor,
+                     k_full,
+                     (const void*)computeForceLJCudaFullNeigh);
+#endif
+}
+
 extern "C" double computeForceLJCuda(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
@@ -594,23 +618,10 @@ extern "C" double computeForceLJCuda(
     // Repack x/y/z/q (the positions moved), inside the timed region
     launchPackAtomsCuda(atom, 0);
 
-    // K of the j-slices per list type and thread mapping, tuned on an RTX 2080
-#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-    const double k_half = 2.0, k_full = 2.0;
-#else
-    const double k_half = 3.3, k_full = 2.5;
-#endif
+    grid_size.y = chooseJSlices(atom, neighbor);
     if (neighbor->half_neigh) {
-        grid_size.y = chooseJSlicesK(atom,
-            neighbor,
-            k_half,
-            (const void*)computeForceLJCudaHalfNeigh);
         computeForceLJCudaHalfNeigh<<<grid_size, block_size>>>(args);
     } else {
-        grid_size.y = chooseJSlicesK(atom,
-            neighbor,
-            k_full,
-            (const void*)computeForceLJCudaFullNeigh);
         computeForceLJCudaFullNeigh<<<grid_size, block_size>>>(args);
     }
 

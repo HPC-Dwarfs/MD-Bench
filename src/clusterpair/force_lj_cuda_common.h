@@ -20,6 +20,11 @@
 #define FULL_WARP_MASK 0xffffffffU
 #endif
 
+// j-slices per i-cluster (grid.y): 0 = chosen per force call (auto), > 0 = fixed
+#ifndef GPU_J_SLICES
+#define GPU_J_SLICES 0
+#endif
+
 // Per-atom parameters (one 16-byte load), unused fields are 0
 typedef struct __align__(4 * sizeof(MD_FLOAT)) {
     MD_FLOAT sqrt_epsilon; // geometric rule

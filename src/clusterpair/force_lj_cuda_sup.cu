@@ -4,11 +4,6 @@
 
 // Super-cluster GPU kernels: one block per i-super-cluster and j-slice
 
-// j-slices per i-supercluster (grid.y): 0 = chosen per force call, > 0 = fixed
-#ifndef GPU_J_SLICES
-#define GPU_J_SLICES 0
-#endif
-
 extern "C" {
 
 #include <stdio.h>
