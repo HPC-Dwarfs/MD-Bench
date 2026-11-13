@@ -512,29 +512,12 @@ static void packAtomsForForceVL(Atom* atom, MD_FLOAT4** xq, MD_FLOAT4** par)
     *par         = d_par;
 }
 
-/* j-slices (grid.y) of the force kernels, one thread per atom and slice; N_b blocks without
- * slices, n_tot neighbor entries, bps resident blocks per SM:
- *     K > 0:  S = K * sqrt(N_SM * n_tot) / N_b    (as the cluster-pair kernels)
- *     K = 0:  S = W * N_SM * bps / N_b            (W waves of resident blocks)
- * at most SLICE_MAX_WAVES waves. Tuned on GH200 (argon 1k-1M atoms, r 0.9-2.8; mean loss
- * against the best S of each case 0.06-1.6%): the half kernel with SOA gains from slices up to
- * 125k atoms (per-pair j-force atomics), the other variants stop gaining at about 0.3 waves.
- * CSR (contiguous per atom like AOS) uses the AOS values, not tuned. */
-#if defined(NBLIST_AOS) || defined(NBLIST_CSR)
-#define VL_SLICE_K_HALF 0.0
-#define VL_SLICE_W_HALF 0.35
-#define VL_SLICE_K_FULL 0.0
-#define VL_SLICE_W_FULL 0.23
-#else
-#define VL_SLICE_K_HALF 0.13
-#define VL_SLICE_W_HALF 0.0
-#define VL_SLICE_K_FULL 0.0
-#define VL_SLICE_W_FULL 0.3
-#endif
-#ifndef SLICE_MAX_WAVES
-#define SLICE_MAX_WAVES 10
+// j-slices (grid.y) of the force kernels: 0 = chosen per force call (auto), > 0 = fixed
+#ifndef GPU_J_SLICES
+#define GPU_J_SLICES 0
 #endif
 
+#if GPU_J_SLICES == 0
 // Resident blocks per SM of a force kernel: one wave is N_SM of these. Queried once per kernel.
 static int residentBlocksPerSMVL(const void* kernel, int threads)
 {
@@ -555,17 +538,21 @@ static int residentBlocksPerSMVL(const void* kernel, int threads)
     }
     return n;
 }
+#endif
 
+// j-slices (grid.y) of this force call, one thread per atom and slice, see GPU_J_SLICES
 static int chooseJSlicesVL(const Neighbor* neighbor, const void* kernel, int nblocks, int threads)
 {
-    static int forced = -2; // VL_JSLICES=S fixes S (S >= 1)
-    if (forced == -2) {
-        const char* e = getenv("VL_JSLICES");
-        forced        = e != NULL ? atoi(e) : -1;
-    }
-    if (forced >= 1) {
-        return forced;
-    }
+#if GPU_J_SLICES > 0
+    return GPU_J_SLICES;
+#else
+    // S = K * sqrt(N_SM * n_tot) / N_b if K > 0, else W waves of resident blocks;
+    // K and W per list layout and type, tuned on GH200 (CSR uses the AOS values)
+#if defined(NBLIST_AOS) || defined(NBLIST_CSR)
+    const double k_half = 0.0, w_half = 0.35, k_full = 0.0, w_full = 0.23;
+#else
+    const double k_half = 0.13, w_half = 0.0, k_full = 0.0, w_full = 0.3;
+#endif
     static int nsm = 0;
     if (nsm == 0) {
         int dev = 0;
@@ -574,18 +561,19 @@ static int chooseJSlicesVL(const Neighbor* neighbor, const void* kernel, int nbl
     }
     if (nblocks <= 0) return 1;
     const int bps       = residentBlocksPerSMVL(kernel, threads);
-    const double k      = neighbor->half_neigh ? VL_SLICE_K_HALF : VL_SLICE_K_FULL;
-    const double w      = neighbor->half_neigh ? VL_SLICE_W_HALF : VL_SLICE_W_FULL;
+    const double k      = neighbor->half_neigh ? k_half : k_full;
+    const double w      = neighbor->half_neigh ? w_half : w_full;
     const double s      = k > 0.0 ? k * sqrt((double)nsm) * sqrt((double)numNeighborsTotalCUDA()) /
                                    (double)nblocks
                                   : w * nsm * bps / (double)nblocks;
     int S               = (int)lround(s);
-    const long max_blocks = (long)SLICE_MAX_WAVES * nsm * bps;
+    const long max_blocks = 10L * nsm * bps; // 10 waves
     if (S > max_blocks / nblocks) S = (int)(max_blocks / nblocks);
     if (S < 1) S = 1;
     if (S > neighbor->maxneighs) S = neighbor->maxneighs > 0 ? neighbor->maxneighs : 1;
     if (S > 65535) S = 65535;                         // gridDim.y limit
     return S;
+#endif
 }
 
 double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
