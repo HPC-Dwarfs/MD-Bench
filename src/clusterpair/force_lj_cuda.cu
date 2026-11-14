@@ -46,7 +46,8 @@ __global__ void computeForceLJCudaFullNeigh(const NbForceArgs nb)
     const AtomParam pi = nb.atoms.par[slot_i];
     const MD_FLOAT qi  = nb.cs.epsfac * xi.w;
 
-    auto jcluster = [&](int k) {
+#pragma unroll 2
+    for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
         const int cj =
             neighs_gpu(nb.nbl.cj, ci, k, nb.atoms.nclusters_local, nb.nbl.maxneighs);
 
@@ -81,18 +82,6 @@ __global__ void computeForceLJCudaFullNeigh(const NbForceArgs nb)
                 fiz += delz * force;
             }
         }
-    };
-
-    // j-slices: block (ci, s) handles neighbors s, s+S, ... (unit stride without slices)
-    if (gridDim.y == 1) {
-        for (int k = 0; k < numneighs; k++) {
-            jcluster(k);
-        }
-    } else {
-#pragma unroll 2
-        for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
-            jcluster(k);
-        }
     }
 
     // Reduce the i-forces with warp shuffles
@@ -117,7 +106,6 @@ __global__ void computeForceLJCudaFullNeigh(const NbForceArgs nb)
             ci_f[CL_Y_INDEX_3D(cii)] = fiy;
             ci_f[CL_Z_INDEX_3D(cii)] = fiz;
         } else {
-            // several j-slices add to the same i-cluster
             atomicAdd(&ci_f[CL_X_INDEX_3D(cii)], fix);
             atomicAdd(&ci_f[CL_Y_INDEX_3D(cii)], fiy);
             atomicAdd(&ci_f[CL_Z_INDEX_3D(cii)], fiz);
@@ -138,7 +126,6 @@ __global__ void computeForceLJCudaFullNeigh(const NbForceArgs nb)
         fix = fiz;
     }
 
-    /* Threads 0,1,2 and 4,5,6 increment x,y,z for their warp */
     if ((cjj & 3) < 3) {
         atomicAdd(&ci_f[cii * 3 + (cjj & 3)], fix);
     }
@@ -160,7 +147,7 @@ __global__ void computeForceLJCudaHalfNeigh(const NbForceArgs nb)
 #else
     int cii = threadIdx.x;
     int cjj = threadIdx.y;
-    MD_FLOAT3 fcj_buf; // j-force of this thread's j-atom from one j-cluster
+    MD_FLOAT3 fcj_buf; 
 #endif
     int ci_cj0     = CJ0_FROM_CI(ci);
     MD_FLOAT* ci_f = &nb.atoms.f[CI_VECTOR3_BASE_INDEX(ci)];
@@ -169,13 +156,11 @@ __global__ void computeForceLJCudaHalfNeigh(const NbForceArgs nb)
     MD_FLOAT fiy   = 0;
     MD_FLOAT fiz   = 0;
 
-    // i-atom (charge scaled by epsfac)
     const int slot_i   = CI_SCALAR_BASE_INDEX(ci) + cii;
     const MD_FLOAT4 xi = nb.atoms.xq[slot_i];
     const AtomParam pi = nb.atoms.par[slot_i];
     const MD_FLOAT qi  = nb.cs.epsfac * xi.w;
 
-    // j-slices: block (ci, s) handles neighbors s, s+S, ... (unrolled twice)
 #pragma unroll 2
     for (int k = blockIdx.y; k < numneighs; k += gridDim.y) {
         const int cj =
@@ -231,7 +216,7 @@ __global__ void computeForceLJCudaHalfNeigh(const NbForceArgs nb)
         }
 
 #ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-        // Reduce the j-force over the 8 i-lanes, one atomic per component
+
         auto jmask = FULL_WARP_MASK;
 
         fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 1);
@@ -251,7 +236,6 @@ __global__ void computeForceLJCudaHalfNeigh(const NbForceArgs nb)
 
         fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 4);
 
-        // Lanes cii = 0, 1, 2 now hold the x, y, z component of the j-force
         if (cii < 3) {
             const int comp = (cii == 0)   ? CL_X_INDEX_3D(cjj)
                              : (cii == 1) ? CL_Y_INDEX_3D(cjj)
@@ -421,7 +405,6 @@ __global__ void cudaUpdatePbc_warp(MD_FLOAT* cuda_cl_x,
     }
 }
 
-// Updates the ghost positions (mapping from setupPbc)
 extern "C" void updatePbcCUDASimple(Atom* atom, Parameter* param)
 {
     const int N           = atom->Nclusters_ghost;
@@ -444,7 +427,6 @@ extern "C" void updatePbcCUDASimple(Atom* atom, Parameter* param)
     cuda_assert("cudaUpdatePbc", cudaDeviceSynchronize());
 }
 
-// Adds the ghost forces to their real clusters (atomic: several ghosts per cluster)
 __global__ void cudaReverseGhostForces_warp(MD_FLOAT* cuda_cl_f,
     int* cuda_border_map,
     int* cuda_jclusters_natoms,
@@ -470,7 +452,6 @@ __global__ void cudaReverseGhostForces_warp(MD_FLOAT* cuda_cl_f,
     }
 }
 
-// Adds the ghost forces to their real clusters
 extern "C" void reverseGhostForcesCUDASimple(Atom* atom, Parameter* param)
 {
     const int N           = atom->Nclusters_ghost;
@@ -569,13 +550,12 @@ extern "C" void pruneNeighborCUDASimple(Parameter* param, Atom* atom, Neighbor* 
     DEBUG_MESSAGE("pruneNeighborCUDA end\n");
 }
 
-// j-slices (grid.y) of this gpusimple force call, see GPU_J_SLICES
 static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
 {
 #if GPU_J_SLICES > 0
     return GPU_J_SLICES;
 #else
-    // K per list type and thread mapping, tuned on an RTX 2080
+
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
     const double k_half = 2.0, k_full = 2.0;
 #else
@@ -610,7 +590,6 @@ extern "C" double computeForceLJCuda(
     double S        = getTimeStamp();
     LIKWID_MARKER_START("force");
 
-    // Repack x/y/z/q (the positions moved), inside the timed region
     launchPackAtomsCuda(atom, 0);
 
     grid_size.y = chooseJSlices(atom, neighbor);
