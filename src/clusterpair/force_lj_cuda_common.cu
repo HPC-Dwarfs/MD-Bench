@@ -41,19 +41,19 @@ int* cuda_border_map;
 int* cuda_jclusters_natoms;
 int *cuda_PBCx, *cuda_PBCy, *cuda_PBCz;
 
-// Unpacked per-atom data (NULL when unused)
+
 int* cuda_cl_t;
 MD_FLOAT* cuda_cl_sqrt_epsilon;
 MD_FLOAT* cuda_cl_sigma3;
 MD_FLOAT* cuda_cl_q;
 int* cuda_cl_mol;
-// Packed data read by the force kernels, see force_lj_cuda_common.h
+
 MD_FLOAT4* cuda_cl_xq;
 AtomParam* cuda_cl_par;
 MD_FLOAT4* cuda_nbfp;
 }
 
-// Packs atom slot a into cuda_cl_xq and, with pack_par, cuda_cl_par
+// Packs cuda_cl_xq and cuda_cl_par 
 __global__ void packAtomsCuda(const MD_FLOAT* cuda_cl_x,
     const MD_FLOAT* cuda_cl_q,
     const MD_FLOAT* cuda_cl_sqrt_epsilon,
@@ -80,7 +80,7 @@ __global__ void packAtomsCuda(const MD_FLOAT* cuda_cl_x,
     xq[a] = v;
 
     if (pack_par) {
-        AtomParam p = {}; // unused fields stay 0
+        AtomParam p = {};
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         p.sqrt_epsilon = cuda_cl_sqrt_epsilon[a];
         p.sigma3       = cuda_cl_sigma3[a];
@@ -95,8 +95,7 @@ __global__ void packAtomsCuda(const MD_FLOAT* cuda_cl_x,
 // Packs all local and ghost atom slots
 extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par)
 {
-    const int nslots = (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) *
-                       CLUSTER_N;
+    const int nslots = (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_N;
     if (nslots == 0) {
         return;
     }
@@ -113,30 +112,30 @@ extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par)
     cuda_assert("packAtomsCuda", cudaPeekAtLastError());
 }
 
-// Arguments of the force kernels
+// packs the arguments for the CUDA force kernel
 NbForceArgs makeNbForceArgs(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
-    NbForceArgs a;
-    a.atoms.xq              = cuda_cl_xq;
-    a.atoms.par             = cuda_cl_par;
-    a.atoms.f               = cuda_cl_f;
-    a.atoms.nclusters_local = atom->Nclusters_local;
-    a.nbl.numneigh          = cuda_numneigh_inner;
-    a.nbl.cj                = cuda_neighbors;
-    a.nbl.cj_mask           = NULL; // set by computeForceLJCudaSup()
-    a.nbl.maxneighs         = neighbor->maxneighs;
+    NbForceArgs nb;
+    nb.atoms.xq              = cuda_cl_xq;
+    nb.atoms.par             = cuda_cl_par;
+    nb.atoms.f               = cuda_cl_f;
+    nb.atoms.nclusters_local = atom->Nclusters_local;
+    nb.nbl.numneigh          = cuda_numneigh_inner;
+    nb.nbl.cj                = cuda_neighbors;
+    nb.nbl.cj_mask           = NULL;
+    nb.nbl.maxneighs         = neighbor->maxneighs;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
-    a.lj.cutforcesq = param->cutforce * param->cutforce;
-    a.lj.sigma6     = param->sigma6;
-    a.lj.epsilon    = param->epsilon;
+    nb.lj.cutforcesq = param->cutforce * param->cutforce;
+    nb.lj.sigma6     = param->sigma6;
+    nb.lj.epsilon    = param->epsilon;
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
-    a.lj.cutforcesq = param->cutforce * param->cutforce;
+    nb.lj.cutforcesq = param->cutforce * param->cutforce;
 #else
-    a.lj.nbfp   = cuda_nbfp;
-    a.lj.ntypes = atom->ntypes;
+    nb.lj.nbfp   = cuda_nbfp;
+    nb.lj.ntypes = atom->ntypes;
 #endif
-    a.cs = coulombScalarInit(param);
-    return a;
+    nb.cs = coulombScalarInit(param);
+    return nb;
 }
 
 extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
@@ -276,7 +275,7 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         memcpyToGPU(cuda_neighbors_imask,
             neighbor->neighbors_imask,
             atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
-        packSupData(param, atom, neighbor);
+        launchPackNeighborsSup(atom, neighbor);
     } else {
         // Unused by the non-super GPU force kernel.
         memsetGPU(cuda_neighbors_imask,

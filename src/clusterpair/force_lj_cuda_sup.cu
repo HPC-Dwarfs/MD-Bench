@@ -2,7 +2,7 @@
 #error "Super-clustering CUDA kernels are not supported with NBLIST_DATA_LAYOUT=CSR"
 #endif
 
-// Super-cluster GPU kernels: one block per i-super-cluster and j-slice
+
 
 extern "C" {
 
@@ -22,67 +22,53 @@ extern "C" {
 
 #include <force_lj_cuda_common.h>
 
-// Neighbor list of the super-cluster kernels, {cj, sub-cluster mask} per entry
-static int2* sup_nbl      = NULL;
-static size_t sup_nbl_cap = 0;
+static int2* sup_nbl = NULL; // {cj, sub-cluster mask}
 
-/* Packs the list into {cj, mask}: mask bits 0..SCLUSTER_SIZE-1 are the sub-clusters to
- * visit, the bits above 1 + the sub-cluster that is cj itself (0 if none) */
-__global__ void packNeighborsSup(const int* cuda_numneigh,
-    const int* cuda_neighbors,
-    const unsigned int* cuda_neighbors_imask,
-    const int* cuda_border_map,
+// Packs sup_nbl as {cj, mask}: low bits = sub-clusters to visit, high bits = diag_ci + 1
+__global__ void packNeighborsSup(const int* numneigh,
+    const int* neighbors,
+    const unsigned int* imasks,
+    const int* border_map,
     int2* nbl,
-    int Nclusters_local,
+    int nsc,
     int maxneighs,
     int half)
 {
     const int sci       = blockIdx.x;
-    const int ncj_local = Nclusters_local * SCLUSTER_SIZE;
-    const int n         = cuda_numneigh[sci];
+    const int ncj_local = nsc * SCLUSTER_SIZE; 
+    const int n         = numneigh[sci];
 
     for (int k = threadIdx.x; k < n; k += blockDim.x) {
-        const int cj       = neighs_gpu(cuda_neighbors, sci, k, Nclusters_local, maxneighs);
-        unsigned int imask = neighs_gpu(cuda_neighbors_imask,
-                                 sci,
-                                 k,
-                                 Nclusters_local,
-                                 maxneighs) &
-                             ((1u << SCLUSTER_SIZE) - 1u);
-        if (!half) {
-            // A ghost cj is never one of the local sub-clusters
-            const int d = cj - sci * SCLUSTER_SIZE;
-            const int diag = (d >= 0 && d < SCLUSTER_SIZE) ? d : -1;
-            neighs_gpu(nbl, sci, k, Nclusters_local, maxneighs) = make_int2(cj,
-                (int)(imask | ((unsigned int)(diag + 1) << SCLUSTER_SIZE)));
-            continue;
+        const int cj       = neighs_gpu(neighbors, sci, k, nsc, maxneighs);
+        unsigned int imask = neighs_gpu(imasks, sci, k, nsc, maxneighs);
+
+        // half: get cj from border_map if it is a ghost cluster
+        const int cj_real = (half && cj >= ncj_local) ? border_map[cj - ncj_local] : cj;
+
+        int diag_ci = -1;
+        for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
+            const int ci = sci * SCLUSTER_SIZE + sci_ci;
+            if (half && ci > cj_real) imask &= ~(1u << sci_ci); // only ci <= cj
+            if (ci == cj_real) diag_ci = sci_ci;
         }
-        // Order a ghost cj by its real cluster
-        const int order_cj = (cj < ncj_local) ? cj : cuda_border_map[cj - ncj_local];
-        // Highest sub-cluster with ci <= order_cj
-        const int last = order_cj - sci * SCLUSTER_SIZE;
-        int diag       = -1;
-        if (last < 0) {
-            imask = 0;
-        } else if (last < SCLUSTER_SIZE) {
-            imask &= (2u << last) - 1u;
-            diag = last;
-        }
-        neighs_gpu(nbl, sci, k, Nclusters_local, maxneighs) = make_int2(cj,
-            (int)(imask | ((unsigned int)(diag + 1) << SCLUSTER_SIZE)));
+
+        imask &= (1u << SCLUSTER_SIZE) - 1u;
+        const unsigned int mask = imask | ((unsigned int)(diag_ci + 1) << SCLUSTER_SIZE);
+        neighs_gpu(nbl, sci, k, nsc, maxneighs) = make_int2(cj, (int)mask);
     }
 }
 
 // Packs sup_nbl from cuda_neighbors and cuda_neighbors_imask
-static void launchPackNeighborsSup(Atom* atom, Neighbor* neighbor)
+extern "C" void launchPackNeighborsSup(Atom* atom, Neighbor* neighbor)
 {
+    static size_t cap = 0; // entries allocated in sup_nbl
     const size_t nnbl = (size_t)atom->Nclusters_local * neighbor->maxneighs;
 
-    if (nnbl > sup_nbl_cap) {
-        sup_nbl     = (int2*)reallocateGPU(sup_nbl, nnbl * sizeof(int2));
-        sup_nbl_cap = nnbl;
-    }
     if (nnbl > 0) {
+        if (sup_nbl == NULL || nnbl > cap) {
+            sup_nbl = (int2*)reallocateGPU(sup_nbl, nnbl * sizeof(int2));
+            cap     = nnbl;
+        }
         packNeighborsSup<<<atom->Nclusters_local, 128>>>(cuda_numneigh,
             cuda_neighbors,
             cuda_neighbors_imask,
@@ -96,18 +82,12 @@ static void launchPackNeighborsSup(Atom* atom, Neighbor* neighbor)
     cuda_assert("packNeighborsSup", cudaDeviceSynchronize());
 }
 
-extern "C" void packSupData(Parameter* param, Atom* atom, Neighbor* neighbor)
-{
-    launchPackNeighborsSup(atom, neighbor);
-}
-
 extern "C" void freeSupData(void)
 {
     if (sup_nbl) {
         GPUfree(sup_nbl);
     }
-    sup_nbl     = NULL;
-    sup_nbl_cap = 0;
+    sup_nbl = NULL;
 }
 
 __global__ void cudaInitialIntegrateSup_warp(MD_FLOAT* cuda_cl_x,
@@ -193,20 +173,20 @@ extern "C" void cudaFinalIntegrateSup(Parameter* param, Atom* atom)
 }
 
 static __device__ __forceinline__ void loadSciToShared(
-    const NbForceArgs& a, int sci, MD_FLOAT4* sh_xq, AtomParam* sh_par)
+    const NbForceArgs& nb, int sci, MD_FLOAT4* sh_xq, AtomParam* sh_par)
 {
     const int slot0 = SCI_SCALAR_BASE_INDEX(sci);
     const int tid   = threadIdx.y * CLUSTER_N + threadIdx.x; 
     for (int idx = tid; idx < SCLUSTER_SIZE * CLUSTER_M; idx += blockDim.x * blockDim.y) {
-        MD_FLOAT4 xq = a.atoms.xq[slot0 + idx];
-        xq.w *= a.cs.epsfac;
+        MD_FLOAT4 xq = nb.atoms.xq[slot0 + idx];
+        xq.w *= nb.cs.epsfac;
         sh_xq[idx]  = xq;
-        sh_par[idx] = a.atoms.par[slot0 + idx];
+        sh_par[idx] = nb.atoms.par[slot0 + idx];
     }
     __syncthreads();
 }
 
-__global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
+__global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
 {
     __shared__ MD_FLOAT4 sh_xq[SCLUSTER_SIZE * CLUSTER_M];
     __shared__ AtomParam sh_par[SCLUSTER_SIZE * CLUSTER_M];
@@ -221,7 +201,7 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
     const int cjj = threadIdx.y;
     MD_FLOAT3 fcj_buf;
 #endif
-    MD_FLOAT* sci_f = &a.atoms.f[SCI_VECTOR3_BASE_INDEX(sci)];
+    MD_FLOAT* sci_f = &nb.atoms.f[SCI_VECTOR3_BASE_INDEX(sci)];
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
 
 #pragma unroll
@@ -231,26 +211,25 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
         fbuf[i].z = (MD_FLOAT)0.0;
     }
 
-    loadSciToShared(a, sci, sh_xq, sh_par);
+    loadSciToShared(nb, sci, sh_xq, sh_par);
 
-    // In the sub-cluster that is cj only pairs cii < cjj interact
+    // only cii < cjj interact
     const bool lowerPair   = cii < cjj;
-    const int numneigh_sci = a.nbl.numneigh[sci];
+    const int numneigh_sci = nb.nbl.numneigh[sci];
     for (int k = slice; k < numneigh_sci; k += nslices) {
-        const int2 nb =
-            neighs_gpu(a.nbl.cj_mask, sci, k, a.atoms.nclusters_local, a.nbl.maxneighs);
-        const int cj = nb.x;
-        // Sub-clusters to visit and the one that is cj itself (-1 if none)
-        const unsigned int imask = (unsigned int)nb.y & ((1u << SCLUSTER_SIZE) - 1u);
-        const int diag_ci        = (int)((unsigned int)nb.y >> SCLUSTER_SIZE) - 1;
+        const int2 cj_mask = neighs_gpu(nb.nbl.cj_mask, sci, k, nb.atoms.nclusters_local, nb.nbl.maxneighs);
+        const int cj = cj_mask.x;
+        // imask: sub-clusters to compute; diag_ci: the sub-cluster that is cj (-1: none)
+        const unsigned int imask = (unsigned int)cj_mask.y & ((1u << SCLUSTER_SIZE) - 1u);
+        const int diag_ci        = (int)((unsigned int)cj_mask.y >> SCLUSTER_SIZE) - 1;
         const int slot_j         = CJ_SCALAR_BASE_INDEX(cj) + cjj;
-        const MD_FLOAT4 xj       = a.atoms.xq[slot_j];
-        const AtomParam pj       = a.atoms.par[slot_j];
+        const MD_FLOAT4 xj       = nb.atoms.xq[slot_j];
+        const AtomParam pj       = nb.atoms.par[slot_j];
 
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-        MD_FLOAT* cj_f = &a.atoms.f[CJ_VECTOR3_BASE_INDEX(cj)];
+        MD_FLOAT* cj_f = &nb.atoms.f[CJ_VECTOR3_BASE_INDEX(cj)];
 #else
-        fcj_buf.x = fcj_buf.y = fcj_buf.z = (MD_FLOAT)0.0;
+        fcj_buf = float3 { 0.0f, 0.0f, 0.0f };
 #endif
 
 #pragma unroll
@@ -263,7 +242,7 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
                 MD_FLOAT dely      = xi.y - xj.y;
                 MD_FLOAT delz      = xi.z - xj.z;
                 MD_FLOAT rsq       = delx * delx + dely * dely + delz * delz;
-                const LjPair p     = ljPair(a.lj, pi, pj);
+                const LjPair p     = ljPair(nb.lj, pi, pj);
 
                 if ((rsq < p.cutforcesq) & ((sci_ci != diag_ci) | lowerPair)) {
                     MD_FLOAT force = pairForceScalar(rsq,
@@ -273,7 +252,7 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
                         xj.w,
                         pi.mol,
                         pj.mol,
-                        a.cs);
+                        nb.cs);
                     MD_FLOAT fx    = delx * force;
                     MD_FLOAT fy    = dely * force;
                     MD_FLOAT fz    = delz * force;
@@ -296,7 +275,6 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
         }
 
 #ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-        // Reduce the j-forces over the i-threads with shuffles
         auto mask = FULL_WARP_MASK;
 
         fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 1);
@@ -317,7 +295,7 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
         fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 4);
 
         if (cii < 3) {
-            atomicAdd(&a.atoms.f[(cj * CLUSTER_N + cjj) * 3 + cii], fcj_buf.x);
+            atomicAdd(&nb.atoms.f[(cj * CLUSTER_N + cjj) * 3 + cii], fcj_buf.x);
         }
 #endif
     }
@@ -357,7 +335,7 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs a)
 }
 
 // Full-list super-cluster kernel: as the half-list one, without j-forces
-__global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs a)
+__global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
 {
     __shared__ MD_FLOAT4 sh_xq[SCLUSTER_SIZE * CLUSTER_M];
     __shared__ AtomParam sh_par[SCLUSTER_SIZE * CLUSTER_M];
@@ -371,7 +349,7 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs a)
     const int cii = threadIdx.x;
     const int cjj = threadIdx.y;
 #endif
-    MD_FLOAT* sci_f = &a.atoms.f[SCI_VECTOR3_BASE_INDEX(sci)];
+    MD_FLOAT* sci_f = &nb.atoms.f[SCI_VECTOR3_BASE_INDEX(sci)];
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
 
 #pragma unroll
@@ -381,20 +359,19 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs a)
         fbuf[i].z = (MD_FLOAT)0.0;
     }
 
-    loadSciToShared(a, sci, sh_xq, sh_par);
+    loadSciToShared(nb, sci, sh_xq, sh_par);
 
-    // In the sub-cluster that is cj only the pair cii == cjj is excluded
+    // cii == cjj is excluded
     const bool offDiag     = cii != cjj;
-    const int numneigh_sci = a.nbl.numneigh[sci];
+    const int numneigh_sci = nb.nbl.numneigh[sci];
     for (int k = slice; k < numneigh_sci; k += nslices) {
-        const int2 nb =
-            neighs_gpu(a.nbl.cj_mask, sci, k, a.atoms.nclusters_local, a.nbl.maxneighs);
-        const int cj             = nb.x;
-        const unsigned int imask = (unsigned int)nb.y & ((1u << SCLUSTER_SIZE) - 1u);
-        const int diag_ci        = (int)((unsigned int)nb.y >> SCLUSTER_SIZE) - 1;
+        const int2 cj_mask = neighs_gpu(nb.nbl.cj_mask, sci, k, nb.atoms.nclusters_local, nb.nbl.maxneighs);
+        const int cj             = cj_mask.x;
+        const unsigned int imask = (unsigned int)cj_mask.y & ((1u << SCLUSTER_SIZE) - 1u);
+        const int diag_ci        = (int)((unsigned int)cj_mask.y >> SCLUSTER_SIZE) - 1;
         const int slot_j         = CJ_SCALAR_BASE_INDEX(cj) + cjj;
-        const MD_FLOAT4 xj       = a.atoms.xq[slot_j];
-        const AtomParam pj       = a.atoms.par[slot_j];
+        const MD_FLOAT4 xj       = nb.atoms.xq[slot_j];
+        const AtomParam pj       = nb.atoms.par[slot_j];
 
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
@@ -406,7 +383,7 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs a)
                 MD_FLOAT dely      = xi.y - xj.y;
                 MD_FLOAT delz      = xi.z - xj.z;
                 MD_FLOAT rsq       = delx * delx + dely * dely + delz * delz;
-                const LjPair p     = ljPair(a.lj, pi, pj);
+                const LjPair p     = ljPair(nb.lj, pi, pj);
 
                 if ((rsq < p.cutforcesq) & ((sci_ci != diag_ci) | offDiag)) {
                     MD_FLOAT force = pairForceScalar(rsq,
@@ -416,7 +393,7 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs a)
                         xj.w,
                         pi.mol,
                         pj.mol,
-                        a.cs);
+                        nb.cs);
 
                     fbuf[sci_ci].x += delx * force;
                     fbuf[sci_ci].y += dely * force;
@@ -434,7 +411,7 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs a)
         MD_FLOAT fiz = fbuf[sci_ci].z;
         auto mask    = FULL_WARP_MASK;
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-        // cjj is the lane index within each group of CLUSTER_N lanes
+        
         for (int offset = CLUSTER_N / 2; offset > 0; offset /= 2) {
             fix += __shfl_down_sync(mask, fix, offset);
             fiy += __shfl_down_sync(mask, fiy, offset);
@@ -530,7 +507,6 @@ extern "C" void updatePbcCUDASup(Atom* atom, Parameter* param)
     cuda_assert("cudaUpdatePbcSup", cudaDeviceSynchronize());
 }
 
-// Adds the ghost forces to their real clusters (atomic: several ghosts per cluster)
 __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     int* cuda_border_map,
     int Nclusters_local,
@@ -555,7 +531,7 @@ __global__ void cudaReverseGhostForcesSup_warp(MD_FLOAT* cuda_cl_f,
     }
 }
 
-// Adds the ghost forces to their real clusters
+
 extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param)
 {
     const int N           = atom->Nclusters_ghost;
@@ -571,13 +547,13 @@ extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param)
     cuda_assert("cudaReverseGhostForcesSup", cudaDeviceSynchronize());
 }
 
-// j-slices (grid.y) of this super-cluster force call, see GPU_J_SLICES
+// selects the number of slices 
 static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
 {
 #if GPU_J_SLICES > 0
     return GPU_J_SLICES;
 #else
-    // K per list type and thread mapping, tuned on GH200
+    
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
     const double k_half = 0.6, k_full = 1.5;
 #else
@@ -600,8 +576,8 @@ extern "C" double computeForceLJCudaSup(
 {
     DEBUG_MESSAGE("computeForceLJCudaSup start\r\n");
 
-    NbForceArgs args = makeNbForceArgs(param, atom, neighbor);
-    args.nbl.cj_mask = sup_nbl;
+    NbForceArgs nb = makeNbForceArgs(param, atom, neighbor);
+    nb.nbl.cj_mask = sup_nbl;
 
     memsetGPU(cuda_cl_f,
         0,
@@ -612,14 +588,13 @@ extern "C" double computeForceLJCudaSup(
     double S        = getTimeStamp();
     LIKWID_MARKER_START("force");
 
-    // Repack x/y/z/q 
     launchPackAtomsCuda(atom, 0);
 
     grid_size.y = chooseJSlices(atom, neighbor);
     if (neighbor->half_neigh) {
-        computeForceLJCudaSup_halfwarp<<<grid_size, block_size>>>(args);
+        computeForceLJCudaSup_halfwarp<<<grid_size, block_size>>>(nb);
     } else {
-        computeForceLJCudaSup_fullwarp<<<grid_size, block_size>>>(args);
+        computeForceLJCudaSup_fullwarp<<<grid_size, block_size>>>(nb);
     }
 
     cuda_assert("computeForceLJCudaSup", cudaPeekAtLastError());
@@ -639,7 +614,6 @@ extern "C" double computeForceLJCudaSup(
     return E - S;
 }
 
-// Prunes the list: one block per super-cluster, thread (cii, cjj) tests one pair
 __global__ void cudaPruneNeighborSup(MD_FLOAT* cuda_cl_x,
     int* cuda_numneigh,
     int* cuda_numneigh_inner,

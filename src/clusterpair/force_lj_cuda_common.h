@@ -132,7 +132,7 @@ extern "C" void reverseGhostForcesCUDASimple(Atom* atom, Parameter* param);
 extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param);
 extern "C" void pruneNeighborCUDASimple(Parameter* param, Atom* atom, Neighbor* neighbor);
 extern "C" void pruneNeighborCUDASup(Parameter* param, Atom* atom, Neighbor* neighbor);
-extern "C" void packSupData(Parameter* param, Atom* atom, Neighbor* neighbor);
+extern "C" void launchPackNeighborsSup(Atom* atom, Neighbor* neighbor);
 extern "C" void freeSupData(void);
 
 #endif
