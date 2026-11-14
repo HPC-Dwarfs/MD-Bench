@@ -86,8 +86,8 @@ __global__ void computeForceLJCudaFullNeigh(const NbForceArgs nb)
 
     // Reduce the i-forces with warp shuffles
 #if CLUSTER_M <= 32
-    auto mask = FULL_WARP_MASK;
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
+    auto mask = FULL_WARP_MASK;
     for (int offset = CLUSTER_M / 2; offset > 0; offset /= 2) {
 #ifdef CUDA_TARGET
         fix += __shfl_down_sync(mask, fix, offset);
@@ -112,24 +112,8 @@ __global__ void computeForceLJCudaFullNeigh(const NbForceArgs nb)
         }
     }
 #else
-    fix += __shfl_down_sync(mask, fix, CLUSTER_M);
-    fiy += __shfl_up_sync(mask, fiy, CLUSTER_M);
-    fiz += __shfl_down_sync(mask, fiz, CLUSTER_M);
-
-    if (cjj & 1) {
-        fix = fiy;
-    }
-
-    fix += __shfl_down_sync(mask, fix, 2 * CLUSTER_M);
-    fiz += __shfl_up_sync(mask, fiz, 2 * CLUSTER_M);
-    if (cjj & 2) {
-        fix = fiz;
-    }
-
-    if ((cjj & 3) < 3) {
-        atomicAdd(&ci_f[cii * 3 + (cjj & 3)], fix);
-    }
-
+    const MD_FLOAT3 fi = { fix, fiy, fiz };
+    addForceI(ci_f, cii, fi, cjj);
 #endif
 #else
     atomicAdd(&ci_f[CL_X_INDEX_3D(cii)], fix);
@@ -216,32 +200,7 @@ __global__ void computeForceLJCudaHalfNeigh(const NbForceArgs nb)
         }
 
 #ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-
-        auto jmask = FULL_WARP_MASK;
-
-        fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 1);
-        fcj_buf.y += __shfl_up_sync(jmask, fcj_buf.y, 1);
-        fcj_buf.z += __shfl_down_sync(jmask, fcj_buf.z, 1);
-
-        if (cii & 1) {
-            fcj_buf.x = fcj_buf.y;
-        }
-
-        fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 2);
-        fcj_buf.z += __shfl_up_sync(jmask, fcj_buf.z, 2);
-
-        if (cii & 2) {
-            fcj_buf.x = fcj_buf.z;
-        }
-
-        fcj_buf.x += __shfl_down_sync(jmask, fcj_buf.x, 4);
-
-        if (cii < 3) {
-            const int comp = (cii == 0)   ? CL_X_INDEX_3D(cjj)
-                             : (cii == 1) ? CL_Y_INDEX_3D(cjj)
-                                          : CL_Z_INDEX_3D(cjj);
-            atomicAdd(&cj_f[comp], fcj_buf.x);
-        }
+        addForceJ(cj_f, cjj, fcj_buf, cii);
 #endif
     }
 
@@ -252,26 +211,8 @@ __global__ void computeForceLJCudaHalfNeigh(const NbForceArgs nb)
     atomicAdd(&ci_f[CL_Y_INDEX_3D(cii)], fiy);
     atomicAdd(&ci_f[CL_Z_INDEX_3D(cii)], fiz);
 #else
-    auto mask = FULL_WARP_MASK;
-    fix += __shfl_down_sync(mask, fix, CLUSTER_M);
-    fiy += __shfl_up_sync(mask, fiy, CLUSTER_M);
-    fiz += __shfl_down_sync(mask, fiz, CLUSTER_M);
-
-    if (cjj & 1) {
-        fix = fiy;
-    }
-
-    fix += __shfl_down_sync(mask, fix, 2 * CLUSTER_M);
-    fiz += __shfl_up_sync(mask, fiz, 2 * CLUSTER_M);
-    if (cjj & 2) {
-        fix = fiz;
-    }
-
-    /* Threads 0,1,2 and 4,5,6 increment x,y,z for their warp */
-    if ((cjj & 3) < 3) {
-        atomicAdd(&ci_f[cii * 3 + (cjj & 3)], fix);
-    }
-
+    const MD_FLOAT3 fi = { fix, fiy, fiz };
+    addForceI(ci_f, cii, fi, cjj);
 #endif
 #else
     atomicAdd(&ci_f[CL_X_INDEX_3D(cii)], fix);

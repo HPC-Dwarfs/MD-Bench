@@ -5,8 +5,6 @@
  * license that can be found in the LICENSE file.
  */
 
-// Shared GPU cluster-pair code: device data, copies, packing, j-slices, dispatch
-
 #include <device.h>
 
 extern "C" {
@@ -271,13 +269,11 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         atom->Nclusters_local * neighbor->maxneighs * sizeof(int));
 
     if (param->super_clustering) {
-        // The host build computed the sub-cluster masks
         memcpyToGPU(cuda_neighbors_imask,
             neighbor->neighbors_imask,
             atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
         launchPackNeighborsSup(atom, neighbor);
     } else {
-        // Unused by the non-super GPU force kernel.
         memsetGPU(cuda_neighbors_imask,
             0xff,
             atom->Nclusters_local * neighbor->maxneighs * sizeof(unsigned int));
@@ -343,7 +339,6 @@ extern "C" void copyGhostFromGPU(Atom* atom)
 
 extern "C" void copyGhostToGPU(Atom* atom)
 {
-    // The ghost clusters follow the local ones
     int ncj               = atom->Nclusters_local * SCLUSTER_SIZE;
     int cj_vec_base       = CJ_VECTOR_BASE_INDEX(ncj);
     MD_FLOAT* host_cl_x   = &atom->cl_x[cj_vec_base];
@@ -426,7 +421,8 @@ extern void growNeighborCUDA(Atom* atom, Neighbor* neighbor)
         atom->Nclusters_max * neighbor->maxneighs * sizeof(unsigned int));
 }
 
-// Ghost positions, ghost forces and list pruning of the GPU kernel in use
+/* update coordinates of ghost atoms */
+/* uses mapping created in setupPbc */
 extern "C" void updatePbcCUDA(Atom* atom, Parameter* param)
 {
     if (param->super_clustering) {

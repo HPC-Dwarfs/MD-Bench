@@ -219,7 +219,6 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
     for (int k = slice; k < numneigh_sci; k += nslices) {
         const int2 cj_mask = neighs_gpu(nb.nbl.cj_mask, sci, k, nb.atoms.nclusters_local, nb.nbl.maxneighs);
         const int cj = cj_mask.x;
-        // imask: sub-clusters to compute; diag_ci: the sub-cluster that is cj (-1: none)
         const unsigned int imask = (unsigned int)cj_mask.y & ((1u << SCLUSTER_SIZE) - 1u);
         const int diag_ci        = (int)((unsigned int)cj_mask.y >> SCLUSTER_SIZE) - 1;
         const int slot_j         = CJ_SCALAR_BASE_INDEX(cj) + cjj;
@@ -275,28 +274,7 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
         }
 
 #ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-        auto mask = FULL_WARP_MASK;
-
-        fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 1);
-        fcj_buf.y += __shfl_up_sync(mask, fcj_buf.y, 1);
-        fcj_buf.z += __shfl_down_sync(mask, fcj_buf.z, 1);
-
-        if (cii & 1) {
-            fcj_buf.x = fcj_buf.y;
-        }
-
-        fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 2);
-        fcj_buf.z += __shfl_up_sync(mask, fcj_buf.z, 2);
-
-        if (cii & 2) {
-            fcj_buf.x = fcj_buf.z;
-        }
-
-        fcj_buf.x += __shfl_down_sync(mask, fcj_buf.x, 4);
-
-        if (cii < 3) {
-            atomicAdd(&nb.atoms.f[(cj * CLUSTER_N + cjj) * 3 + cii], fcj_buf.x);
-        }
+        addForceJ(nb.atoms.f, cj * CLUSTER_N + cjj, fcj_buf, cii);
 #endif
     }
 
@@ -308,33 +286,11 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
         atomicAdd(&sci_f[CL_Y_INDEX_3D(ai)], fbuf[sci_ci].y);
         atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fbuf[sci_ci].z);
 #else
-        MD_FLOAT fix = fbuf[sci_ci].x;
-        MD_FLOAT fiy = fbuf[sci_ci].y;
-        MD_FLOAT fiz = fbuf[sci_ci].z;
-        auto mask    = FULL_WARP_MASK;
-        fix += __shfl_down_sync(mask, fix, CLUSTER_M);
-        fiy += __shfl_up_sync(mask, fiy, CLUSTER_M);
-        fiz += __shfl_down_sync(mask, fiz, CLUSTER_M);
-
-        if (cjj & 1) {
-            fix = fiy;
-        }
-
-        fix += __shfl_down_sync(mask, fix, 2 * CLUSTER_M);
-        fiz += __shfl_up_sync(mask, fiz, 2 * CLUSTER_M);
-
-        if (cjj & 2) {
-            fix = fiz;
-        }
-
-        if ((cjj & 3) < 3) {
-            atomicAdd(&sci_f[ai * 3 + (cjj & 3)], fix);
-        }
+        addForceI(sci_f, ai, fbuf[sci_ci], cjj);
 #endif
     }
 }
 
-// Full-list super-cluster kernel: as the half-list one, without j-forces
 __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
 {
     __shared__ MD_FLOAT4 sh_xq[SCLUSTER_SIZE * CLUSTER_M];
@@ -406,12 +362,12 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
 #pragma unroll
     for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
         const int ai = sci_ci * CLUSTER_M + cii;
+#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
         MD_FLOAT fix = fbuf[sci_ci].x;
         MD_FLOAT fiy = fbuf[sci_ci].y;
         MD_FLOAT fiz = fbuf[sci_ci].z;
         auto mask    = FULL_WARP_MASK;
-#ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-        
+
         for (int offset = CLUSTER_N / 2; offset > 0; offset /= 2) {
             fix += __shfl_down_sync(mask, fix, offset);
             fiy += __shfl_down_sync(mask, fiy, offset);
@@ -430,24 +386,7 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
 #endif
         }
 #else
-        fix += __shfl_down_sync(mask, fix, CLUSTER_M);
-        fiy += __shfl_up_sync(mask, fiy, CLUSTER_M);
-        fiz += __shfl_down_sync(mask, fiz, CLUSTER_M);
-
-        if (cjj & 1) {
-            fix = fiy;
-        }
-
-        fix += __shfl_down_sync(mask, fix, 2 * CLUSTER_M);
-        fiz += __shfl_up_sync(mask, fiz, 2 * CLUSTER_M);
-
-        if (cjj & 2) {
-            fix = fiz;
-        }
-
-        if ((cjj & 3) < 3) {
-            atomicAdd(&sci_f[ai * 3 + (cjj & 3)], fix);
-        }
+        addForceI(sci_f, ai, fbuf[sci_ci], cjj);
 #endif
     }
 }
@@ -547,7 +486,6 @@ extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param)
     cuda_assert("cudaReverseGhostForcesSup", cudaDeviceSynchronize());
 }
 
-// selects the number of slices 
 static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
 {
 #if GPU_J_SLICES > 0
