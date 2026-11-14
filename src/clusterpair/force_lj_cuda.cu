@@ -167,7 +167,7 @@ __global__ void computeForceLJCudaHalfNeigh(const NbForceArgs nb)
             neighs_gpu(nb.nbl.cj, ci, k, nb.atoms.nclusters_local, nb.nbl.maxneighs);
         MD_FLOAT* cj_f = &nb.atoms.f[CJ_VECTOR3_BASE_INDEX(cj)];
 #ifndef SUPERCLUSTER_INVERSE_THREAD_MAPPING
-        fcj_buf.x = fcj_buf.y = fcj_buf.z = (MD_FLOAT)0.0;
+        fcj_buf = { 0.0, 0.0, 0.0 };
 #endif
 
         int cond;

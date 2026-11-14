@@ -27,6 +27,16 @@ extern "C" {
 
 #include <pair_scalar.h>
 
+// Warp width and lane-mask type of the *_sync shuffles: HIP on AMD runs 64-wide
+// wavefronts and its __shfl_*_sync only accept 64-bit masks
+#ifdef __HIP_PLATFORM_AMD__
+#define VL_WARP_SIZE 64
+#define VL_LANE_MASK unsigned long long
+#else
+#define VL_WARP_SIZE 32
+#define VL_LANE_MASK unsigned int
+#endif
+
 /* Packed per-atom data of the force kernels, after LAMMPS' GPU package (x and type in one
  * float4): a neighbor costs one 16-byte load per array instead of up to seven scalar gathers
  * from five arrays (x, y, z, sqrt_epsilon, sigma3, q, mol).
@@ -227,9 +237,10 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
 
     if (T > 1) {
         // the T lanes of an atom are consecutive lanes of one warp
-        const unsigned int lane  = threadIdx.x & 31;
-        const unsigned int group = T >= 32 ? 0xffffffffu : ((1u << (T % 32)) - 1u);
-        const unsigned int mask  = group << (lane & ~(unsigned int)(T - 1));
+        const unsigned int lane  = threadIdx.x & (VL_WARP_SIZE - 1);
+        const VL_LANE_MASK group = T >= VL_WARP_SIZE ? ~(VL_LANE_MASK)0
+                                                     : (((VL_LANE_MASK)1 << (T % VL_WARP_SIZE)) - 1);
+        const VL_LANE_MASK mask  = group << (lane & ~(unsigned int)(T - 1));
 #pragma unroll
         for (int off = T / 2; off > 0; off /= 2) {
             fix += __shfl_down_sync(mask, fix, off, T);
@@ -386,9 +397,10 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
 
     if (T > 1) {
         // the T lanes of an atom are consecutive lanes of one warp
-        const unsigned int lane = threadIdx.x & 31;
-        const unsigned int group = T >= 32 ? 0xffffffffu : ((1u << (T % 32)) - 1u);
-        const unsigned int mask  = group << (lane & ~(unsigned int)(T - 1));
+        const unsigned int lane  = threadIdx.x & (VL_WARP_SIZE - 1);
+        const VL_LANE_MASK group = T >= VL_WARP_SIZE ? ~(VL_LANE_MASK)0
+                                                     : (((VL_LANE_MASK)1 << (T % VL_WARP_SIZE)) - 1);
+        const VL_LANE_MASK mask  = group << (lane & ~(unsigned int)(T - 1));
 #pragma unroll
         for (int off = T / 2; off > 0; off /= 2) {
             fix += __shfl_down_sync(mask, fix, off, T);

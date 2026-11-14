@@ -229,7 +229,7 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
         MD_FLOAT* cj_f = &nb.atoms.f[CJ_VECTOR3_BASE_INDEX(cj)];
 #else
-        fcj_buf = float3 { 0.0f, 0.0f, 0.0f };
+        fcj_buf = { 0.0, 0.0, 0.0 };
 #endif
 
 #pragma unroll
