@@ -368,7 +368,10 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                     const MD_FLOAT cutoff = cutneighsq;
 #endif
                     if (rsq <= cutoff) {
-                        neighs(neighbor->neighbors, i, n, atom->Nlocal, neighbor) = j;
+                        // Past maxneighs only count, the list is resized and rebuilt
+                        if (n < neighbor->maxneighs) {
+                            neighs(neighbor->neighbors, i, n, atom->Nlocal, neighbor) = j;
+                        }
                         n++;
                     }
                 }
@@ -456,7 +459,13 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                         const MD_FLOAT cutoff = cutneighsq;
 #endif
                         if (rsq <= cutoff) {
-                            neighs(neighbor->neighbors, i, n, atom->Nlocal, neighbor) = j;
+                            if (n < neighbor->maxneighs) {
+                                neighs(neighbor->neighbors,
+                                    i,
+                                    n,
+                                    atom->Nlocal,
+                                    neighbor) = j;
+                            }
                             n++;
                         }
                     }
@@ -521,11 +530,13 @@ static void buildNeighborLists(Atom* atom, Neighbor* neighbor)
                         while (bits) {
                             int lane = __builtin_ctz(bits);
                             bits &= bits - 1;
-                            neighs(neighbor->neighbors,
-                                i,
-                                n,
-                                atom->Nlocal,
-                                neighbor) = tmp_j[lane];
+                            if (n < neighbor->maxneighs) {
+                                neighs(neighbor->neighbors,
+                                    i,
+                                    n,
+                                    atom->Nlocal,
+                                    neighbor) = tmp_j[lane];
+                            }
                             n++;
                         }
                     }
@@ -1043,6 +1054,17 @@ void binatoms(Atom* atom)
         for (int i = 0; i < nall; i++) {
             int ibin = coord2bin(atom_x(i), atom_y(i), atom_z(i));
             if (shellMethod && !ghostZone(atom, i)) continue;
+            if (ibin < 0 || ibin >= mbins) {
+                fprintf(stderr,
+                    "Error: Atom %d assigned to invalid bin %d, position: %.4f, %.4f, "
+                    "%.4f\n",
+                    i,
+                    ibin,
+                    atom_x(i),
+                    atom_y(i),
+                    atom_z(i));
+                exit(EXIT_FAILURE);
+            }
             if (bincount[ibin] < atoms_per_bin) {
                 int ac                          = bincount[ibin]++;
                 bins[ibin * atoms_per_bin + ac] = i;
