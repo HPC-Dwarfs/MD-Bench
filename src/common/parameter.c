@@ -133,8 +133,17 @@ void initParameter(Parameter* param)
     param->epsfac           = 1.0;
     param->ewald_rtol       = 1e-5;
     param->ewald_beta       = 0.0;
-    param->kernel_bench     = 0;
-    param->dump_forces_file = NULL;
+    param->ewald_table_scale = 0.0;
+    param->ewald_table_size  = 0;
+    param->ewald_table_f     = NULL;
+    param->ewald_table_v     = NULL;
+    param->ewald_table_fdv0  = NULL;
+    param->kernel_bench      = 0;
+    param->dump_forces_file  = NULL;
+    param->compute_energy    = false;
+    param->energy_lj         = 0.0;
+    param->energy_coul       = 0.0;
+    param->half_lj           = false;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
@@ -416,9 +425,21 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Number of types:                   %d\n", param->ntypes);
     fprintf(stdout, "    LJ combination rule:               %s\n", LJ_COMB_RULE_NAME);
     fprintf(stdout, "    Coulomb:                           %s\n", COULOMB_RULE_NAME);
-#if COULOMB_RULE == COULOMB_EWALD
+#if COULOMB_IS_EWALD
     fprintf(stdout, "    Ewald coefficient:                 %.6e\n", param->ewald_beta);
 #endif
+#if COULOMB_RULE == COULOMB_EWALD_TABLE
+    fprintf(stdout,
+        "    Ewald table:                       %d points, spacing %.4e\n",
+        param->ewald_table_size,
+        1.0 / param->ewald_table_scale);
+#endif
+    fprintf(stdout,
+        "    Energies:                          %s\n",
+        param->compute_energy ? "yes" : "no");
+    fprintf(stdout,
+        "    Half-LJ i-clusters:                %s\n",
+        param->half_lj ? "yes" : "no");
 #if USE_EXCLUSIONS
     fprintf(stdout, "    Molecular exclusions:              yes\n");
 #endif

@@ -19,6 +19,8 @@
 #include <comm.h>
 #include <device.h>
 #include <eam.h>
+#include <energy.h>
+#include <ewald_table.h>
 #include <force.h>
 #include <grid.h>
 #include <integrate.h>
@@ -85,8 +87,11 @@ double setup(Parameter* param,
     }
     // Before the atoms are distributed over the MPI ranks, so the ids are global
     initAtomIds(atom);
-#if COULOMB_RULE == COULOMB_EWALD
+#if COULOMB_IS_EWALD
     param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
+#endif
+#if COULOMB_RULE == COULOMB_EWALD_TABLE
+    initEwaldTable(param);
 #endif
 #ifndef _MPI
     // Single domain: its box is the simulation box, which the half-shell selection of the
@@ -205,6 +210,9 @@ double updateAtoms(Comm* comm, Atom* atom, Parameter* param)
 // Writes the forces of the local atoms, ordered by their original index
 static void dumpForces(Parameter* param, Atom* atom)
 {
+    // Collective with MPI, before the non-root processes return
+    double elj, ecoul;
+    globalEnergies(param, &elj, &ecoul);
 #ifdef CUDA_TARGET
     // The forces, with the ghost reaction forces folded back, are on the device
     copyForceFromGPU(atom);
@@ -268,6 +276,10 @@ static void dumpForces(Parameter* param, Atom* atom)
     }
 
     fprintf(fp, "# natoms %d\n", atom->Natoms);
+    if (param->compute_energy) {
+        fprintf(fp, "# energy_lj %.15g\n", elj);
+        fprintf(fp, "# energy_coulomb %.15g\n", ecoul);
+    }
     for (int i = 0; i < atom->Natoms; i++) {
         fprintf(fp, "%d %.9g %.9g %.9g\n", i, f[i * 3 + 0], f[i * 3 + 1], f[i * 3 + 2]);
     }
@@ -315,6 +327,12 @@ static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Sta
         "  Computed pairs/us:     %.3f\n",
         (double)clusterPairs * CLUSTER_M * CLUSTER_N / (perIter * 1e6));
     fprintf(stdout, "  Useful pairs/us:       %.3f\n", useful / (perIter * 1e6));
+    if (param->compute_energy) {
+        double elj, ecoul;
+        globalEnergies(param, &elj, &ecoul);
+        fprintf(stdout, "  Energy LJ:             %.15g\n", elj);
+        fprintf(stdout, "  Energy Coulomb:        %.15g\n", ecoul);
+    }
 }
 
 int main(int argc, char** argv)
@@ -470,6 +488,14 @@ int main(int argc, char** argv)
             param.size = atoi(argv[++i]);
             continue;
         }
+        if ((strcmp(argv[i], "-energy") == 0)) {
+            param.compute_energy = true;
+            continue;
+        }
+        if ((strcmp(argv[i], "-halflj") == 0)) {
+            param.half_lj = true;
+            continue;
+        }
 
         if ((strcmp(argv[i], "--kernel-bench") == 0)) {
             param.kernel_bench = atoi(argv[++i]);
@@ -522,6 +548,12 @@ int main(int argc, char** argv)
                 "times on the fixed neighbor lists and report its time\n");
             printf("--dump-forces <file>: write the forces of a single kernel pass "
                    "(atom id, fx, fy, fz) to a text file\n");
+            printf("-energy:              also compute the LJ and Coulomb energies, "
+                   "reported by "
+                   "--kernel-bench and --dump-forces\n");
+            printf("-halflj:              LJ only for the first half of the i-clusters "
+                   "with at most half of their atoms having LJ (GROMACS' -halflj), CPU "
+                   "kernels\n");
             printf("-v / --verbose:       print a per-routine timing breakdown in the "
                    "performance report\n");
             printf(HLINE);
@@ -536,6 +568,25 @@ int main(int argc, char** argv)
         endComm(&comm);
         exit(0);
     }
+
+    if (param.gmxbenchmark && param.kernel_bench == 0 && param.ntimes != 0) {
+        // The water has no bonds or constraints and is in GROMACS units: no MD
+        fprintf_once(comm.myproc,
+            stderr,
+            "Error: -gmxbench is a force kernel benchmark, use --kernel-bench <n> or -n "
+            "0\n");
+        endComm(&comm);
+        exit(EXIT_FAILURE);
+    }
+#ifdef CUDA_TARGET
+    if (param.half_lj) {
+        fprintf_once(comm.myproc,
+            stderr,
+            "Error: -halflj needs the CPU cluster-pair kernels\n");
+        endComm(&comm);
+        exit(EXIT_FAILURE);
+    }
+#endif
 
     if (param.gmxbenchmark) {
         // The GROMACS benchmark builds its pair list with exactly the interaction

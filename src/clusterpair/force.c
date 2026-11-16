@@ -22,6 +22,11 @@ void initForce(Parameter* param)
         exit(EXIT_FAILURE);
     }
 #endif
+    // Energies (-energy) are computed by the LJ kernels only
+    if (param->compute_energy && param->force_field != FF_LJ) {
+        fprintf(stderr, "Error: -energy is only supported with -f lj!\n");
+        exit(EXIT_FAILURE);
+    }
     switch (param->force_field) {
     case FF_EAM:
         computeForce = computeForceEam;

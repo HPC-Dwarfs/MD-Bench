@@ -8,6 +8,7 @@
 
 #include <atom.h>
 #include <coulomb.h>
+#include <energy.h>
 #include <force.h>
 #include <likwid-marker.h>
 #include <math.h>
@@ -57,6 +58,10 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
 
     const CoulombScalar cs = coulombScalarInit(param);
     const int nf           = threadForcesReserve(atom);
+    const int energy       = param->compute_energy;
+    const int half_list    = neighbor->half_neigh || param->method;
+    const int nlocal_cj    = CJ1_FROM_CI(atom->Nclusters_local);
+    double elj = 0.0, ecoul = 0.0;
     double S               = getTimeStamp();
 
 #pragma omp parallel
@@ -64,7 +69,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
         LIKWID_MARKER_START("force");
         MD_FLOAT* f = threadForces(atom, nf);
 
-#pragma omp for schedule(runtime)
+#pragma omp for schedule(runtime) reduction(+ : elj, ecoul)
         for (int ci = 0; ci < atom->Nclusters_local; ci++) {
             int ci_cj0      = CJ0_FROM_CI(ci);
             int ci_cj1      = CJ1_FROM_CI(ci);
@@ -72,6 +77,8 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
             MD_FLOAT* ci_x  = &atom->cl_x[ci_vec_base];
             MD_FLOAT* ci_f  = &f[ci_vec_base];
             int numneighs   = neighbor->numneigh_inner[ci];
+            // Half-LJ i-cluster: its LJ atoms are the first half (see buildClustersCPU())
+            const int half_lj = param->half_lj && atom->iclusters[ci].half_lj;
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
@@ -88,6 +95,9 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                 int any         = 0;
                 MD_FLOAT* cj_x  = &atom->cl_x[cj_vec_base];
                 MD_FLOAT* cj_f  = &f[cj_vec_base];
+                // Energy weight 1/2: full lists, ghost pairs also computed elsewhere
+                const double ew = (half_list && (cj < nlocal_cj || param->method)) ? 1.0
+                                                                                   : 0.5;
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 int cj_sca_base       = CJ_SCALAR_BASE_INDEX(cj);
@@ -146,16 +156,36 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                             MD_FLOAT epsilon    = atom->epsilon[type_index];
 #endif
 
+                            // The second half of a half-LJ i-cluster has no LJ
+                            const MD_FLOAT eps_pair = (half_lj && cii >= CLUSTER_M / 2)
+                                                          ? (MD_FLOAT)0.0
+                                                          : epsilon;
+
                             if (rsq < cutforcesq) {
                                 const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
                                 MD_FLOAT force   = pairForceScalar(rsq,
                                     sigma6,
-                                    epsilon,
+                                    eps_pair,
                                     qi,
                                     atom->cl_q[cj_sca],
                                     mol_i,
                                     atom->cl_mol[cj_sca],
                                     cs);
+                                if (energy) {
+                                    MD_FLOAT vlj, vc;
+                                    pairEnergyScalar(rsq,
+                                        sigma6,
+                                        eps_pair,
+                                        qi,
+                                        atom->cl_q[cj_sca],
+                                        mol_i,
+                                        atom->cl_mol[cj_sca],
+                                        cs,
+                                        &vlj,
+                                        &vc);
+                                    elj += ew * vlj;
+                                    ecoul += ew * vc;
+                                }
 
                                 if (neighbor->half_neigh || param->method) {
                                     cj_f[CL_X_INDEX_3D(cjj)] -= delx * force;
@@ -193,6 +223,13 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
         }
         threadForcesReduce(atom, nf);
         LIKWID_MARKER_STOP("force");
+    }
+
+    if (energy) {
+        storeEnergies(param,
+            elj,
+            ecoul,
+            localChargeSquaredSum(atom->Nlocal, atom->type, atom->q_per_type));
     }
 
     // Single threaded: it writes cl_f of the shell clusters without a thread buffer
@@ -274,6 +311,21 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
                             mol_i,
                             atom->cl_mol[cj_sca],
                             coul);
+                        if (param->compute_energy) {
+                            MD_FLOAT vlj, vc;
+                            pairEnergyScalar(rsq,
+                                sigma6,
+                                epsilon,
+                                qi,
+                                atom->cl_q[cj_sca],
+                                mol_i,
+                                atom->cl_mol[cj_sca],
+                                coul,
+                                &vlj,
+                                &vc);
+                            param->energy_lj += vlj;
+                            param->energy_coul += vc;
+                        }
 
                         cj_f[CL_X_INDEX_3D(cjj)] -= delx * force;
                         cj_f[CL_Y_INDEX_3D(cjj)] -= dely * force;

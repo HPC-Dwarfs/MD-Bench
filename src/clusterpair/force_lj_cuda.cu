@@ -28,6 +28,7 @@ extern "C" {
 #include <util.h>
 }
 
+#include <energy_gpu.h>
 #include <pair_cuda.h>
 
 extern __global__ void cudaInitialIntegrateSup_warp(MD_FLOAT* cuda_cl_x,
@@ -276,6 +277,8 @@ extern "C" void cudaDeviceFree(Parameter* param)
     freeHostPinned(ngatoms);
 }
 
+// ENERGY: also sum the pair energies into energies (-energy), see blockEnergiesAdd()
+template <bool ENERGY>
 __global__ void computeForceLJCudaFullNeigh(
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
@@ -301,7 +304,8 @@ __global__ void computeForceLJCudaFullNeigh(
     int maxneighs,
     MD_FLOAT* cuda_cl_q,
     int* cuda_cl_mol,
-    CoulombScalar cs)
+    CoulombScalar cs,
+    double* energies)
 {
 
     int ci = blockIdx.x;
@@ -322,6 +326,8 @@ __global__ void computeForceLJCudaFullNeigh(
     MD_FLOAT fix   = (MD_FLOAT)0.0;
     MD_FLOAT fiy   = (MD_FLOAT)0.0;
     MD_FLOAT fiz   = (MD_FLOAT)0.0;
+    double vlj_sum = 0.0;
+    double vc_sum  = 0.0;
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     int ci_sca_base     = CI_SCALAR_BASE_INDEX(ci);
@@ -375,6 +381,21 @@ __global__ void computeForceLJCudaFullNeigh(
                     mol_i,
                     moleculeCuda(cuda_cl_mol, cj_sca),
                     cs);
+                if (ENERGY) {
+                    MD_FLOAT vlj, vc;
+                    pairEnergyScalar(rsq,
+                        sigma6,
+                        epsilon,
+                        qi,
+                        chargeCuda(cuda_cl_q, cj_sca),
+                        mol_i,
+                        moleculeCuda(cuda_cl_mol, cj_sca),
+                        cs,
+                        &vlj,
+                        &vc);
+                    vlj_sum += vlj;
+                    vc_sum += vc;
+                }
 
                 fix += delx * force;
                 fiy += dely * force;
@@ -433,8 +454,13 @@ __global__ void computeForceLJCudaFullNeigh(
     atomicAdd(&ci_f[CL_Y_INDEX_3D(cii)], fiy);
     atomicAdd(&ci_f[CL_Z_INDEX_3D(cii)], fiz);
 #endif
+
+    if (ENERGY) {
+        blockEnergiesAdd<CLUSTER_M * CLUSTER_N>(vlj_sum, vc_sum, energies);
+    }
 }
 
+template <bool ENERGY>
 __global__ void computeForceLJCudaHalfNeigh(
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
@@ -460,7 +486,8 @@ __global__ void computeForceLJCudaHalfNeigh(
     int maxneighs,
     MD_FLOAT* cuda_cl_q,
     int* cuda_cl_mol,
-    CoulombScalar cs)
+    CoulombScalar cs,
+    double* energies)
 {
     int ci = blockIdx.x;
 #ifdef SUPERCLUSTER_INVERSE_THREAD_MAPPING
@@ -480,6 +507,8 @@ __global__ void computeForceLJCudaHalfNeigh(
     MD_FLOAT fix   = 0;
     MD_FLOAT fiy   = 0;
     MD_FLOAT fiz   = 0;
+    double vlj_sum = 0.0;
+    double vc_sum  = 0.0;
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     int ci_sca_base     = CI_SCALAR_BASE_INDEX(ci);
@@ -533,6 +562,21 @@ __global__ void computeForceLJCudaHalfNeigh(
                     mol_i,
                     moleculeCuda(cuda_cl_mol, cj_sca),
                     cs);
+                if (ENERGY) {
+                    MD_FLOAT vlj, vc;
+                    pairEnergyScalar(rsq,
+                        sigma6,
+                        epsilon,
+                        qi,
+                        chargeCuda(cuda_cl_q, cj_sca),
+                        mol_i,
+                        moleculeCuda(cuda_cl_mol, cj_sca),
+                        cs,
+                        &vlj,
+                        &vc);
+                    vlj_sum += vlj;
+                    vc_sum += vc;
+                }
                 MD_FLOAT partial_force_x = delx * force;
                 MD_FLOAT partial_force_y = dely * force;
                 MD_FLOAT partial_force_z = delz * force;
@@ -584,6 +628,10 @@ __global__ void computeForceLJCudaHalfNeigh(
     atomicAdd(&ci_f[CL_Y_INDEX_3D(cii)], fiy);
     atomicAdd(&ci_f[CL_Z_INDEX_3D(cii)], fiz);
 #endif
+
+    if (ENERGY) {
+        blockEnergiesAdd<CLUSTER_M * CLUSTER_N>(vlj_sum, vc_sum, energies);
+    }
 }
 
 __global__ void cudaInitialIntegrate_warp(MD_FLOAT* cuda_cl_x,
@@ -913,11 +961,14 @@ extern "C" double computeForceLJCuda(
             sizeof(MD_FLOAT));
     dim3 block_size = dim3(CLUSTER_N, CLUSTER_M, 1);
     dim3 grid_size  = dim3(atom->Nclusters_local, 1, 1);
+    double* energies = deviceEnergies(param);
     double S        = getTimeStamp();
     LIKWID_MARKER_START("force");
 
     if (neighbor->half_neigh) {
-        computeForceLJCudaHalfNeigh<<<grid_size, block_size>>>(
+        auto kernel = param->compute_energy ? computeForceLJCudaHalfNeigh<true>
+                                            : computeForceLJCudaHalfNeigh<false>;
+        kernel<<<grid_size, block_size>>>(
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,
@@ -942,9 +993,12 @@ extern "C" double computeForceLJCuda(
             neighbor->maxneighs,
             cuda_cl_q,
             cuda_cl_mol,
-            cs);
+            cs,
+            energies);
     } else {
-        computeForceLJCudaFullNeigh<<<grid_size, block_size>>>(
+        auto kernel = param->compute_energy ? computeForceLJCudaFullNeigh<true>
+                                            : computeForceLJCudaFullNeigh<false>;
+        kernel<<<grid_size, block_size>>>(
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,
@@ -969,13 +1023,21 @@ extern "C" double computeForceLJCuda(
             neighbor->maxneighs,
             cuda_cl_q,
             cuda_cl_mol,
-            cs);
+            cs,
+            energies);
     }
 
     cuda_assert("computeForceLJ_cuda", cudaPeekAtLastError());
     cuda_assert("computeForceLJ_cuda", cudaDeviceSynchronize());
     LIKWID_MARKER_STOP("force");
     double E = getTimeStamp();
+    // Half lists have every pair once (ghost forces are folded back), full lists twice
+    storeDeviceEnergies(param,
+        atom->Nlocal,
+        atom->type,
+        atom->q_per_type,
+        energies,
+        neighbor->half_neigh ? 1.0 : 0.5);
     DEBUG_MESSAGE("computeForceLJCuda stop\r\n");
     return E - S;
 }

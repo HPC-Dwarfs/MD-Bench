@@ -79,10 +79,15 @@ typedef struct {
 #define COULOMB_NONE  0 // No electrostatics (LJ only)
 #define COULOMB_RF    1 // Reaction-field with infinite dielectric, shifted at the cut-off
 #define COULOMB_EWALD 2 // Real-space Ewald with analytical force correction
+#define COULOMB_EWALD_TABLE 3 // Real-space Ewald with tabulated (cubic spline) correction
 
 #ifndef COULOMB_RULE
 #define COULOMB_RULE COULOMB_NONE
 #endif
+
+// Both Ewald variants share the splitting coefficient and the energy terms
+#define COULOMB_IS_EWALD                                                                 \
+    (COULOMB_RULE == COULOMB_EWALD || COULOMB_RULE == COULOMB_EWALD_TABLE)
 
 // Molecular exclusions: atoms of the same molecule do not interact via LJ and the
 // direct Coulomb term, only through the Coulomb exclusion correction
@@ -103,8 +108,10 @@ typedef struct {
 #define COULOMB_RULE_NAME "none"
 #elif COULOMB_RULE == COULOMB_RF
 #define COULOMB_RULE_NAME "reaction-field"
-#else
+#elif COULOMB_RULE == COULOMB_EWALD
 #define COULOMB_RULE_NAME "ewald"
+#else
+#define COULOMB_RULE_NAME "ewald (tabulated correction)"
 #endif
 
 typedef struct {
@@ -160,9 +167,21 @@ typedef struct {
     MD_FLOAT epsfac;     // Coulomb prefactor (1/(4 pi eps0) in the unit system used)
     MD_FLOAT ewald_rtol; // Relative tolerance at the cut-off used to derive ewald_beta
     MD_FLOAT ewald_beta; // Ewald splitting coefficient
+    // Ewald correction table of COULOMB_EWALD_TABLE (see ewald_table.h)
+    MD_FLOAT ewald_table_scale; // points per length unit
+    int ewald_table_size;
+    MD_FLOAT* ewald_table_f;    // force correction F
+    MD_FLOAT* ewald_table_v;    // potential correction V
+    MD_FLOAT* ewald_table_fdv0; // F, F[i+1] - F[i], V, 0 per point
     // Kernel-only benchmark: run the force kernel this many times on a fixed list
     int kernel_bench;
     char* dump_forces_file;
+    // Energy kernels (-energy): LJ and Coulomb energy of the last force call
+    bool compute_energy;
+    double energy_lj;
+    double energy_coul;
+    // Half-LJ i-clusters (-halflj), as GROMACS' half-LJ kernels
+    bool half_lj;
 } Parameter;
 
 void initParameter(Parameter*);

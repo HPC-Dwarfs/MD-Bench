@@ -11,6 +11,7 @@
 #include <stdio.h>
 
 #include <atom.h>
+#include <energy.h>
 #include <force.h>
 #include <likwid-marker.h>
 #include <math.h>
@@ -131,13 +132,104 @@ static inline void incrementIForces(
     simd_real_incr_reduced_sum_j2(&ci_f[CL_Z_INDEX_3D(0)], fz->v[0], fz->v[1]);
 }
 
+// One i-cluster of the half list: nrlj LJ rows, energy flag; constants at the call sites
+MD_ALWAYS_INLINE void iClusterHalf2xn(Parameter* param,
+    Atom* atom,
+    Neighbor* neighbor,
+    Stats* stats,
+    const PairConstants* pc,
+    MD_FLOAT* f,
+    const int ci,
+    const int nrlj,
+    const int energy,
+    double* ec,
+    double* elj)
+{
+    const int nbM                    = atom->Nclusters_local;
+    const int nlocal_clusters        = CJ1_FROM_CI(atom->Nclusters_local);
+    const int numneighs              = neighbor->numneigh_inner[ci];
+    const int numneighs_masked       = neighbor->numneigh_masked[ci];
+    const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
+    const int unmasked_inner_end     = numneighs_masked +
+                                       (numneighs - numneighs_inner_masked);
+    MD_FLOAT* ci_f                   = &f[CI_VECTOR3_BASE_INDEX(ci)];
+
+    const IRows ir = load2xnIRows(atom, ci, pc);
+    Rows fx        = rowsZero();
+    Rows fy        = rowsZero();
+    Rows fz        = rowsZero();
+    // e_half: pairs also computed on the process of the ghost j-cluster, they count half
+    RowEnergies e      = rowEnergiesZero();
+    RowEnergies e_half = rowEnergiesZero();
+
+    for (int k = 0; k < numneighs_inner_masked; k++) {
+        prefetchAhead(atom,
+            neighbor,
+            ci,
+            nbM,
+            k,
+            numneighs,
+            numneighs_masked,
+            numneighs_inner_masked,
+            f);
+        const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
+        const JData jd      = load2xnJData(atom, cj);
+        const RowMasks diag = load2xnDiagMasks(atom->masks_2xn_hn, ci, cj);
+        const PairForces p =
+            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, &diag, 1, pc, atom);
+
+        accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
+        if (cj < nlocal_clusters || param->method) {
+            decrementJForces(&f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
+            if (energy) accumulateEnergies(CLUSTER_M, &e, &p);
+        } else if (energy) {
+            accumulateEnergies(CLUSTER_M, &e_half, &p);
+        }
+    }
+
+    for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
+        prefetchAhead(atom,
+            neighbor,
+            ci,
+            nbM,
+            k - numneighs_masked + numneighs_inner_masked,
+            numneighs,
+            numneighs_masked,
+            numneighs_inner_masked,
+            f);
+        const int cj   = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
+        const JData jd = load2xnJData(atom, cj);
+        const PairForces p =
+            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, NULL, 0, pc, atom);
+
+        accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
+        if (cj < nlocal_clusters || param->method) {
+            decrementJForces(&f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
+            if (energy) accumulateEnergies(CLUSTER_M, &e, &p);
+        } else if (energy) {
+            accumulateEnergies(CLUSTER_M, &e_half, &p);
+        }
+    }
+
+    incrementIForces(ci_f, &fx, &fy, &fz);
+    if (energy) {
+        reduceEnergies(CLUSTER_M, &e, 1.0, ec, elj);
+        reduceEnergies(CLUSTER_M, &e_half, 0.5, ec, elj);
+    }
+
+    addStat(stats->calculated_forces, 1);
+    addStat(stats->num_neighs, numneighs);
+    addStat(stats->force_iters,
+        (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
+}
+
 double computeForceLJ2xnHalfNeigh(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJ_2xn begin\n");
-    const int nbM             = atom->Nclusters_local;
-    const PairConstants pc    = pairConstants(param);
-    const int nlocal_clusters = CJ1_FROM_CI(atom->Nclusters_local);
+    const PairConstants pc = pairConstants(param);
+    const int energy       = param->compute_energy;
+    double ec = 0.0, elj = 0.0;
 #if LJ_COMB_RULE == LJ_COMB_FULL
     setupTypePairC6C12(atom);
 #endif
@@ -152,70 +244,72 @@ double computeForceLJ2xnHalfNeigh(
         LIKWID_MARKER_START("force");
         MD_FLOAT* f = threadForces(atom, nf);
 
-#pragma omp for schedule(runtime)
+#pragma omp for schedule(runtime) reduction(+ : ec, elj)
         for (int ci = 0; ci < atom->Nclusters_local; ci++) {
-            const int numneighs              = neighbor->numneigh_inner[ci];
-            const int numneighs_masked       = neighbor->numneigh_masked[ci];
-            const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
-            const int unmasked_inner_end     = numneighs_masked +
-                                               (numneighs - numneighs_inner_masked);
-            MD_FLOAT* ci_f                   = &f[CI_VECTOR3_BASE_INDEX(ci)];
-
-            const IRows ir = load2xnIRows(atom, ci, &pc);
-            Rows fx        = rowsZero();
-            Rows fy        = rowsZero();
-            Rows fz        = rowsZero();
-
-            for (int k = 0; k < numneighs_inner_masked; k++) {
-                prefetchAhead(atom,
-                    neighbor,
-                    ci,
-                    nbM,
-                    k,
-                    numneighs,
-                    numneighs_masked,
-                    numneighs_inner_masked,
-                    f);
-                const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
-                const JData jd      = load2xnJData(atom, cj);
-                const RowMasks diag = load2xnDiagMasks(atom->masks_2xn_hn, ci, cj);
-                const PairForces p = pairForces(CLUSTER_M, &ir, &jd, &diag, 1, &pc, atom);
-
-                accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
-                if (cj < nlocal_clusters || param->method) {
-                    decrementJForces(&f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
+            const int half_lj = param->half_lj && atom->iclusters[ci].half_lj;
+            if (!energy) {
+                if (!half_lj) {
+                    iClusterHalf2xn(param,
+                        atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        f,
+                        ci,
+                        CLUSTER_M,
+                        0,
+                        &ec,
+                        &elj);
+                } else {
+                    iClusterHalf2xn(param,
+                        atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        f,
+                        ci,
+                        CLUSTER_M / 2,
+                        0,
+                        &ec,
+                        &elj);
+                }
+            } else {
+                if (!half_lj) {
+                    iClusterHalf2xn(param,
+                        atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        f,
+                        ci,
+                        CLUSTER_M,
+                        1,
+                        &ec,
+                        &elj);
+                } else {
+                    iClusterHalf2xn(param,
+                        atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        f,
+                        ci,
+                        CLUSTER_M / 2,
+                        1,
+                        &ec,
+                        &elj);
                 }
             }
-
-            for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
-                prefetchAhead(atom,
-                    neighbor,
-                    ci,
-                    nbM,
-                    k - numneighs_masked + numneighs_inner_masked,
-                    numneighs,
-                    numneighs_masked,
-                    numneighs_inner_masked,
-                    f);
-                const int cj       = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
-                const JData jd     = load2xnJData(atom, cj);
-                const PairForces p = pairForces(CLUSTER_M, &ir, &jd, NULL, 0, &pc, atom);
-
-                accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
-                if (cj < nlocal_clusters || param->method) {
-                    decrementJForces(&f[CJ_VECTOR3_BASE_INDEX(cj)], &p);
-                }
-            }
-
-            incrementIForces(ci_f, &fx, &fy, &fz);
-
-            addStat(stats->calculated_forces, 1);
-            addStat(stats->num_neighs, numneighs);
-            addStat(stats->force_iters,
-                (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
         }
         threadForcesReduce(atom, nf);
         LIKWID_MARKER_STOP("force");
+    }
+
+    if (energy) {
+        storeEnergies(param,
+            elj,
+            ec,
+            localChargeSquaredSum(atom->Nlocal, atom->type, atom->q_per_type));
     }
 
     // Single threaded: it writes cl_f of the shell clusters without a thread buffer
@@ -228,12 +322,86 @@ double computeForceLJ2xnHalfNeigh(
     return E - S;
 }
 
+/* One i-cluster of the full-list kernel, see iClusterHalf2xn() */
+MD_ALWAYS_INLINE void iClusterFull2xn(Atom* atom,
+    Neighbor* neighbor,
+    Stats* stats,
+    const PairConstants* pc,
+    const int ci,
+    const int nrlj,
+    const int energy,
+    double* ec,
+    double* elj)
+{
+    const int nbM                    = atom->Nclusters_local;
+    const int numneighs              = neighbor->numneigh_inner[ci];
+    const int numneighs_masked       = neighbor->numneigh_masked[ci];
+    const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
+    const int unmasked_inner_end     = numneighs_masked +
+                                       (numneighs - numneighs_inner_masked);
+    MD_FLOAT* ci_f                   = &atom->cl_f[CI_VECTOR3_BASE_INDEX(ci)];
+
+    const IRows ir = load2xnIRows(atom, ci, pc);
+    Rows fx        = rowsZero();
+    Rows fy        = rowsZero();
+    Rows fz        = rowsZero();
+    RowEnergies e  = rowEnergiesZero();
+
+    for (int k = 0; k < numneighs_inner_masked; k++) {
+        prefetchAhead(atom,
+            neighbor,
+            ci,
+            nbM,
+            k,
+            numneighs,
+            numneighs_masked,
+            numneighs_inner_masked,
+            NULL);
+        const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
+        const JData jd      = load2xnJData(atom, cj);
+        const RowMasks diag = load2xnDiagMasks(atom->masks_2xn_fn, ci, cj);
+        const PairForces p =
+            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, &diag, 1, pc, atom);
+
+        accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
+        if (energy) accumulateEnergies(CLUSTER_M, &e, &p);
+    }
+
+    for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
+        prefetchAhead(atom,
+            neighbor,
+            ci,
+            nbM,
+            k - numneighs_masked + numneighs_inner_masked,
+            numneighs,
+            numneighs_masked,
+            numneighs_inner_masked,
+            NULL);
+        const int cj   = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
+        const JData jd = load2xnJData(atom, cj);
+        const PairForces p =
+            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, NULL, 0, pc, atom);
+
+        accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
+        if (energy) accumulateEnergies(CLUSTER_M, &e, &p);
+    }
+
+    incrementIForces(ci_f, &fx, &fy, &fz);
+    // A full list has every pair twice
+    if (energy) reduceEnergies(CLUSTER_M, &e, 0.5, ec, elj);
+
+    addStat(stats->calculated_forces, 1);
+    addStat(stats->num_neighs, numneighs);
+    addStat(stats->force_iters, (long long int)((double)numneighs));
+}
+
 double computeForceLJ2xnFullNeigh(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJ_2xn begin\n");
-    const int nbM          = atom->Nclusters_local;
     const PairConstants pc = pairConstants(param);
+    const int energy       = param->compute_energy;
+    double ec = 0.0, elj = 0.0;
 #if LJ_COMB_RULE == LJ_COMB_FULL
     setupTypePairC6C12(atom);
 #endif
@@ -246,63 +414,64 @@ double computeForceLJ2xnFullNeigh(
     {
         LIKWID_MARKER_START("force");
 
-#pragma omp for schedule(runtime)
+#pragma omp for schedule(runtime) reduction(+ : ec, elj)
         for (int ci = 0; ci < atom->Nclusters_local; ci++) {
-            const int numneighs              = neighbor->numneigh_inner[ci];
-            const int numneighs_masked       = neighbor->numneigh_masked[ci];
-            const int numneighs_inner_masked = neighbor->numneigh_inner_masked[ci];
-            const int unmasked_inner_end     = numneighs_masked +
-                                               (numneighs - numneighs_inner_masked);
-            MD_FLOAT* ci_f                   = &atom->cl_f[CI_VECTOR3_BASE_INDEX(ci)];
-
-            const IRows ir = load2xnIRows(atom, ci, &pc);
-            Rows fx        = rowsZero();
-            Rows fy        = rowsZero();
-            Rows fz        = rowsZero();
-
-            for (int k = 0; k < numneighs_inner_masked; k++) {
-                prefetchAhead(atom,
-                    neighbor,
-                    ci,
-                    nbM,
-                    k,
-                    numneighs,
-                    numneighs_masked,
-                    numneighs_inner_masked,
-                    NULL);
-                const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
-                const JData jd      = load2xnJData(atom, cj);
-                const RowMasks diag = load2xnDiagMasks(atom->masks_2xn_fn, ci, cj);
-                const PairForces p = pairForces(CLUSTER_M, &ir, &jd, &diag, 1, &pc, atom);
-
-                accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
+            const int half_lj = param->half_lj && atom->iclusters[ci].half_lj;
+            if (!energy) {
+                if (!half_lj) {
+                    iClusterFull2xn(atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        ci,
+                        CLUSTER_M,
+                        0,
+                        &ec,
+                        &elj);
+                } else {
+                    iClusterFull2xn(atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        ci,
+                        CLUSTER_M / 2,
+                        0,
+                        &ec,
+                        &elj);
+                }
+            } else {
+                if (!half_lj) {
+                    iClusterFull2xn(atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        ci,
+                        CLUSTER_M,
+                        1,
+                        &ec,
+                        &elj);
+                } else {
+                    iClusterFull2xn(atom,
+                        neighbor,
+                        stats,
+                        &pc,
+                        ci,
+                        CLUSTER_M / 2,
+                        1,
+                        &ec,
+                        &elj);
+                }
             }
-
-            for (int k = numneighs_masked; k < unmasked_inner_end; k++) {
-                prefetchAhead(atom,
-                    neighbor,
-                    ci,
-                    nbM,
-                    k - numneighs_masked + numneighs_inner_masked,
-                    numneighs,
-                    numneighs_masked,
-                    numneighs_inner_masked,
-                    NULL);
-                const int cj       = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
-                const JData jd     = load2xnJData(atom, cj);
-                const PairForces p = pairForces(CLUSTER_M, &ir, &jd, NULL, 0, &pc, atom);
-
-                accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
-            }
-
-            incrementIForces(ci_f, &fx, &fy, &fz);
-
-            addStat(stats->calculated_forces, 1);
-            addStat(stats->num_neighs, numneighs);
-            addStat(stats->force_iters, (long long int)((double)numneighs));
         }
 
         LIKWID_MARKER_STOP("force");
+    }
+
+    if (energy) {
+        storeEnergies(param,
+            elj,
+            ec,
+            localChargeSquaredSum(atom->Nlocal, atom->type, atom->q_per_type));
     }
 
     double E = getTimeStamp();

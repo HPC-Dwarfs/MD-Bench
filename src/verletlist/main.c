@@ -26,6 +26,8 @@
 #include <comm.h>
 #include <device.h>
 #include <eam.h>
+#include <energy.h>
+#include <ewald_table.h>
 #include <force.h>
 #include <grid.h>
 #include <integrate.h>
@@ -88,8 +90,11 @@ double setup(Parameter* param,
     }
     // Before the atoms are distributed over the MPI ranks, so the ids are global
     initAtomIds(atom);
-#if COULOMB_RULE == COULOMB_EWALD
+#if COULOMB_IS_EWALD
     param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
+#endif
+#if COULOMB_RULE == COULOMB_EWALD_TABLE
+    initEwaldTable(param);
 #endif
 
 #ifndef _MPI
@@ -252,6 +257,9 @@ void writeInput(Parameter* param, Atom* atom)
 // Writes the forces of the local atoms, ordered by their original index
 static void dumpForces(Parameter* param, Atom* atom)
 {
+    // Collective with MPI, before the non-root processes return
+    double elj, ecoul;
+    globalEnergies(param, &elj, &ecoul);
 #ifdef CUDA_TARGET
     // The forces are on the device
     copyForceFromGPU(atom);
@@ -293,6 +301,10 @@ static void dumpForces(Parameter* param, Atom* atom)
     }
 
     fprintf(fp, "# natoms %d\n", atom->Natoms);
+    if (param->compute_energy) {
+        fprintf(fp, "# energy_lj %.15g\n", elj);
+        fprintf(fp, "# energy_coulomb %.15g\n", ecoul);
+    }
     for (int i = 0; i < atom->Natoms; i++) {
         fprintf(fp, "%d %.9g %.9g %.9g\n", i, f[i * 3 + 0], f[i * 3 + 1], f[i * 3 + 2]);
     }
@@ -319,9 +331,21 @@ static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Sta
     const double perIter  = time / param->kernel_bench;
 
     long long pairs = 0;
+#ifdef CUDA_TARGET
+    // GPU builds keep the neighbor counts on the device only
+    int* numneigh = (int*)malloc(atom->Nlocal * sizeof(int));
+    memcpyFromGPU(numneigh,
+        neighbor->d_neighbor.numneigh_inner,
+        atom->Nlocal * sizeof(int));
+#else
+    const int* numneigh = neighbor->numneigh_inner;
+#endif
     for (int i = 0; i < atom->Nlocal; i++) {
-        pairs += neighbor->numneigh_inner[i];
+        pairs += numneigh[i];
     }
+#ifdef CUDA_TARGET
+    free(numneigh);
+#endif
 
     fprintf(stdout, "\nKERNEL BENCHMARK\n");
     fprintf(stdout, "  Atoms:                 %d\n", atom->Natoms);
@@ -333,6 +357,12 @@ static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Sta
     fprintf(stdout, "  Useful pairs per iter: %.0f\n", useful);
     fprintf(stdout, "  Computed pairs/us:     %.3f\n", (double)pairs / (perIter * 1e6));
     fprintf(stdout, "  Useful pairs/us:       %.3f\n", useful / (perIter * 1e6));
+    if (param->compute_energy) {
+        double elj, ecoul;
+        globalEnergies(param, &elj, &ecoul);
+        fprintf(stdout, "  Energy LJ:             %.15g\n", elj);
+        fprintf(stdout, "  Energy Coulomb:        %.15g\n", ecoul);
+    }
 }
 
 int main(int argc, char** argv)
@@ -436,6 +466,14 @@ int main(int argc, char** argv)
             param.size = atoi(argv[++i]);
             continue;
         }
+        if ((strcmp(argv[i], "-energy") == 0)) {
+            param.compute_energy = true;
+            continue;
+        }
+        if ((strcmp(argv[i], "-halflj") == 0)) {
+            param.half_lj = true;
+            continue;
+        }
         if ((strcmp(argv[i], "--kernel-bench") == 0)) {
             param.kernel_bench = atoi(argv[++i]);
             continue;
@@ -510,6 +548,9 @@ int main(int argc, char** argv)
                        "this many times on the fixed neighbor lists and report its time\n");
                 printf("--dump-forces <file>:       write the forces of a single kernel pass "
                        "(atom id, fx, fy, fz) to a text file\n");
+                printf("-energy:                    also compute the LJ and Coulomb "
+                       "energies, reported by "
+                       "--kernel-bench and --dump-forces\n");
                 printf("-v / --verbose:             print a per-routine timing breakdown "
                        "in the performance report\n");
                 printf(HLINE);
@@ -527,6 +568,23 @@ int main(int argc, char** argv)
             "Half Shell is not supported by load balance!\n");
         endComm(&comm);
         exit(0);
+    }
+
+    if (param.gmxbenchmark && param.kernel_bench == 0 && param.ntimes != 0) {
+        // The water has no bonds or constraints and is in GROMACS units: no MD
+        fprintf_once(comm.myproc,
+            stderr,
+            "Error: -gmxbench is a force kernel benchmark, use --kernel-bench <n> or -n "
+            "0\n");
+        endComm(&comm);
+        exit(EXIT_FAILURE);
+    }
+    if (param.half_lj) {
+        fprintf_once(comm.myproc,
+            stderr,
+            "Error: -halflj needs the CPU cluster-pair kernels\n");
+        endComm(&comm);
+        exit(EXIT_FAILURE);
     }
 
     if (param.gmxbenchmark) {

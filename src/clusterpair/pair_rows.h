@@ -19,13 +19,15 @@
  *    product of per-atom values for the geometric combination rule;
  *  - electrostatics (reaction field or real-space Ewald) and molecular exclusions as in
  *    GROMACS' NBNxM kernels, see coulomb.h;
+ *  - only the first nrlj rows have LJ (nrlj = nr / 2 for half-LJ i-clusters, -halflj);
+ *  - with energies (-energy) the pair energies of every row, masked like the forces;
  *  - everything is computed phase by phase over the rows (all rows finish a phase before
  *    the next one starts), which hands the instruction scheduler independent work to fill
  *    the latency of every phase. The kernels written this way are 15-25% faster than the
  *    row after row formulation.
  *
- * The functions are always inlined, the number of rows and the exclusion flag are
- * compile-time constants at every call site.
+ * The functions are always inlined, the number of rows, the number of LJ rows and the
+ * exclusion and energy flags are compile-time constants at every call site.
  */
 #ifndef __PAIR_ROWS_H_
 #define __PAIR_ROWS_H_
@@ -84,12 +86,14 @@ typedef struct {
     MD_SIMD_FLOAT cutsq;
     MD_SIMD_FLOAT minrsq;  // MIN_DISTANCE_SQ
     MD_SIMD_FLOAT c6, c12; // 6 C6 and 12 C12 of the single atom type rule
+    MD_SIMD_FLOAT sixth, twelfth; // LJ energy from 6 C6 and 12 C12
     CoulombSimd cs;
 } PairConstants;
 
-/* Forces of the pairs, already masked, as force * distance */
+/* Forces of the pairs, already masked, as force * distance, and their energies */
 typedef struct {
     Rows tx, ty, tz;
+    Rows vc, vlj;
 } PairForces;
 
 static inline PairConstants pairConstants(const Parameter* param)
@@ -102,7 +106,9 @@ static inline PairConstants pairConstants(const Parameter* param)
     pc.c6  = simd_real_broadcast(LJ_C6_FACTOR * param->epsilon * param->sigma6);
     pc.c12 = simd_real_broadcast(
         LJ_C12_FACTOR * param->epsilon * param->sigma6 * param->sigma6);
-    pc.cs = coulombSimdInit((Parameter*)param);
+    pc.sixth   = simd_real_broadcast(1.0 / 6.0);
+    pc.twelfth = simd_real_broadcast(1.0 / 12.0);
+    pc.cs      = coulombSimdInit((Parameter*)param);
     return pc;
 }
 
@@ -148,7 +154,10 @@ MD_ALWAYS_INLINE void accumulateForces(
  * j-vector; diag is the mask of the pairs to skip because they are the pair of an atom
  * with itself or already counted from the other side (NULL for none) and excl selects
  * the molecular exclusions */
+// nrlj: rows with LJ (half-LJ i-clusters have nr / 2); energy: also compute energies
 MD_ALWAYS_INLINE PairForces pairForces(const int nr,
+    const int nrlj,
+    const int energy,
     const IRows* ir,
     const JData* jd,
     const RowMasks* diag,
@@ -226,7 +235,7 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
         }
     }
 #endif
-    for (int r = 0; r < nr; r++) {
+    for (int r = 0; r < nrlj; r++) {
         six.v[r] = simd_real_mul(rinvsq.v[r], simd_real_mul(rinvsq.v[r], rinvsq.v[r]));
 #if USE_EXCLUSIONS
         if (excl) {
@@ -235,9 +244,24 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
 #endif
     }
 
-    for (int r = 0; r < nr; r++) {
+    for (int r = 0; r < nrlj; r++) {
         frlj.v[r] = simd_real_mul(six.v[r],
             simd_real_sub(simd_real_mul(c12.v[r], six.v[r]), c6.v[r]));
+    }
+    for (int r = nrlj; r < nr; r++) {
+        frlj.v[r] = simd_real_zero();
+    }
+    if (energy) {
+        // (12 C12 r^-12) / 12 - (6 C6 r^-6) / 6
+        for (int r = 0; r < nrlj; r++) {
+            out.vlj.v[r] = simd_real_mul(six.v[r],
+                simd_real_sub(
+                    simd_real_mul(simd_real_mul(c12.v[r], pc->twelfth), six.v[r]),
+                    simd_real_mul(c6.v[r], pc->sixth)));
+        }
+        for (int r = nrlj; r < nr; r++) {
+            out.vlj.v[r] = simd_real_zero();
+        }
     }
 
 #if COULOMB_RULE != COULOMB_NONE
@@ -258,8 +282,14 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
             wm.v[r]);
         fcoul.v[r] = simd_real_mul(qq,
             simd_real_sub(simd_real_mul(rinv_coul.v[r], rinvsq.v[r]), pc->cs.k_rf2));
+        if (energy) {
+            // qq (1/r + k_rf r^2 - c_rf), qq is masked
+            out.vc.v[r] = simd_real_mul(qq,
+                simd_real_sub(simd_real_fma(pc->cs.k_rf, rsq.v[r], rinv_coul.v[r]),
+                    pc->cs.c_rf));
+        }
     }
-#else
+#elif COULOMB_RULE == COULOMB_EWALD
     Rows brsq, ewc;
     for (int r = 0; r < nr; r++) {
         brsq.v[r] = simd_real_mul(pc->cs.beta2,
@@ -273,6 +303,33 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
             simd_real_mul(simd_real_fma(ewc.v[r], brsq.v[r], rinv_coul.v[r]),
                 rinvsq.v[r]));
     }
+    if (energy) {
+        // qq (1/r - erf(beta r)/r), masked for the cut-off and the diagonal
+        for (int r = 0; r < nr; r++) {
+            const MD_SIMD_FLOAT vcorr = simd_real_mul(pc->cs.beta,
+                pmePotentialCorrectionSimd(brsq.v[r]));
+            out.vc.v[r]               = simd_real_select_by_mask(
+                simd_real_mul(simd_real_mul(ir->q.v[r], jd->q),
+                    simd_real_sub(rinv_coul.v[r], vcorr)),
+                wm.v[r]);
+        }
+    }
+#else
+    // Tabulated Ewald correction, r = 0 for masked pairs gives no correction
+    for (int r = 0; r < nr; r++) {
+        const MD_SIMD_FLOAT rr = simd_real_mul(rsq.v[r], rinv.v[r]);
+        const MD_SIMD_FLOAT qq = simd_real_mul(ir->q.v[r], jd->q);
+        MD_SIMD_FLOAT vcorr;
+        const MD_SIMD_FLOAT fc = ewaldTableSimd(&pc->cs, rr, energy ? &vcorr : NULL);
+        fcoul.v[r]             = simd_real_mul(qq,
+            simd_real_mul(simd_real_sub(rinv_coul.v[r], simd_real_mul(fc, rr)),
+                rinvsq.v[r]));
+        if (energy) {
+            out.vc.v[r] = simd_real_select_by_mask(
+                simd_real_mul(qq, simd_real_sub(rinv_coul.v[r], vcorr)),
+                wm.v[r]);
+        }
+    }
 #endif
     for (int r = 0; r < nr; r++) {
         force.v[r] = simd_real_fma(frlj.v[r], rinvsq.v[r], fcoul.v[r]);
@@ -280,6 +337,11 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
 #else
     for (int r = 0; r < nr; r++) {
         force.v[r] = simd_real_mul(frlj.v[r], rinvsq.v[r]);
+    }
+    if (energy) {
+        for (int r = 0; r < nr; r++) {
+            out.vc.v[r] = simd_real_zero();
+        }
     }
 #endif
 
@@ -294,7 +356,36 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
     (void)atom;
     (void)excl;
     (void)pc;
+    (void)energy;
     return out;
+}
+
+// Coulomb and LJ energies of the rows, summed per i-cluster and reduced once
+typedef struct {
+    Rows vc, vlj;
+} RowEnergies;
+
+MD_ALWAYS_INLINE RowEnergies rowEnergiesZero(void)
+{
+    RowEnergies e;
+    e.vc  = rowsZero();
+    e.vlj = rowsZero();
+    return e;
+}
+
+MD_ALWAYS_INLINE void accumulateEnergies(
+    const int nr, RowEnergies* e, const PairForces* p)
+{
+    e->vc  = rowsAdd(nr, e->vc, p->vc);
+    e->vlj = rowsAdd(nr, e->vlj, p->vlj);
+}
+
+/* Adds the energies of the rows to *ec and *elj, times w */
+MD_ALWAYS_INLINE void reduceEnergies(
+    const int nr, const RowEnergies* e, const double w, double* ec, double* elj)
+{
+    *ec += w * simd_real_h_reduce_sum(rowsSum(nr, e->vc));
+    *elj += w * simd_real_h_reduce_sum(rowsSum(nr, e->vlj));
 }
 
 /* Clears the forces of the local clusters and, for kernels that write reaction forces

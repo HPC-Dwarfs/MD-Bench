@@ -25,8 +25,11 @@ extern "C" {
 #include <util.h>
 }
 
+#include <energy_gpu.h>
 #include <pair_scalar.h>
 
+// ENERGY: also sum the pair energies into energies (-energy), see warpEnergiesAdd()
+template <bool ENERGY>
 __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -36,7 +39,8 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     int* neigh_neighbors,
     int* neigh_numneigh,
     int ntypes,
-    CoulombScalar cs)
+    CoulombScalar cs,
+    double* energies)
 {
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -54,6 +58,8 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT fix = 0;
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
+    double vlj_sum = 0.0;
+    double vc_sum  = 0.0;
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
@@ -105,6 +111,21 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
             const int mol_j = 0;
 #endif
             MD_FLOAT force = pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, cs);
+            if (ENERGY) {
+                MD_FLOAT vlj, vc;
+                pairEnergyScalar(rsq,
+                    sigma6,
+                    epsilon,
+                    qi,
+                    qj,
+                    mol_i,
+                    mol_j,
+                    cs,
+                    &vlj,
+                    &vc);
+                vlj_sum += vlj;
+                vc_sum += vc;
+            }
             fix += delx * force;
             fiy += dely * force;
             fiz += delz * force;
@@ -114,8 +135,12 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     atom_fx(i) = fix;
     atom_fy(i) = fiy;
     atom_fz(i) = fiz;
+    if (ENERGY) {
+        warpEnergiesAdd(vlj_sum, vc_sum, energies);
+    }
 }
 
+template <bool ENERGY>
 __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -125,7 +150,8 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     int* neigh_neighbors,
     int* neigh_numneigh,
     int ntypes,
-    CoulombScalar cs)
+    CoulombScalar cs,
+    double* energies)
 {
 
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -143,6 +169,8 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT fix = 0;
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
+    double vlj_sum = 0.0;
+    double vc_sum  = 0.0;
 
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
@@ -194,6 +222,23 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
             const int mol_j = 0;
 #endif
             MD_FLOAT force = pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, cs);
+            if (ENERGY) {
+                MD_FLOAT vlj, vc;
+                pairEnergyScalar(rsq,
+                    sigma6,
+                    epsilon,
+                    qi,
+                    qj,
+                    mol_i,
+                    mol_j,
+                    cs,
+                    &vlj,
+                    &vc);
+                // Ghost pairs are computed from both sides (no ghost force fold-back)
+                const double w = j < Nlocal ? 1.0 : 0.5;
+                vlj_sum += w * vlj;
+                vc_sum += w * vc;
+            }
             MD_FLOAT partial_force_x = delx * force;
             MD_FLOAT partial_force_y = dely * force;
             MD_FLOAT partial_force_z = delz * force;
@@ -211,6 +256,9 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     atomicAdd(&atom_fx(i), fix);
     atomicAdd(&atom_fy(i), fiy);
     atomicAdd(&atom_fz(i), fiz);
+    if (ENERGY) {
+        warpEnergiesAdd(vlj_sum, vc_sum, energies);
+    }
 }
 
 __global__ void kernel_initial_integrate(
@@ -320,6 +368,7 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
 
     GPU_PROFILE_START("force_lj");
     const int num_blocks = ceil((float)Nlocal / (float)num_threads_per_block);
+    double* energies     = deviceEnergies(param);
     double S             = getTimeStamp();
     LIKWID_MARKER_START("force");
 
@@ -331,7 +380,9 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
         memsetGPU(atom->d_atom.fy, 0, sizeof(MD_FLOAT) * Nmax);
         memsetGPU(atom->d_atom.fz, 0, sizeof(MD_FLOAT) * Nmax);
 #endif
-        computeForceLJCudaHalfNeigh<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+        auto kernel = param->compute_energy ? computeForceLJCudaHalfNeigh<true>
+                                            : computeForceLJCudaHalfNeigh<false>;
+        kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,
@@ -340,9 +391,12 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
             atom->ntypes,
-            cs);
+            cs,
+            energies);
     } else {
-        computeForceLJCudaFullNeigh<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+        auto kernel = param->compute_energy ? computeForceLJCudaFullNeigh<true>
+                                            : computeForceLJCudaFullNeigh<false>;
+        kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,
@@ -351,7 +405,8 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             neighbor->d_neighbor.neighbors,
             neighbor->d_neighbor.numneigh,
             atom->ntypes,
-            cs);
+            cs,
+            energies);
     }
 
     cuda_assert("computeForceLJCuda", cudaPeekAtLastError());
@@ -360,6 +415,13 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
 
     LIKWID_MARKER_STOP("force");
     double E = getTimeStamp();
+    // A full list has every pair twice (the half list kernel weights its pairs itself)
+    storeDeviceEnergies(param,
+        Nlocal,
+        atom->type,
+        atom->q_per_type,
+        energies,
+        neighbor->half_neigh ? 1.0 : 0.5);
     DEBUG_MESSAGE("computeForceLJCUDA end\n");
     return E - S;
 }

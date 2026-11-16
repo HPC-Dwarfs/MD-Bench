@@ -37,4 +37,27 @@ static __device__ __forceinline__ int moleculeCuda(const int* cl_mol, int sca)
 #endif
 }
 
+// Block sum of the energies (NT threads, all must call it) added to energies[0..1]
+template <int NT>
+static __device__ __forceinline__ void blockEnergiesAdd(
+    double vlj, double vc, double* energies)
+{
+    __shared__ double s_e[2][NT];
+    const int t = threadIdx.y * blockDim.x + threadIdx.x;
+    s_e[0][t]   = vlj;
+    s_e[1][t]   = vc;
+    __syncthreads();
+    for (int stride = NT / 2; stride > 0; stride >>= 1) {
+        if (t < stride) {
+            s_e[0][t] += s_e[0][t + stride];
+            s_e[1][t] += s_e[1][t + stride];
+        }
+        __syncthreads();
+    }
+    if (t == 0) {
+        atomicAdd(&energies[0], s_e[0][0]);
+        atomicAdd(&energies[1], s_e[1][0]);
+    }
+}
+
 #endif

@@ -35,6 +35,19 @@ void initForce(Parameter* param)
         exit(EXIT_FAILURE);
     }
 #endif
+    // Energies (-energy) are computed by the LJ kernels only
+    if (param->compute_energy && param->force_field != FF_LJ) {
+        fprintf(stderr, "Error: -energy is only supported with -f lj!\n");
+        exit(EXIT_FAILURE);
+    }
+#ifdef __SIMD_KERNEL__
+    if (param->compute_energy) {
+        fprintf(stderr,
+            "Error: -energy is not supported by the verlet-list SIMD kernels, build with "
+            "USE_SIMD_KERNEL=false!\n");
+        exit(EXIT_FAILURE);
+    }
+#endif
     switch (param->force_field) {
     case FF_EAM:
         computeForce = computeForceEam;

@@ -67,10 +67,13 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     const MD_FLOAT qq = qi * qj;
 #if COULOMB_RULE == COULOMB_RF
     force += qq * (rinv_coul * sr2 - cs.k_rf2);
-#else
+#elif COULOMB_RULE == COULOMB_EWALD
     MD_FLOAT brsq = cs.beta2 * rsq;
     MD_FLOAT ewc  = cs.beta * pmeForceCorrectionScalar(brsq);
     force += qq * (ewc * brsq + rinv_coul) * sr2;
+#else
+    const MD_FLOAT r = rsq * rinv;
+    force += qq * (rinv_coul - ewaldTableScalar(&cs, r, NULL) * r) * sr2;
 #endif
 #endif
 
@@ -80,6 +83,63 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     (void)mol_j;
     (void)cs;
     return force;
+}
+
+// LJ and Coulomb energy of a pair inside the cut-off (see pairForceScalar())
+static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
+    MD_FLOAT sigma6,
+    MD_FLOAT epsilon,
+    MD_FLOAT qi,
+    MD_FLOAT qj,
+    int mol_i,
+    int mol_j,
+    CoulombScalar cs,
+    MD_FLOAT* vlj,
+    MD_FLOAT* vc)
+{
+    rsq = PAIR_FMAX(rsq, MIN_DISTANCE_SQ);
+#if COULOMB_RULE == COULOMB_NONE
+    MD_FLOAT sr2 = (MD_FLOAT)(1.0) / rsq;
+#else
+    MD_FLOAT rinv = PAIR_RSQRT(rsq);
+    MD_FLOAT sr2  = rinv * rinv;
+#endif
+    MD_FLOAT sr6 = sr2 * sr2 * sr2 * sigma6;
+    MD_FLOAT e   = (MD_FLOAT)(4.0) * epsilon * sr6 * (sr6 - (MD_FLOAT)(1.0));
+
+#if USE_EXCLUSIONS
+    const int interact = mol_i != mol_j;
+    if (!interact) {
+        e = (MD_FLOAT)0.0;
+    }
+#endif
+    *vlj = e;
+
+#if COULOMB_RULE != COULOMB_NONE
+    MD_FLOAT rinv_coul = rinv;
+#if USE_EXCLUSIONS
+    if (!interact) {
+        rinv_coul = (MD_FLOAT)0.0;
+    }
+#endif
+#if COULOMB_RULE == COULOMB_RF
+    *vc = qi * qj * (rinv_coul + cs.k_rf * rsq - cs.c_rf);
+#elif COULOMB_RULE == COULOMB_EWALD
+    *vc = qi * qj * (rinv_coul - cs.beta * pmePotentialCorrectionScalar(cs.beta2 * rsq));
+#else
+    MD_FLOAT vcorr;
+    ewaldTableScalar(&cs, rsq * rinv, &vcorr);
+    *vc = qi * qj * (rinv_coul - vcorr);
+#endif
+#else
+    *vc = (MD_FLOAT)0.0;
+#endif
+
+    (void)qi;
+    (void)qj;
+    (void)mol_i;
+    (void)mol_j;
+    (void)cs;
 }
 
 #endif

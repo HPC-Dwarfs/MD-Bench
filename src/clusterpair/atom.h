@@ -54,6 +54,7 @@
 
 typedef struct {
     int natoms;
+    int half_lj; // i-cluster with LJ atoms in its first half only (-halflj)
     MD_FLOAT bbminx, bbmaxx;
     MD_FLOAT bbminy, bbmaxy;
     MD_FLOAT bbminz, bbmaxz;

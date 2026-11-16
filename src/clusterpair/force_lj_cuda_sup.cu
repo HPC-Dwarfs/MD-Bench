@@ -30,6 +30,7 @@ extern "C" {
 #include <util.h>
 }
 
+#include <energy_gpu.h>
 #include <pair_cuda.h>
 
 extern "C" {
@@ -146,6 +147,8 @@ extern "C" void cudaFinalIntegrateSup(Parameter* param, Atom* atom)
     cuda_assert("cudaFinalIntegrateSup", cudaDeviceSynchronize());
 }
 
+// ENERGY: also sum the pair energies into energies (-energy), see blockEnergiesAdd()
+template <bool ENERGY>
 __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* cuda_cl_f,
     int Nclusters_local,
@@ -157,6 +160,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* cuda_cl_q,
     int* cuda_cl_mol,
     CoulombScalar cs,
+    double* energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -190,6 +194,8 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* sci_f = &cuda_cl_f[SCI_VECTOR3_BASE_INDEX(sci)];
     int tid         = cjj * CLUSTER_M + cii;
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
+    double vlj_sum = 0.0;
+    double vc_sum  = 0.0;
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
     int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
 #endif
@@ -283,6 +289,21 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
                         moleculeCuda(cuda_cl_mol, ai_sca),
                         mol_j,
                         cs);
+                    if (ENERGY) {
+                        MD_FLOAT vlj, vc;
+                        pairEnergyScalar(rsq,
+                            sigma6,
+                            epsilon,
+                            cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
+                            qj,
+                            moleculeCuda(cuda_cl_mol, ai_sca),
+                            mol_j,
+                            cs,
+                            &vlj,
+                            &vc);
+                        vlj_sum += vlj;
+                        vc_sum += vc;
+                    }
                     MD_FLOAT fx = delx * force;
                     MD_FLOAT fy = dely * force;
                     MD_FLOAT fz = delz * force;
@@ -374,8 +395,13 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
         atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fbuf[sci_ci].z);
 #endif
     }
+
+    if (ENERGY) {
+        blockEnergiesAdd<CLUSTER_M * CLUSTER_N>(vlj_sum, vc_sum, energies);
+    }
 }
 
+template <bool ENERGY>
 __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* cuda_cl_f,
     int Nclusters_local,
@@ -386,6 +412,7 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* cuda_cl_q,
     int* cuda_cl_mol,
     CoulombScalar cs,
+    double* energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -420,6 +447,8 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* sci_f = &cuda_cl_f[SCI_VECTOR3_BASE_INDEX(sci)];
     int tid         = cjj * CLUSTER_M + cii;
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
+    double vlj_sum = 0.0;
+    double vc_sum  = 0.0;
 
 #if LJ_COMB_RULE != LJ_COMB_SINGLE
     int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
@@ -503,6 +532,21 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
                         moleculeCuda(cuda_cl_mol, ai_sca),
                         mol_j,
                         cs);
+                    if (ENERGY) {
+                        MD_FLOAT vlj, vc;
+                        pairEnergyScalar(rsq,
+                            sigma6,
+                            epsilon,
+                            cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
+                            qj,
+                            moleculeCuda(cuda_cl_mol, ai_sca),
+                            mol_j,
+                            cs,
+                            &vlj,
+                            &vc);
+                        vlj_sum += vlj;
+                        vc_sum += vc;
+                    }
                     MD_FLOAT fx    = delx * force;
                     MD_FLOAT fy    = dely * force;
                     MD_FLOAT fz    = delz * force;
@@ -570,6 +614,10 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
         atomicAdd(&sci_f[CL_Y_INDEX_3D(ai)], fbuf[sci_ci].y);
         atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fbuf[sci_ci].z);
 #endif
+    }
+
+    if (ENERGY) {
+        blockEnergiesAdd<CLUSTER_M * CLUSTER_N>(vlj_sum, vc_sum, energies);
     }
 }
 
@@ -652,11 +700,14 @@ extern "C" double computeForceLJCudaSup(
             sizeof(MD_FLOAT));
     dim3 block_size = dim3(CLUSTER_N, CLUSTER_M, 1);
     dim3 grid_size  = dim3(atom->Nclusters_local, GPU_J_SLICES, 1);
+    double* energies = deviceEnergies(param);
     double S        = getTimeStamp();
     LIKWID_MARKER_START("force");
 
     if (neighbor->half_neigh) {
-        computeForceLJCudaSup_halfwarp<<<grid_size, block_size>>>(cuda_cl_x,
+        auto kernel = param->compute_energy ? computeForceLJCudaSup_halfwarp<true>
+                                            : computeForceLJCudaSup_halfwarp<false>;
+        kernel<<<grid_size, block_size>>>(cuda_cl_x,
             cuda_cl_f,
             atom->Nclusters_local,
             cuda_numneigh_inner,
@@ -667,6 +718,7 @@ extern "C" double computeForceLJCudaSup(
             cuda_cl_q,
             cuda_cl_mol,
             cs,
+            energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,
@@ -684,7 +736,9 @@ extern "C" double computeForceLJCudaSup(
 #endif
         );
     } else {
-        computeForceLJCudaSup_fullwarp<<<grid_size, block_size>>>(cuda_cl_x,
+        auto kernel = param->compute_energy ? computeForceLJCudaSup_fullwarp<true>
+                                            : computeForceLJCudaSup_fullwarp<false>;
+        kernel<<<grid_size, block_size>>>(cuda_cl_x,
             cuda_cl_f,
             atom->Nclusters_local,
             cuda_numneigh_inner,
@@ -694,6 +748,7 @@ extern "C" double computeForceLJCudaSup(
             cuda_cl_q,
             cuda_cl_mol,
             cs,
+            energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
             cutforcesq,
             sigma6,
@@ -717,6 +772,12 @@ extern "C" double computeForceLJCudaSup(
 
     LIKWID_MARKER_STOP("force");
     double E = getTimeStamp();
+    storeDeviceEnergies(param,
+        atom->Nlocal,
+        atom->type,
+        atom->q_per_type,
+        energies,
+        neighbor->half_neigh ? 1.0 : 0.5);
     DEBUG_MESSAGE("computeForceLJCudaSup stop\r\n");
     return E - S;
 }

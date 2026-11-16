@@ -48,6 +48,7 @@ static int nmax;
 static int nstencil; // # of bins in stencil
 static int* stencil; // stencil list of bin offsets
 static MD_FLOAT binsizex, binsizey;
+static int half_lj;       // sort i-clusters for the half-LJ kernels (-halflj)
 static int* is_inner_buf; // reusable scratch for pruneNeighbor*, one maxneighs-sized
                           // slice per thread (indexed by omp_get_thread_num())
 
@@ -75,6 +76,7 @@ static void neighborGhost(Atom*, Neighbor*);
 /* exported subroutines */
 void initNeighbor(Neighbor* neighbor, Parameter* param)
 {
+    half_lj             = param->half_lj;
     MD_FLOAT neighscale = 5.0 / 6.0;
     xprd                = param->nx * param->lattice;
     yprd                = param->ny * param->lattice;
@@ -1849,6 +1851,52 @@ void sortAtomsByCoord(Atom* atom, int dim, int bin, int start_index, int end_ind
     // DEBUG_MESSAGE("sortAtomsByCoord end\n");
 }
 
+// Whether atoms of the type have Lennard-Jones interactions
+static int typeHasLJ(const Atom* atom, const int type)
+{
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    (void)atom;
+    (void)type;
+    return 1;
+#elif LJ_COMB_RULE == LJ_COMB_GEOM
+    return atom->sqrt_epsilon_per_type[type] != 0.0;
+#else
+    for (int t = 0; t < atom->ntypes; t++) {
+        if (atom->epsilon[type * atom->ntypes + t] != 0.0) {
+            return 1;
+        }
+    }
+    return 0;
+#endif
+}
+
+// GROMACS' sort_cluster_on_flag(): returns the half-LJ flag, moves LJ atoms of idx first
+static int sortClusterOnLJ(const Atom* atom, int* idx, const int n)
+{
+    int lj[CLUSTER_M], nolj[CLUSTER_M];
+    int n1 = 0, n2 = 0, a_lj_max = -1;
+    for (int a = 0; a < n; a++) {
+        if (typeHasLJ(atom, atom->type[idx[a]])) {
+            lj[n1++] = idx[a];
+            a_lj_max = a;
+        } else {
+            nolj[n2++] = idx[a];
+        }
+    }
+    if (2 * n1 > CLUSTER_M) {
+        return 0;
+    }
+    if (2 * a_lj_max >= CLUSTER_M) {
+        for (int a = 0; a < n1; a++) {
+            idx[a] = lj[a];
+        }
+        for (int a = 0; a < n2; a++) {
+            idx[n1 + a] = nolj[a];
+        }
+    }
+    return 1;
+}
+
 void buildClustersCPU(Atom* atom)
 {
     DEBUG_MESSAGE("buildClusters start\n");
@@ -1884,7 +1932,14 @@ void buildClustersCPU(Atom* atom)
             MD_FLOAT bbminy = INF, bbmaxy = -INF;
             MD_FLOAT bbminz = INF, bbmaxz = -INF;
 
-            atom->iclusters[ci].natoms = 0;
+            atom->iclusters[ci].natoms  = 0;
+            atom->iclusters[ci].half_lj = 0;
+            if (half_lj && ac < c) {
+                const int n                 = MIN(CLUSTER_M, c - ac);
+                atom->iclusters[ci].half_lj = sortClusterOnLJ(atom,
+                    &bins[bin * atoms_per_bin + ac],
+                    n);
+            }
             for (int cii = 0; cii < CLUSTER_M; cii++) {
                 if (ac < c) {
                     int i         = bins[bin * atoms_per_bin + ac];

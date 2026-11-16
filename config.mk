@@ -40,10 +40,11 @@ LJ_TABLE_INDEX ?= rsq
 # geometric: per-type params with geometric combination (default)
 # full: full type-pair matrix lookup (not supported in SIMD kernels)
 LJ_COMB_RULE ?= geometric
-# Electrostatics (none/rf/ewald), only supported by the CPU cluster-pair kernels
+# Electrostatics (none/rf/ewald/ewald_table), plain LJ kernels of both schemes
 # none: LJ only (default)
 # rf: reaction-field with infinite dielectric, shifted at the cut-off
 # ewald: real-space Ewald part with an analytical force correction
+# ewald_table: real-space Ewald part with GROMACS' tabulated correction (CPU kernels)
 COULOMB_RULE ?= none
 # Molecular exclusions (true/false), atoms of the same molecule skip LJ and the direct
 # Coulomb term (the Ewald/RF exclusion correction is still applied). Defaults to true
@@ -237,8 +238,16 @@ else ifeq ($(strip $(COULOMB_RULE)),ewald)
     ifeq ($(strip $(EXCLUSIONS)),auto)
         EXCLUSIONS_RESOLVED = true
     endif
+else ifeq ($(strip $(COULOMB_RULE)),ewald_table)
+    ifneq ($(filter $(strip $(TOOLCHAIN)),NVCC HIPCC),)
+        $(error COULOMB_RULE=ewald_table is only supported by the CPU kernels)
+    endif
+    DEFINES += -DCOULOMB_RULE=3
+    ifeq ($(strip $(EXCLUSIONS)),auto)
+        EXCLUSIONS_RESOLVED = true
+    endif
 else
-    $(error Invalid COULOMB_RULE, must be one of: none, rf, ewald)
+    $(error Invalid COULOMB_RULE, must be one of: none, rf, ewald, ewald_table)
 endif
 ifneq ($(strip $(EXCLUSIONS)),auto)
     EXCLUSIONS_RESOLVED = $(strip $(EXCLUSIONS))
