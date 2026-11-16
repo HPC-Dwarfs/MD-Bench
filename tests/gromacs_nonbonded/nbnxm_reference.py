@@ -5,9 +5,10 @@ Builds the same water system as gromacs/src/gromacs/nbnxm/benchmark (coordinates
 box, charges, LJ parameters, intramolecular exclusions) from MD-Bench's
 src/common/gmxcoords.h and evaluates the non-bonded forces with the textbook
 formulas, so both codes can be checked against an implementation that shares none
-of their approximations.
+of their approximations. Energies ("# energy_*" lines) follow GROMACS' benchmark settings.
 
-Usage: nbnxm_reference.py --size N --coulomb {ewald,rf,none} [--cutoff 1.0] --out forces.txt
+Usage: nbnxm_reference.py --size N --coulomb {ewald,ewald_table,rf,none} [--cutoff 1.0]
+           --out forces.txt
 """
 import argparse
 import re
@@ -64,11 +65,16 @@ def build_system(header, size):
 
 
 def forces(x, box, typ, q, rc, coulomb, beta=None, epsfac=1.0):
+    """Forces and the LJ and Coulomb energies"""
     n = len(x)
     f = np.zeros((n, 3))
     mol = np.arange(n) // MOL
     isO = typ == 0
     k_rf2 = 1.0 / rc**3
+    k_rf = 0.5 * k_rf2
+    c_rf = 1.0 / rc + k_rf * rc * rc
+    e_lj = 0.0
+    e_coul = 0.0
     for i in range(n - 1):
         d = x[i] - x[i + 1 :]
         d -= box * np.round(d / box)
@@ -85,11 +91,13 @@ def forces(x, box, typ, q, rc, coulomb, beta=None, epsfac=1.0):
             lj = isO[j] & ~excl
             rinv6 = r2[lj] ** -3
             fs[lj] += (12 * C12_O * rinv6 * rinv6 - 6 * C6_O * rinv6) / r2[lj]
+            e_lj += (C12_O * rinv6 * rinv6 - C6_O * rinv6).sum()
         qq = epsfac * q[i] * q[j]
         if coulomb == "none":
             pass
         elif coulomb == "rf":
             fs += qq * (np.where(excl, 0.0, r**-3) - k_rf2)
+            e_coul += (qq * (np.where(excl, 0.0, 1.0 / r) + k_rf * r2 - c_rf)).sum()
         elif coulomb == "ewald":
             e = np.exp(-(beta * r) ** 2) * 2 * beta / sqrt(pi)
             fs += np.where(
@@ -97,10 +105,16 @@ def forces(x, box, typ, q, rc, coulomb, beta=None, epsfac=1.0):
                 qq * (-erf_(beta * r) / r**3 + e / r2),
                 qq * (erfc_(beta * r) / r**3 + e / r2),
             )
+            e_coul += np.where(excl, -qq * erf_(beta * r) / r, qq * erfc_(beta * r) / r).sum()
         fv = fs[:, None] * d
         f[i] += fv.sum(0)
         np.subtract.at(f, j, fv)
-    return f
+    # Self energy of the charges
+    if coulomb == "rf":
+        e_coul -= epsfac * (q * q).sum() * 0.5 * c_rf
+    elif coulomb == "ewald":
+        e_coul -= epsfac * (q * q).sum() * beta / sqrt(pi)
+    return f, e_lj, e_coul
 
 
 def ewald_beta(rc, rtol=1e-5):
@@ -124,15 +138,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--header", default=str(Path(__file__).resolve().parents[2] / "src/common/gmxcoords.h"))
     ap.add_argument("--size", type=int, default=1)
-    ap.add_argument("--coulomb", choices=["ewald", "rf", "none"], default="ewald")
+    # ewald_table: the exact Ewald interaction, which the table approximates
+    ap.add_argument("--coulomb", choices=["ewald", "ewald_table", "rf", "none"], default="ewald")
     ap.add_argument("--cutoff", type=float, default=1.0)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
+    coulomb = "ewald" if a.coulomb == "ewald_table" else a.coulomb
     x, box, typ, q = build_system(a.header, a.size)
-    beta = ewald_beta(a.cutoff) if a.coulomb == "ewald" else None
-    f = forces(x, box, typ, q, a.cutoff, a.coulomb, beta)
+    beta = ewald_beta(a.cutoff) if coulomb == "ewald" else None
+    f, e_lj, e_coul = forces(x, box, typ, q, a.cutoff, coulomb, beta)
     with open(a.out, "w") as fp:
         fp.write(f"# natoms {len(x)}\n")
+        fp.write(f"# energy_lj {e_lj:.12g}\n")
+        fp.write(f"# energy_coulomb {e_coul:.12g}\n")
         for i, v in enumerate(f):
             fp.write(f"{i} {v[0]:.9g} {v[1]:.9g} {v[2]:.9g}\n")
 

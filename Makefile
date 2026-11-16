@@ -194,6 +194,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_main_stub.sh
 	@echo "===>  RUNNING  test_coulomb_exclusions"
 	@bash tests/test_coulomb_exclusions.sh
+	@echo "===>  RUNNING  test_mpi_gmxbench"
+	@bash tests/test_mpi_gmxbench.sh
 	@echo "===>  RUNNING  test_halfshell"
 	@bash tests/test_halfshell.sh
 
