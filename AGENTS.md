@@ -88,7 +88,7 @@ Key configuration options in `config.mk`:
 - `ATOM_DATA_LAYOUT`: Data layout (AOS for array-of-structures, SOA for structure-of-arrays)
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU and SOA for GPU
 - `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `full` for full pair matrix)
-- `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`), cluster-pair SIMD (4xN, 2xNN, 2xN) and GPU kernels; adds `-<rule>` to the binary tag
+- `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`/`ewald_table`), the plain LJ kernels of both schemes (CPU and GPU; `ewald_table` CPU only, `config.mk` rejects it for NVCC/HIPCC); adds `-<rule>` to the binary tag
 - `EXCLUSIONS`: Molecular exclusions (`auto`/`true`/`false`), `auto` = on when `COULOMB_RULE` is not `none`
 - `ACCURATE_RECIPROCAL`: Newton-refine the 12-14 bit `simd_real_reciprocal`/rsqrt estimates used by the SIMD kernels, cluster-pair and verlet-list (`USE_SIMD_KERNEL`) (`src/common/simd_math.h`; default off, adds `-accrecip` to the tag)
 - `ENABLE_MPI`: Enable MPI parallelization
@@ -267,6 +267,37 @@ same; its box sets the binning like an input file does (`setupNeighbor()`).
 `--kernel-bench N` times only the force kernel on the fixed lists and `--dump-forces f`
 writes per-atom forces by original index (both schemes, also on the GPU). `tests/gromacs_nonbonded/` has the exact
 float64 reference, the force comparison, the GROMACS patch and the comparison script.
+`-gmxbench` refuses to integrate (it needs `--kernel-bench` or `-n 0`): the water has no
+bonds or constraints and is in GROMACS units.
+
+`COULOMB_RULE=ewald_table` (`COULOMB_EWALD_TABLE`, `COULOMB_IS_EWALD` covers both Ewald
+rules) uses GROMACS' tabulated Ewald correction instead of the analytical one:
+`src/common/ewald_table.c` builds the quadratic-spline tables like GROMACS'
+`generateEwaldCorrectionTables()` with the spacing of `ewald_spline3_table_scale()`
+(sized for single precision force accuracy, also in double precision) into `Parameter`
+(`ewald_table_f`/`_v`/`_fdv0`); `ewaldTableScalar()` (`coulomb_scalar.h`) and
+`ewaldTableSimd()` (`coulomb.h`, FDV0 gathers in single, F/V in double precision)
+interpolate. It is unrelated to the tabulated LJ force field (`-f lj_table`).
+
+`-energy` (`param->compute_energy`) makes every LJ kernel also sum the LJ and Coulomb
+pair energies into `param->energy_lj`/`energy_coul` (`storeEnergies()` in
+`src/common/energy.h` adds the Coulomb self energy of the local charges, `globalEnergies()`
+sums over MPI ranks; `--kernel-bench` prints them, `--dump-forces` writes `# energy_lj`/
+`# energy_coulomb` header lines). The energies are those of the GROMACS benchmark: no
+LJ/Ewald potential shift, the `c_rf` shift for reaction-field, the exclusion correction of
+excluded pairs inside the cut-off. Every pair counts once: a full list weighs its pairs
+1/2, a half list without the reaction force on a ghost (MPI without a shell method, VL
+GPU) weighs those 1/2. The flag is a compile-time constant where it matters: the SIMD
+kernels call the always-inline `iClusterHalf*`/`iClusterFull*` with literal flags, the VL
+CPU kernels `neighborLoop()` (called inside the OpenMP region, since GCC outlines it
+before inlining), the GPU kernels are templates (`ENERGY`; block or warp reductions in
+`pair_cuda.h`/`src/common/energy_gpu.h`). EAM, tabulated LJ and the VL SIMD kernels refuse it.
+
+`-halflj` (`param->half_lj`, CPU cluster-pair only): `buildClustersCPU()` flags i-clusters
+with at most half of their atoms having LJ (`Cluster.half_lj`) and moves their LJ atoms
+to the front (GROMACS' `sort_cluster_on_flag()`); the SIMD kernels then run `pairForces()`
+with `nrlj = nr / 2` LJ rows for them, the reference kernel zeroes epsilon of the second
+half. The forces do not change, only the work.
 
 ## Core Data Structures
 
@@ -316,6 +347,9 @@ a `key value` text file (`readParameter`/`readTypesFile` in
 | `src/clusterpair/force_lj_cuda.cu`, `force_lj_cuda_sup.cu` | Cluster-pair CUDA/HIP LJ kernels (plain and super-clustering) |
 | `src/verletlist/force_lj.c` | Verlet-list LJ force kernels |
 | `src/common/ljtable.c` | Tabulated LJ force lookup |
+| `src/common/ewald_table.c`, `ewald_table.h` | GROMACS' tabulated Ewald correction (`COULOMB_RULE=ewald_table`) |
+| `src/common/energy.h`, `energy_gpu.h` | Energy output of the kernels (`-energy`): self energy, MPI sum, GPU buffers |
+| `src/common/pair_scalar.h`, `coulomb_scalar.h` | Scalar pair force/energy of the reference, VL and GPU kernels |
 | `src/common/device.c`, `device.h`, `deviceGPU.cu` | CUDA/HIP allocation, memcpy, and pinned-memory helpers |
 | `src/clusterpair/main.c`, `src/verletlist/main.c` | Main program entry (argument parsing, simulation loop) |
 | `config.mk` | Build configuration variables |
@@ -340,6 +374,7 @@ Common command line arguments:
 - `-s <skin>`: Skin for Verlet buffer (default 0.3)
 - `-p <file>`: Parameter file; `outer_skin` can be set here to enable double-cutoff pruning
 - `-gmxbench [-size N]`, `--kernel-bench N`, `--dump-forces <file>`: the water system of the GROMACS non-bonded benchmark, a kernel-only timing loop and a per-atom force dump (both schemes, see below)
+- `-energy`, `-halflj`: energy kernels and half-LJ i-clusters, as `gmx nonbonded-benchmark -energy`/`-halflj` (see below)
 
 ### Test Cases
 
@@ -373,13 +408,16 @@ make OPT_SCHEME=clusterpair mdbench-tests
 Regression tests are shell scripts under `tests/` (e.g.
 `sim_argon_regression.sh`, `regression_scheme_equiv.sh`,
 `test_simd_vs_scalar.sh`, `test_data_layout.sh`) that build one or more
-binary configurations and compare their output. Two of them compare per-atom forces:
-`test_halfshell.sh` (half vs. full lists for 4xN, 2xNN and 2xN, argon and water) and
-`test_coulomb_exclusions.sh` (reaction-field, Ewald and exclusions of the three SIMD
-kernels against the exact float64 reference in `tests/gromacs_nonbonded/`; both need
-python3 with numpy, the second also scipy, and skip otherwise). `test_gpu_coulomb.sh` is
-the same check for the GPU kernels; it needs nvcc and a GPU and is not part of `make
-test`. With the NVIDIA HPC SDK module, nvcc and the CUDA runtime are not on the default
+binary configurations and compare their output. Three of them compare per-atom forces:
+`test_halfshell.sh` (half vs. full lists for 4xN, 2xNN and 2xN, argon and water),
+`test_coulomb_exclusions.sh` (reaction-field, Ewald, tabulated Ewald and exclusions of the
+SIMD, reference and verlet-list kernels (also with SoA lists) against the exact float64
+reference in `tests/gromacs_nonbonded/`, with energies (`-energy`), `-halflj` and sizes 1
+and 2) and `test_mpi_gmxbench.sh` (the same with MPI on 1, 2 and 4 ranks, needs mpicc);
+they need python3 with numpy, the last two also scipy, and skip otherwise.
+`test_gpu_coulomb.sh` is the same check for the GPU kernels (CUDA, or HIP with
+`TOOLCHAIN=HIPCC GPU_ARCH=...`; `-n 0`, `--kernel-bench` and `-energy`, sizes 1 and 8); it
+needs a GPU and is not part of `make test`. With the NVIDIA HPC SDK module, nvcc and the CUDA runtime are not on the default
 paths: add `$NVHPC_ROOT/Linux_x86_64/<version>/cuda/<cuda version>/bin` to `PATH` and
 its `lib64` to `LD_LIBRARY_PATH`. `SUPERCLUSTER_INVERSE_THREAD_MAPPING` is not part of the
 binary tag, so switching it needs a clean build. Run everything with:
@@ -394,10 +432,12 @@ automated coverage for the cluster-pair GPU/super-clustering path
 
 Comparing with a real GROMACS needs a build of `gmx` with
 `tests/gromacs_nonbonded/gromacs-force-dump.patch` and is done by
-`tests/gromacs_nonbonded/run_comparison.sh` (not part of `make test`). Performance work
+`tests/gromacs_nonbonded/run_comparison.sh` (not part of `make test`; 4xN vs 4xM, or with
+`SIMD=AVX512` 2xNN vs 2xMM, for ewald, ewald_table and rf, plain, `-energy` and `-halflj`;
+forces and energies have to agree). Performance work
 on the SIMD kernels should be measured with `perf stat` (cycles, instructions, FP pipe
 and dispatch-stall events) on `--kernel-bench` runs, not with wall-clock times, which
-vary with the clock speed; `tests/gromacs_nonbonded/README.md` lists what was tried.
+vary with the clock speed.
 
 Simulation test data lives in `data/`: `data/argon/input.gro` +
 `mdbench_params*.conf` (argon gas, GROMACS `.gro` format) and

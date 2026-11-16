@@ -108,12 +108,13 @@ to `AOS` for CPU builds and `SOA` for GPU builds.
 with broadcast global parameters (fastest, no type lookup). `geometric` uses
 per-type parameters with geometric combination (default). `full` uses a full
 type-pair matrix lookup (not supported in SIMD kernels).
-- `COULOMB_RULE`: Electrostatics (`none` (default)/`rf`/`ewald`) for all cluster-pair
-kernels (SIMD, reference and GPU) and for the verletlist plain C and GPU kernels. `rf` is
-a reaction-field with infinite dielectric, `ewald` the real-space Ewald part with the
-analytical force correction used by GROMACS. The verletlist explicit SIMD kernels
-(`USE_SIMD_KERNEL=true`), EAM and the tabulated kernels do not support it.
-Atom charges are given per atom type.
+- `COULOMB_RULE`: Electrostatics (`none` (default)/`rf`/`ewald`/`ewald_table`) for all
+cluster-pair kernels (SIMD, reference and GPU) and for the verletlist plain C and GPU
+kernels. `rf` is a reaction-field with infinite dielectric, `ewald` the real-space Ewald
+part with the analytical force correction used by GROMACS, `ewald_table` the same with
+GROMACS' tabulated correction (`gmx nonbonded-benchmark -table`, CPU kernels only). The
+verletlist explicit SIMD kernels (`USE_SIMD_KERNEL=true`), EAM and the tabulated LJ
+kernels do not support it. Atom charges are given per atom type.
 - `EXCLUSIONS` (`auto` (default)/`true`/`false`): Molecular exclusions. Atoms of the
 same molecule (consecutive atom ids, `atom->molsize` atoms per molecule) do not
 interact via LJ or the direct Coulomb term, but get the exclusion correction of the
@@ -222,12 +223,19 @@ force arrays that are summed afterwards
 atoms with charges and intramolecular exclusions, cut-off 1.0 and no skin unless
 `-r`/`-s` are given. `-size <int>` replicates the box (power of two) as `gmx
 nonbonded-benchmark -size` does. Available in both schemes. Build with `COULOMB_RULE=ewald` (or `rf`),
-`CLUSTER_PAIR_KERNEL=4xN` and `ACCURATE_RECIPROCAL=true` to compare with GROMACS.
+`CLUSTER_PAIR_KERNEL=4xN` and `ACCURATE_RECIPROCAL=true` to compare with GROMACS. It is a
+force kernel benchmark like GROMACS', so it needs `--kernel-bench` or `-n 0`.
 - `--kernel-bench <int>`:  after setup only run the force kernel this many times on the
 fixed neighbor lists and report the time per call and the useful pair rate, as the
 GROMACS benchmark does
 - `--dump-forces <file>`:  write the forces of a single kernel pass (`atom id fx fy
-fz`, original atom order) to a text file
+fz`, original atom order) to a text file, with `-energy` also the energies
+- `-energy`:  also compute the LJ and Coulomb energies in the force kernels (GROMACS'
+energy kernels, `gmx nonbonded-benchmark -energy`), reported by `--kernel-bench` and
+`--dump-forces`. All LJ kernels except the verletlist explicit SIMD kernels.
+- `-halflj`:  LJ only for the first half of the i-clusters that have at most half of
+their atoms with LJ, whose LJ atoms are sorted to the front (`gmx nonbonded-benchmark
+-halflj`). CPU cluster-pair kernels only.
 
 ## Available testcases
 
@@ -288,7 +296,7 @@ Call MD-Bench as follows:
 same physics (Lennard-Jones, Ewald or reaction-field electrostatics, intramolecular
 exclusions, cut-off 1.0 nm) through its generic cluster-pair SIMD kernels, so forces and
 kernel times can be compared. `tests/gromacs_nonbonded/` has the exact reference, the
-GROMACS patch and the comparison script, see the README there.
+GROMACS patch and the comparison script.
 
 Run the benchmark with MD-Bench (one thread, the default of GROMACS' benchmark):
 
@@ -336,12 +344,19 @@ or build GROMACS, run both programs and compare forces and times in one go:
 GMX=/path/to/gmx PIN_CORE=3 tests/gromacs_nonbonded/run_comparison.sh 1 8
 ```
 
-Other kernels: `CLUSTER_PAIR_KERNEL=2xNN` (compare with `-simd 2xmm`), `COULOMB_RULE=rf`
-(compare with `-coulomb reaction-field`). `ACCURATE_RECIPROCAL=true` is needed for the
-forces to agree with GROMACS (rms error about 1e-6 in single precision), without it
-the kernels use the 12-bit hardware estimates and are a bit faster. `-gmxbench` is a
-kernel benchmark: the molecules have no bonded terms, so integrating them for many steps
-is not meaningful.
+Other kernels: `CLUSTER_PAIR_KERNEL=2xNN` (compare with `-simd 2xmm`; `run_comparison.sh`
+does with `SIMD=AVX512` and a `gmx` built with `GMX_SIMD=AVX_512`), `COULOMB_RULE=rf`
+(compare with `-coulomb reaction-field`), `COULOMB_RULE=ewald_table` (compare with
+`-table`). The options `-energy` and `-halflj` are the same in both programs.
+`ACCURATE_RECIPROCAL=true` is needed for the forces to agree with GROMACS (rms error about
+1e-6 in single precision, energies about 1e-6 relative), without it the kernels use the
+12-bit hardware estimates and are a bit faster. `-gmxbench` is a kernel benchmark: the
+molecules have no bonded terms or constraints, so MD-Bench refuses to integrate them
+(use `--kernel-bench` or `-n 0`).
+
+The energies follow the GROMACS benchmark settings: no potential shift for LJ and Ewald,
+the `c_rf` shift for reaction-field, the exclusion correction for excluded pairs inside
+the cut-off and the self energy of every charge.
 
 ### Tabulated Lennard-Jones potential (verletlist only)
 
