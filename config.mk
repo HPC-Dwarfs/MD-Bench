@@ -29,8 +29,6 @@ NBLIST_DATA_LAYOUT ?= auto
 # Debug
 DEBUG ?= false
 
-# Sort atoms at a separate frequency (true or false)
-SORT_ATOMS ?= false
 # Index variable for tabulated LJ forces (r/rsq)
 # r:   uniform grid in distance (matches GROMACS), needs a sqrt per pair
 # rsq: uniform grid in squared distance, avoids the sqrt (load-bound variant)
@@ -50,15 +48,6 @@ COULOMB_RULE ?= none
 # Coulomb term (the Ewald/RF exclusion correction is still applied). Defaults to true
 # whenever COULOMB_RULE is not none.
 EXCLUSIONS ?= auto
-# Refine the hardware reciprocal estimate of the SIMD force kernels (cluster-pair and
-# verlet-list with USE_SIMD_KERNEL) with Newton-Raphson steps (true or false). The
-# estimate is only 12-14 bits accurate, so enable this when forces have to be comparable with codes that compute 1/r^2 to
-# full precision, at the cost of a few extra instructions per pair.
-ACCURATE_RECIPROCAL ?= false
-# Software prefetch of the j-cluster data a few list entries ahead in the CPU
-# cluster-pair SIMD kernels (true or false). GROMACS does not prefetch, disable it for a
-# like-for-like comparison.
-KERNEL_PREFETCH ?= true
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
 # Trace indexes and distances for gather-md (true or false)
@@ -207,9 +196,9 @@ else
     DEFINES +=  -DPRECISION=2
 endif
 
-ifeq ($(strip $(SORT_ATOMS)),true)
-    DEFINES += -DSORT_ATOMS
-endif
+# Former build options that are runtime options now
+RUNTIME_OPTIONS = SORT_ATOMS:--sort-every ACCURATE_RECIPROCAL:--accurate-recip KERNEL_PREFETCH:--no-prefetch
+$(foreach o,$(RUNTIME_OPTIONS),$(if $(filter-out undefined,$(origin $(word 1,$(subst :, ,$(o))))),$(error $(word 1,$(subst :, ,$(o))) is a runtime option now, use $(word 2,$(subst :, ,$(o))) of the binary)))
 
 # Translate LJ_COMB_RULE to compiler define
 ifeq ($(strip $(LJ_COMB_RULE)),single)
@@ -268,14 +257,6 @@ else ifeq ($(strip $(ASM_SYNTAX)),att)
     ASM_SYNTAX_FLAG = -masm=att
 else
     $(error Invalid ASM_SYNTAX, must be one of: intel, att)
-endif
-
-ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
-    DEFINES += -DACCURATE_RECIPROCAL
-endif
-
-ifeq ($(strip $(KERNEL_PREFETCH)),false)
-    DEFINES += -DKERNEL_NO_PREFETCH
 endif
 
 ifeq ($(strip $(MEM_TRACER)),true)
@@ -380,22 +361,26 @@ ifeq ($(strip $(OPT_SCHEME)),verletlist)
         OPT_TAG := $(OPT_TAG)-NBSIMD
     endif
 else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
-		OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
+    OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
+    # The C reference kernel of the CPU (forced without SIMD)
+    ifeq ($(strip $(USE_REFERENCE_KERNEL))-$(filter $(strip $(TOOLCHAIN)),NVCC HIPCC),true-)
+        OPT_TAG = CP-ref
+    endif
 endif
 TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
 ifneq ($(strip $(COULOMB_RULE)),none)
     TAG_SUFFIX := $(TAG_SUFFIX)-$(strip $(COULOMB_RULE))
 endif
-ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
-    TAG_SUFFIX := $(TAG_SUFFIX)-accrecip
-endif
-ifeq ($(strip $(OPT_SCHEME))-$(strip $(KERNEL_PREFETCH)),clusterpair-false)
-    TAG_SUFFIX := $(TAG_SUFFIX)-nopf
-endif
 ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
     ifeq ($(strip $(COULOMB_RULE)),none)
         TAG_SUFFIX := $(TAG_SUFFIX)-excl
     endif
+endif
+ifeq ($(strip $(ENABLE_OPENMP)),true)
+    TAG_SUFFIX := $(TAG_SUFFIX)-omp
+endif
+ifeq ($(strip $(ENABLE_MPI)),true)
+    TAG_SUFFIX := $(TAG_SUFFIX)-mpi
 endif
 
 ifeq ($(strip $(SIMD)),NONE)

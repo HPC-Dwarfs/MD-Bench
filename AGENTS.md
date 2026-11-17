@@ -66,16 +66,26 @@ make asm
 
 # Show compiler information
 make info
+
+# Path of the binary of a configuration (use it in scripts instead of building names)
+make -s OPT_SCHEME=clusterpair COULOMB_RULE=ewald print-target
 ```
 
 ### Binary Naming
 
-Binary names follow `MDBench-<OPT_TAG>-<TOOL_TAG>-<DATA_TYPE>`, e.g.:
-- `MDBench-VL-GCC-X86-AVX512-DP` (verlet-list, GCC, AVX512, double precision)
-- `MDBench-CP-auto-GCC-X86-AVX512-DP` (cluster-pair, auto kernel selection, AVX512, DP)
+Binary names follow `MDBench-<OPT_TAG>-<TOOL_TAG>-<DATA_TYPE><TAG_SUFFIX>` (`config.mk`):
+- `OPT_TAG`: `VL` (+ `-SIMD`, `-NBSIMD`) or `CP-<CLUSTER_PAIR_KERNEL>`, `CP-ref` for the
+  CPU reference kernel (`USE_REFERENCE_KERNEL`, forced by `SIMD=NONE`)
+- `TOOL_TAG`: `<TOOLCHAIN>-<ISA>[-<SIMD>][-CMP]`
+- `TAG_SUFFIX`: `-<LJ_COMB_RULE>[-<COULOMB_RULE>][-excl][-omp][-mpi]` (`-excl` only without
+  Coulomb, `-omp`/`-mpi` for `ENABLE_OPENMP`/`ENABLE_MPI`)
 
-Different configurations produce differently-tagged binaries that coexist in
-the same directory.
+e.g. `MDBench-CP-auto-GCC-X86-AVX512-DP-geometric-omp`. Options outside the name (data
+layouts, tracers, `COMPUTE_STATS`, GPU options, ...) share the binary and build directory;
+`$(BUILD_DIR)/config.stamp` records the compiler and all flags and every object depends
+on it, so changing any option recompiles (no stale objects, the binary always matches its
+last build). Use `PREFIX_DIR` to keep such builds side by side, and `make -s ...
+print-target` in scripts instead of assembling names by hand.
 
 ### Configuration Options
 
@@ -90,12 +100,18 @@ Key configuration options in `config.mk`:
 - `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `full` for full pair matrix)
 - `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`/`ewald_table`), the plain LJ kernels of both schemes (CPU and GPU; `ewald_table` CPU only, `config.mk` rejects it for NVCC/HIPCC); adds `-<rule>` to the binary tag
 - `EXCLUSIONS`: Molecular exclusions (`auto`/`true`/`false`), `auto` = on when `COULOMB_RULE` is not `none`
-- `ACCURATE_RECIPROCAL`: Newton-refine the 12-14 bit `simd_real_reciprocal`/rsqrt estimates used by the SIMD kernels, cluster-pair and verlet-list (`USE_SIMD_KERNEL`) (`src/common/simd_math.h`; default off, adds `-accrecip` to the tag)
-- `ENABLE_MPI`: Enable MPI parallelization
-- `ENABLE_OPENMP`: Enable OpenMP parallelization
+- `ENABLE_MPI`: Enable MPI parallelization (`-mpi` in the binary name)
+- `ENABLE_OPENMP`: Enable OpenMP parallelization (`-omp` in the binary name)
+- `USE_REFERENCE_KERNEL`: cluster-pair C reference kernel (`CP-ref`); the verlet-list
+  scheme does not use it
+- `COMPUTE_STATS`: kernel statistics; the C kernels also count the pairs inside/outside of
+  the cut-off
+- Former build options that are runtime options now: `ACCURATE_RECIPROCAL` ->
+  `--accurate-recip`, `KERNEL_PREFETCH=false` -> `--no-prefetch`, `SORT_ATOMS` ->
+  `--sort-every <n>`; `config.mk` stops with a hint when they are set
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds; **required, no default**. Common values: `gfx90a` (MI250X), `gfx940` (MI300A), `gfx942` (MI300X), `gfx1030` (RX 6800 XT)
 - `LJ_TABLE_INDEX`: Indexing mode for tabulated LJ kernels (`r` or `rsq`); `rsq` avoids a sqrt and is load-bound
-- `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme (auto/4xN/2xNN/gpusimple)
+- `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 - `ASM_SYNTAX`: Assembly syntax for generated `.s` files on X86 (`intel`/`att`), passed to the compiler as `-masm=`; ignored on ARM
 - `USE_PINNED_MEMORY`: Use pinned (page-locked) host memory for buffers that are `cudaMemcpy`'d to/from the GPU every reneighbor step, for faster/more predictable transfers (default true; CUDA/HIP builds only)
 - `SUPERCLUSTER_J_SLICES`: Number of thread-block slices the GPU grid is split into along each i-supercluster's j-neighbor list, for the super-clustering kernel (default 4)
@@ -186,7 +202,13 @@ once in `pair_rows.h` (`pairForces()`): a kernel keeps the i-cluster in "rows"
 (`IRows`: broadcast atoms for 4xN/2xN, atom pairs in the register halves for 2xNN), loads
 the j-cluster (`JData`) and only differs in how it loads, in the diagonal mask table and
 in how it reduces forces. `kernel_math.h` pulls in the reciprocal/rsqrt helpers of `src/common/simd_math.h`
-(`ACCURATE_RECIPROCAL` selects Newton-Raphson refinement). The math is GROMACS': one rsqrt
+(`ACCURATE_RECIPROCAL` selects Newton-Raphson refinement). Each kernel file is compiled
+four times: the wrappers `force_lj_<kind>_accurate.c`, `_noprefetch.c` and
+`_accurate_noprefetch.c` define `ACCURATE_RECIPROCAL`/`KERNEL_NO_PREFETCH` and include it,
+`KERNEL_FN()` names the entry points of each copy and `SELECT_KERNEL()` in `initForce()`
+picks one by `--accurate-recip`/`--no-prefetch` (`src/common/kernel_variant.h`; the
+verlet-list SIMD kernels have the `--accurate-recip` copy `force_lj_simd_accurate.c`). A
+runtime branch for the prefetch cost up to 2.4% on AVX2, the copies cost nothing. The math is GROMACS': one rsqrt
 for 1/r and 1/r^2 (a plain reciprocal without electrostatics), the cut-off/diagonal mask
 applied to 1/r only, LJ from per-atom `cl_sqrt6c6`/`cl_sqrt12c12` products or the
 `ljc6x6`/`ljc12x12` type-pair tables, all phase by phase over the rows.
@@ -201,9 +223,8 @@ Things that matter for the speed and are easy to break:
   distance to `MIN_DISTANCE_SQ` after the cut-off check, like GROMACS
   (`c_nbnxmMinDistanceSquared`);
 - j-cluster data of the entry 3 positions ahead in the visiting order (inner masked, then
-  inner unmasked entries; `prefetchAhead()`) is prefetched (`KERNEL_PREFETCH=false`
-  disables it, the binary gets the suffix `-nopf`). GROMACS does not prefetch, disable it
-  for a like-for-like comparison;
+  inner unmasked entries; `prefetchAhead()`) is prefetched (`--no-prefetch` runs the copy
+  without it). GROMACS does not prefetch, disable it for a like-for-like comparison;
 - without MPI, `initForce()` selects the half-shell method (`param->method`) for half
   lists of every CPU kernel (before `initNeighbor()`, which reads it) and `setup()` sets
   `atom->mybox` to the simulation box: only the ghost clusters in the positive half space
@@ -351,7 +372,9 @@ a `key value` text file (`readParameter`/`readTypesFile` in
 | `src/common/energy.h`, `energy_gpu.h` | Energy output of the kernels (`-energy`): self energy, MPI sum, GPU buffers |
 | `src/common/pair_scalar.h`, `coulomb_scalar.h` | Scalar pair force/energy of the reference, VL and GPU kernels |
 | `src/common/device.c`, `device.h`, `deviceGPU.cu` | CUDA/HIP allocation, memcpy, and pinned-memory helpers |
-| `src/clusterpair/main.c`, `src/verletlist/main.c` | Main program entry (argument parsing, simulation loop) |
+| `src/clusterpair/main.c`, `src/verletlist/main.c` | Main program entry (setup, simulation loop) |
+| `src/common/cmdline.c` | Command-line options and `-h` of both schemes (one parser, scheme-only options rejected by the other) |
+| `src/common/kernel_variant.h` | Compiled copies of the SIMD kernels for `--accurate-recip`/`--no-prefetch` |
 | `config.mk` | Build configuration variables |
 | `Makefile` | Build rules (pattern rules, dependency generation, test targets) |
 | `.clang-format` | Code formatting rules (90-char limit, WebKit style) |
@@ -365,7 +388,8 @@ Execute with default parameters:
 ./MDBench-<TAG>
 ```
 
-Common command line arguments:
+Both schemes share one parser (`src/common/cmdline.c`); `-h` lists all options, unknown
+options are an error. Common command line arguments:
 - `-n <steps>`: Number of timesteps (default 200)
 - `-nx/-ny/-nz <int>`: System dimensions (default 32x32x32)
 - `-f <field>`: Force field (`lj` for Lennard-Jones, `eam` for EAM, `lj_table` for tabulated LJ)
@@ -375,6 +399,8 @@ Common command line arguments:
 - `-p <file>`: Parameter file; `outer_skin` can be set here to enable double-cutoff pruning
 - `-gmxbench [-size N]`, `--kernel-bench N`, `--dump-forces <file>`: the water system of the GROMACS non-bonded benchmark, a kernel-only timing loop and a per-atom force dump (both schemes, see below)
 - `-energy`, `-halflj`: energy kernels and half-LJ i-clusters, as `gmx nonbonded-benchmark -energy`/`-halflj` (see below)
+- `--accurate-recip`, `--no-prefetch`: Newton-refined reciprocals of the SIMD kernels and no j-cluster prefetch (CPU cluster-pair), both needed for a like-for-like GROMACS comparison
+- `--sort-every <n>`: spatial atom sort every n steps with a list rebuild (verlet-list; 0 = off, default)
 
 ### Test Cases
 
@@ -384,7 +410,7 @@ Several built-in test cases are available:
 3. Lennard-Jones for melted copper with input file
 4. Argon gas simulation with parameter files
 5. Water box of the GROMACS non-bonded benchmark: `./MDBench-<TAG> -gmxbench -size 1 -half 1 --kernel-bench 500`
-   (build with `COULOMB_RULE=ewald ACCURATE_RECIPROCAL=true`; `OMP_NUM_THREADS=1` like GROMACS' default)
+   (build with `COULOMB_RULE=ewald`, run with `--accurate-recip`; `OMP_NUM_THREADS=1` like GROMACS' default)
 
 ### Performance Measurement
 
@@ -402,7 +428,7 @@ kernels, neighbor list construction, integration, box geometry, and thermodynami
 single precision `ASSERT_NEAR` uses a relative tolerance of at least 1e-5:
 ```bash
 make OPT_SCHEME=clusterpair mdbench-tests
-./MDBench-CP-auto-GCC-X86-AVX512-SP-geometric-tests
+./MDBench-CP-auto-GCC-X86-AVX512-SP-geometric-omp-tests
 ```
 
 Regression tests are shell scripts under `tests/` (e.g.
@@ -419,12 +445,12 @@ they need python3 with numpy, the last two also scipy, and skip otherwise.
 `TOOLCHAIN=HIPCC GPU_ARCH=...`; `-n 0`, `--kernel-bench` and `-energy`, sizes 1 and 8); it
 needs a GPU and is not part of `make test`. With the NVIDIA HPC SDK module, nvcc and the CUDA runtime are not on the default
 paths: add `$NVHPC_ROOT/Linux_x86_64/<version>/cuda/<cuda version>/bin` to `PATH` and
-its `lib64` to `LD_LIBRARY_PATH`. `SUPERCLUSTER_INVERSE_THREAD_MAPPING` is not part of the
-binary tag, so switching it needs a clean build. Run everything with:
+its `lib64` to `LD_LIBRARY_PATH`. The scripts get binary paths from `make -s ...
+print-target`. Run everything with:
 ```bash
 make test                                  # unit tests + all regression scripts
 make SIMD=NONE test                        # test a specific configuration
-bash tests/sim_argon_regression.sh ./MDBench-VL-GCC-X86-AVX512-DP
+bash tests/sim_argon_regression.sh ./MDBench-VL-GCC-X86-AVX512-DP-geometric-omp
 ```
 Apart from `test_gpu_coulomb.sh`, which has to be run by hand on a GPU node, there is no
 automated coverage for the cluster-pair GPU/super-clustering path

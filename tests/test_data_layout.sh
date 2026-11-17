@@ -34,19 +34,10 @@ rm -rf build/ >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ATOM_DATA_LAYOUT=AOS >/dev/null
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-if [ "${OPT_SCHEME}" = "verletlist" ]; then
-  OPT_TAG="VL"
-  BIN_TAG="${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE:-geometric}"
-else
-  OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
-  BIN_TAG="${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE:-geometric}"
-fi
-AOS_BIN="./MDBench-${BIN_TAG}"
+# The layout is not part of the binary name, both builds give the same path
+BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
+    DATA_TYPE="${DATA_TYPE}" print-target)"
+AOS_BIN="${BIN}"
 
 if [[ ! -x "${AOS_BIN}" ]]; then
   echo "AOS binary '${AOS_BIN}' not found or not executable" >&2
@@ -61,7 +52,7 @@ rm -rf build/ >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ATOM_DATA_LAYOUT=SOA >/dev/null
 
-SOA_BIN="./MDBench-${BIN_TAG}"
+SOA_BIN="${BIN}"
 if [[ ! -x "${SOA_BIN}" ]]; then
   echo "SOA binary '${SOA_BIN}' not found or not executable" >&2
   exit 1

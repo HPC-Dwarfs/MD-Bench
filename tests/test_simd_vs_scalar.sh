@@ -32,13 +32,8 @@ if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
   exit 1
 fi
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-
-SIMD_BIN="./MDBench-VL-SIMD-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
+SIMD_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
+    OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" USE_SIMD_KERNEL=true print-target)"
 
 # Rename SIMD binary to preserve it before building SCALAR variant
 if [[ ! -x "${SIMD_BIN}" ]]; then
@@ -62,7 +57,8 @@ if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
   exit 1
 fi
 
-SCALAR_BIN="./MDBench-VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
+SCALAR_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
+    OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" USE_SIMD_KERNEL=false print-target)"
 # Rename to avoid confusion with SIMD binary
 if [[ ! -x "${SCALAR_BIN}" ]]; then
   echo "Binary '${SCALAR_BIN}' is not executable after SCALAR build" >&2

@@ -6,6 +6,7 @@
  */
 #include <atom.h>
 #include <eam.h>
+#include <kernel_variant.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <stats.h>
@@ -38,12 +39,13 @@ extern double computeForceLJTable2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Sta
 extern double computeForceLJTableCuda(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableCudaSup(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
-extern double computeForceLJ4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ4xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+// Copies of each kernel for --accurate-recip and --no-prefetch, see kernel_variant.h
+DECLARE_KERNEL_VARIANTS(computeForceLJ4xnHalfNeigh);
+DECLARE_KERNEL_VARIANTS(computeForceLJ4xnFullNeigh);
+DECLARE_KERNEL_VARIANTS(computeForceLJ2xnHalfNeigh);
+DECLARE_KERNEL_VARIANTS(computeForceLJ2xnFullNeigh);
+DECLARE_KERNEL_VARIANTS(computeForceLJ2xnnHalfNeigh);
+DECLARE_KERNEL_VARIANTS(computeForceLJ2xnnFullNeigh);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
 #ifdef CUDA_TARGET

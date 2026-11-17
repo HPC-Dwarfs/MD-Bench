@@ -84,8 +84,7 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
             timer[FORCE] * param->proc_freq * 1e9 / stats->total_force_iters);
     }
 
-#ifdef USE_REFERENCE_KERNEL
-
+    // Only the C (non-SIMD) kernels count the pairs inside and outside of the cut-off
     long long int within_cutoff_sum  = 0;
     long long int outside_cutoff_sum = 0;
 
@@ -112,13 +111,12 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                            (double)(stats->atoms_within_cutoff +
                                     stats->atoms_outside_cutoff) *
                            100.0;
-    if (me == 0) {
+    if (me == 0 && stats->atoms_within_cutoff + stats->atoms_outside_cutoff > 0) {
         printf("\tAtoms within/outside cutoff radius: %lld/%lld (%.2f%%)\n",
             stats->atoms_within_cutoff,
             stats->atoms_outside_cutoff,
             eff_pct);
     }
-#endif
 
 #endif
 }

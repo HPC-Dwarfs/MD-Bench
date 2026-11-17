@@ -45,18 +45,23 @@ esac
 
 status=0
 for kernel in "${SIMD_KERNEL}" REF VL; do
+  kernel_opts=()
   case "${kernel}" in
     VL) args=(OPT_SCHEME=verletlist) ;;
     REF) args=(OPT_SCHEME=clusterpair USE_REFERENCE_KERNEL=true) ;;
-    *) args=(OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" ACCURATE_RECIPROCAL=true) ;;
+    *)
+      args=(OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}")
+      kernel_opts=(--accurate-recip)
+      ;;
   esac
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE=SP ENABLE_MPI=true \
-       COULOMB_RULE=ewald PREFIX_DIR="${WORK}/${kernel}" "${args[@]}" >/dev/null
-  bin="$(ls "${WORK}/${kernel}"/MDBench-* | head -n 1)"
+  cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE=SP ENABLE_MPI=true
+       COULOMB_RULE=ewald PREFIX_DIR="${WORK}/${kernel}" "${args[@]}")
+  make "${cfg[@]}" >/dev/null
+  bin="$(make -s "${cfg[@]}" print-target)"
   for np in 1 2 4; do
     for half in 0 1; do
       OMP_NUM_THREADS=1 mpirun "${MPI_EXTRA_FLAGS[@]}" -np "${np}" "${bin}" -gmxbench \
-          -size "${SIZE}" -half "${half}" --kernel-bench 1 -energy \
+          -size "${SIZE}" -half "${half}" --kernel-bench 1 -energy "${kernel_opts[@]}" \
           --dump-forces "${WORK}/f.txt" >"${WORK}/run.log" 2>&1 || {
         echo "FAILED: ${kernel} np=${np} half=${half}"
         tail -n 5 "${WORK}/run.log"

@@ -36,21 +36,21 @@ void initForce(Parameter* param)
         computeForce = computeForceLJRef;
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         if (param->half_neigh || param->method) {
-            computeForce = computeForceLJ4xnHalfNeigh;
+            computeForce = SELECT_KERNEL(param, computeForceLJ4xnHalfNeigh);
         } else {
-            computeForce = computeForceLJ4xnFullNeigh;
+            computeForce = SELECT_KERNEL(param, computeForceLJ4xnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XNN)
         if (param->half_neigh || param->method) {
-            computeForce = computeForceLJ2xnnHalfNeigh;
+            computeForce = SELECT_KERNEL(param, computeForceLJ2xnnHalfNeigh);
         } else {
-            computeForce = computeForceLJ2xnnFullNeigh;
+            computeForce = SELECT_KERNEL(param, computeForceLJ2xnnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XN)
         if (param->half_neigh) {
-            computeForce = computeForceLJ2xnHalfNeigh;
+            computeForce = SELECT_KERNEL(param, computeForceLJ2xnHalfNeigh);
         } else {
-            computeForce = computeForceLJ2xnFullNeigh;
+            computeForce = SELECT_KERNEL(param, computeForceLJ2xnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_GPU)
         if (param->super_clustering) {

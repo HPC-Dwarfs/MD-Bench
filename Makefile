@@ -45,31 +45,41 @@ ifneq ($(VARIANT),)
 endif
 
 # Flags only for the SIMD force kernels, empty unless the toolchain defines them
-KERNEL_OBJ = $(addprefix $(BUILD_DIR)/,force_lj_4xn.o force_lj_2xnn.o force_lj_2xn.o)
+KERNEL_OBJ = $(addprefix $(BUILD_DIR)/,$(notdir $(patsubst %.c,%.o,$(wildcard $(SRC_DIR)/force_lj_4xn*.c $(SRC_DIR)/force_lj_2xn*.c))))
 $(KERNEL_OBJ): CFLAGS += $(KERNEL_CFLAGS)
 
-${TARGET}: $(BUILD_DIR) .clangd $(OBJ) $(SRC_DIR)/main.c
+# Rebuild everything when the compiler or any flag changes (options outside the binary tag)
+CONFIG_STAMP  = $(BUILD_DIR)/config.stamp
+CONFIG_STRING = $(CC) $(LINKER) $(CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) $(OPT_CFLAGS) $(ASFLAGS) $(LFLAGS) $(LIBS)
+ifeq ($(filter clean distclean cleanall format tags info print-target,$(MAKECMDGOALS)),)
+ifneq ($(strip $(CONFIG_STRING)),$(strip $(file <$(CONFIG_STAMP))))
+$(shell mkdir -p $(BUILD_DIR))
+$(file >$(CONFIG_STAMP),$(CONFIG_STRING))
+endif
+endif
+
+${TARGET}: $(BUILD_DIR) .clangd $(OBJ) $(SRC_DIR)/main.c $(CONFIG_STAMP)
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} $(CPPFLAGS) ${LFLAGS} -o $(TARGET) $(OBJ) $(SRC_DIR)/main.c $(LIBS)
 
-${TARGET}-%: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main-%.c
+${TARGET}-%: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main-%.c $(CONFIG_STAMP)
 	@echo "===>  LINKING  $(TARGET)-$* "
 	$(Q)${LINKER} $(CPPFLAGS) ${LFLAGS} -o $(TARGET)-$* $(OBJ) $(SRC_DIR)/main-$*.c $(LIBS)
 
-$(BUILD_DIR)/%.o:  %.c $(MAKE_DIR)/include_$(TOOLCHAIN).mk
+$(BUILD_DIR)/%.o:  %.c $(MAKE_DIR)/include_$(TOOLCHAIN).mk $(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
 	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -MT $@ -MM  $< > $(BUILD_DIR)/$*.d
 
 ifeq ($(strip $(TOOLCHAIN)),NVCC)
-$(BUILD_DIR)/%.o:  %.cu
+$(BUILD_DIR)/%.o:  %.cu $(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
 	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $(OPT_CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) $(OPT_CFLAGS) -MT $@ -MM  $< > $(BUILD_DIR)/$*.d
 endif
 
 ifeq ($(strip $(TOOLCHAIN)),HIPCC)
-$(BUILD_DIR)/%.o:  $(BUILD_DIR)/%.hip
+$(BUILD_DIR)/%.o:  $(BUILD_DIR)/%.hip $(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
 	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) -MT $@ -MM  $< > $(BUILD_DIR)/$*.d
@@ -79,7 +89,7 @@ $(BUILD_DIR)/%.hip: %.cu
 	$(info ===>  GENERATE HIP  $@)
 	$(Q)hipify-perl $< > $@
 
-$(BUILD_DIR)/%.s:  %.c
+$(BUILD_DIR)/%.s:  %.c $(CONFIG_STAMP)
 	$(info ===>  GENERATE ASM  $@)
 	$(Q)$(CC) -S $(ASFLAGS) $(CPPFLAGS) $(CFLAGS) $< -o $@
 
@@ -87,7 +97,7 @@ $(BUILD_DIR)/%.o:  %.s
 	$(info ===>  ASSEMBLE  $@)
 	$(Q)$(AS) $< -o $@
 
-.PHONY: clean distclean cleanall tags format info asm sass test mdbench-tests
+.PHONY: clean distclean cleanall tags format info print-target asm sass test mdbench-tests
 
 clean:
 	$(info ===>  CLEAN)
@@ -107,6 +117,10 @@ distclean: clean
 info:
 	$(info $(CFLAGS))
 	$(Q)$(CC) $(VERSION)
+
+# Path of the binary of a configuration, for scripts: make -s <options> print-target
+print-target:
+	@echo $(abspath $(TARGET))
 
 asm:  $(BUILD_DIR) $(ASM)
 
@@ -204,7 +218,7 @@ TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neigh
 
 TEST_HEADERS     := $(wildcard $(SRC_ROOT)/clusterpair/*.h $(COMMON_DIR)/*.h $(COMMON_DIR)/simd/*.h)
 
-$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS) $(TEST_HEADERS)
+$(TEST_BIN): $(CONFIG_STAMP) tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS) $(TEST_HEADERS)
 	@mkdir -p $(dir $(TEST_BIN))
 	@echo "===>  BUILDING $(TEST_BIN)"
 	$(Q)$(CC) -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) -DCLUSTER_PAIR -DCLUSTERPAIR_KERNEL_AUTO \

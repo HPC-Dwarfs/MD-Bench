@@ -52,8 +52,9 @@ make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" >/dev/null
-VL_BIN_TAG="VL-${TOOLCHAIN}-${ISA}-${DATA_TYPE}-${LJ_COMB_RULE:-geometric}"
-VL_BIN="./MDBench-${VL_BIN_TAG}"
+# Relative, the stub target is <binary>-stub
+VL_BIN="./$(basename "$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist \
+    SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" print-target)")"
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" "${VL_BIN}-stub" >/dev/null
 
@@ -68,8 +69,8 @@ make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" >/dev/null
-CP_BIN_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}-${TOOLCHAIN}-${ISA}-${SIMD}-${DATA_TYPE}-${LJ_COMB_RULE:-geometric}"
-CP_BIN="./MDBench-${CP_BIN_TAG}"
+CP_BIN="./$(basename "$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair \
+    SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" print-target)")"
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" "${CP_BIN}-stub" >/dev/null
 

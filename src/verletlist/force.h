@@ -27,14 +27,24 @@ extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
 #ifdef __SIMD_KERNEL__
 extern double computeForceLJHalfNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJHalfNeigh_simdAccurate(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJFullNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJFullNeigh_simdAccurate(Parameter*, Atom*, Neighbor*, Stats*);
 #ifdef __SIMD_COMPRESS__
 extern double computeForceLJHalfNeigh_simd_compress(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJHalfNeigh_simd_compressAccurate(
+    Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJFullNeigh_simd_compress(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJFullNeigh_simd_compressAccurate(
+    Parameter*, Atom*, Neighbor*, Stats*);
 #endif
 #ifdef __SIMD_VLA__
 extern double computeForceLJHalfNeigh_simd_vla(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJHalfNeigh_simd_vlaAccurate(
+    Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJFullNeigh_simd_vla(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJFullNeigh_simd_vlaAccurate(
+    Parameter*, Atom*, Neighbor*, Stats*);
 #endif
 #endif
 

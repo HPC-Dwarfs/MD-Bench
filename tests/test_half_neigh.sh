@@ -27,16 +27,9 @@ make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" 
      DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" \
      USE_SIMD_KERNEL="${USE_SIMD_KERNEL}" >/dev/null
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-OPT_TAG="VL"
-if [ "${USE_SIMD_KERNEL}" = "true" ]; then
-  OPT_TAG="${OPT_TAG}-SIMD"
-fi
-VL_BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
+VL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+    DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" USE_SIMD_KERNEL="${USE_SIMD_KERNEL}" \
+    print-target)"
 
 if [[ ! -x "${VL_BIN}" ]]; then
   echo "Binary '${VL_BIN}' is not executable" >&2

@@ -13,6 +13,7 @@
 #include <atom.h>
 #include <energy.h>
 #include <force.h>
+#include <kernel_variant.h>
 #include <likwid-marker.h>
 #include <math.h>
 #include <neighbor.h>
@@ -223,7 +224,7 @@ MD_ALWAYS_INLINE void iClusterHalf2xn(Parameter* param,
         (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
 }
 
-double computeForceLJ2xnHalfNeigh(
+double KERNEL_FN(computeForceLJ2xnHalfNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJ_2xn begin\n");
@@ -395,7 +396,7 @@ MD_ALWAYS_INLINE void iClusterFull2xn(Atom* atom,
     addStat(stats->force_iters, (long long int)((double)numneighs));
 }
 
-double computeForceLJ2xnFullNeigh(
+double KERNEL_FN(computeForceLJ2xnFullNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJ_2xn begin\n");

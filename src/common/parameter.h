@@ -35,23 +35,11 @@ typedef struct {
 #define MD_FLOAT3 float3
 #define MD_FLOAT4 float4
 #define MD_UINT   unsigned int
-/*
-#ifdef USE_REFERENCE_KERNEL
-#define MD_SIMD_FLOAT float
-#define MD_SIMD_MASK  uint16_t
-#endif
-*/
 #else
 #define MD_FLOAT  double
 #define MD_FLOAT3 double3
 #define MD_FLOAT4 double4
 #define MD_UINT   unsigned long long int
-/*
-#ifdef USE_REFERENCE_KERNEL
-#define MD_SIMD_FLOAT double
-#define MD_SIMD_MASK  uint8_t
-#endif
-*/
 #endif
 
 // LJ combination rule compile-time macros (Gromacs terminology)
@@ -182,6 +170,10 @@ typedef struct {
     double energy_coul;
     // Half-LJ i-clusters (-halflj), as GROMACS' half-LJ kernels
     bool half_lj;
+    // Newton-Raphson refined 1/r^2 and 1/r in the SIMD kernels (--accurate-recip)
+    int accurate_reciprocal;
+    // j-cluster prefetch of the CPU cluster-pair SIMD kernels (--no-prefetch disables)
+    int kernel_prefetch;
 } Parameter;
 
 void initParameter(Parameter*);

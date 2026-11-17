@@ -14,7 +14,8 @@
 #include <force.h>
 #include <parameter.h>
 #include <util.h>
-#if defined(CLUSTERPAIR) || !defined(USE_REFERENCE_KERNEL)
+// simd.h needs a SIMD instruction set (VECTOR_WIDTH is 1 without SIMD and on GPUs)
+#if VECTOR_WIDTH > 1
 #include <simd.h>
 #endif
 // Fallback for SIMD_INTRINSICS when simd.h not included
@@ -108,7 +109,7 @@ void initParameter(Parameter* param)
     param->dtforce              = 0.5 * param->dt;
     param->reneigh_every        = 20;
     param->displacement_reneigh = 0;
-    param->resort_every         = 400;
+    param->resort_every         = 0;
     param->prune_every          = 5;
     param->x_out_every          = 20;
     param->v_out_every          = 5;
@@ -144,6 +145,8 @@ void initParameter(Parameter* param)
     param->energy_lj         = 0.0;
     param->energy_coul       = 0.0;
     param->half_lj           = false;
+    param->accurate_reciprocal = 0;
+    param->kernel_prefetch     = 1;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
@@ -283,6 +286,8 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(balance);
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
+            PARSE_INT(accurate_reciprocal);
+            PARSE_INT(kernel_prefetch);
         }
     }
 
@@ -371,6 +376,18 @@ void printParameter(Parameter* param)
         (param->super_clustering) ? "yes" : "no");
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
+#endif
+#if defined(CLUSTER_PAIR) && !defined(USE_REFERENCE_KERNEL) && !defined(CUDA_TARGET)
+    fprintf(stdout,
+        "    Accurate 1/r and 1/r^2:            %s\n",
+        param->accurate_reciprocal ? "yes" : "no (hardware estimate)");
+    fprintf(stdout,
+        "    j-cluster prefetch:                %s\n",
+        param->kernel_prefetch ? "yes" : "no");
+#elif defined(__SIMD_KERNEL__)
+    fprintf(stdout,
+        "    Accurate 1/r^2:                    %s\n",
+        param->accurate_reciprocal ? "yes" : "no (hardware estimate)");
 #endif
     fprintf(stdout, "    Atom data layout:                  %s\n", POS_DATA_LAYOUT);
     fprintf(stdout, "    Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
@@ -475,11 +492,11 @@ void printParameter(Parameter* param)
         "    Displacement reneighbor:           %s\n",
         param->displacement_reneigh ? "enabled" : "disabled");
     fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
-#ifdef SORT_ATOMS
-    fprintf(stdout,
-        "    Resort atoms every:                %d steps\n",
-        param->resort_every);
-#endif
+    if (param->resort_every > 0) {
+        fprintf(stdout,
+            "    Resort atoms every:                %d steps\n",
+            param->resort_every);
+    }
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     fprintf(stdout, "    LJ combination rule:               single\n");
 #elif LJ_COMB_RULE == LJ_COMB_GEOM

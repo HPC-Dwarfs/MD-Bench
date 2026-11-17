@@ -15,12 +15,6 @@ DATA_TYPE="${DATA_TYPE:-DP}"
 
 cd "${ROOT_DIR}"
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-
 get_last_tp() {
   local file="$1"
   grep -E '^[[:space:]]*[0-9]+[[:space:]]+[0-9.eE+-]+' "${file}" | tail -n 1 || true
@@ -109,12 +103,6 @@ run_case() {
 FAILED=0
 
 for scheme in verletlist clusterpair; do
-  if [ "${scheme}" = "verletlist" ]; then
-    OPT_TAG="VL"
-  else
-    OPT_TAG="CP-auto"
-  fi
-
   for lj_rule in geometric full; do
     echo "=== Building ${scheme} (LJ_COMB_RULE=${lj_rule}) ==="
     make clean >/dev/null 2>&1 || true
@@ -124,7 +112,8 @@ for scheme in verletlist clusterpair; do
       continue
     fi
 
-    BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${lj_rule}"
+    BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
+        DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${lj_rule}" ENABLE_OPENMP=true print-target)"
     if [[ ! -x "${BIN}" ]]; then
       echo "Binary '${BIN}' not found" >&2
       exit 1

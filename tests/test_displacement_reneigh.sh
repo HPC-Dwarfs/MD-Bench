@@ -44,14 +44,11 @@ make_bin() {
 }
 
 bin_name() {
-    local prefix="$1"
+    local scheme="$1"
     local simd="$2"
-    local suffix="${3:-}"
-    if [ "${simd}" = "NONE" ]; then
-        echo "./MDBench-${prefix}-${TOOLCHAIN}-${ISA}-${DATA_TYPE}${suffix}"
-    else
-        echo "./MDBench-${prefix}-${TOOLCHAIN}-${ISA}-${simd}-${DATA_TYPE}${suffix}"
-    fi
+    make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" \
+         SIMD="${simd}" DATA_TYPE="${DATA_TYPE}" \
+         LJ_COMB_RULE="${LJ_COMB_RULE}" print-target
 }
 
 get_last_tp() {
@@ -118,16 +115,14 @@ FAIL=0
 
 run_scheme() {
     local scheme="$1"
-    local prefix="$2"
-    local simd="$3"
-    local suffix="${4:-}"
+    local simd="$2"
     local bin
 
     echo ""
     echo "=== Scheme: ${scheme} (SIMD=${simd}) ==="
 
     make_bin "${scheme}" "${simd}"
-    bin="$(bin_name "${prefix}" "${simd}" "${suffix}")"
+    bin="$(bin_name "${scheme}" "${simd}")"
 
     if [[ ! -x "${bin}" ]]; then
         echo "Binary '${bin}' not found or not executable" >&2
@@ -239,8 +234,8 @@ run_scheme() {
     rm -f "${ref2_log}" "${comb_log}" "${params_norm}"
 }
 
-run_scheme "verletlist"  "VL"      "${SIMD}"    "-${LJ_COMB_RULE}"
-run_scheme "clusterpair" "CP-auto" "${SIMD_CP}"    "-${LJ_COMB_RULE}"
+run_scheme "verletlist" "${SIMD}"
+run_scheme "clusterpair" "${SIMD_CP}"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed."

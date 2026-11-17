@@ -44,7 +44,7 @@ make > v4.
 You can run MD-Bench without any arguments:
 
 ```shell=
-./MDBench-VL-ICX-X86-AVX2-DP
+./MDBench-VL-ICX-X86-AVX2-DP-geometric-omp
 ```
 
 ## Build system
@@ -62,9 +62,23 @@ build with ICC without changing `./config.mk` build with:
 make TOOLCHAIN=ICC
 ```
 
-Multiple configurations can be build at the same time. Every configuration has a
-unique binary name `./MDBENCH-<build tag>`. Intermediate build results are
-located in a `./build/build-<build tag>/` directory.
+Multiple configurations can be build at the same time. The binary is named
+`./MDBench-<build tag>` and the intermediate build results are located in a
+`./build/build-<build tag>/` directory. The tag holds the options that make a binary a
+different benchmark:
+
+```
+MDBench-<scheme>-<toolchain>-<ISA>[-<SIMD>][-CMP]-<SP|DP>-<LJ rule>[-<Coulomb>][-excl][-omp][-mpi]
+```
+
+`<scheme>` is `VL` (with `-SIMD` and `-NBSIMD` for `USE_SIMD_KERNEL` and
+`USE_SIMD_NEIGHBOR`) or `CP-<CLUSTER_PAIR_KERNEL>`, where the C reference kernel of the CPU
+is `CP-ref`. Other options (data layouts, tracers, statistics, GPU settings, ...) are not
+part of the name, builds that differ only in them write the same binary. Every build
+directory records the compiler and all flags in `config.stamp`, a build with other options
+recompiles everything, so a binary always matches the options of its last build. Use a
+different `PREFIX_DIR` to keep such builds side by side. `make -s <options> print-target`
+prints the path of the binary of a configuration, for scripts.
 
 All make targets act on the current configuration set in `./config.mk`, but this
 can be of course overwritten on the command line.
@@ -79,6 +93,7 @@ generated tags and clangd files, more on that later.
 all configurations.
 - `make info` Output compiler version, useful for logging in automated benchmark
 scripts.
+- `make print-target`: Print the path of the binary of the configuration.
 - `make asm`: Generate assembly output of all source files. The assembly files
 are placed in the intermediate build directory.
 - `make format`: Reformat all source files with `clang-format` using the format
@@ -88,15 +103,18 @@ specification in `.clang-format`.
 
 - `TOOLCHAIN`: Determines which toolchain makefile is included
 (`GCC`/`CLANG`/`ICC`/`ICX`/`ONEAPI`/`NVCC`/`HIPCC`)
-- `ISA`: No usage apart from tag strings
+- `ISA`: Instruction set architecture (`X86`/`ARM`), selects the SIMD headers and
+compiler flags
 - `SIMD`: Controls the generation of intrinsic kernels for clusterpair.
 X86 options: `NONE`/`SSE`/`AVX`/`AVX_FMA`/`AVX2`/`AVX512`.
 ARM options: `NONE`/`NEON`/`SVE`/`SVE2`.
 - `OPT_SCHEME`: Algorithmic variant (`verletlist` or `clusterpair`), different
 source directories and main routines are used
 - `ENABLE_LIKWID`: Turn on LIKWID instrumentation, the LIKWID library has to be available
-- `ENABLE_OPENMP`: Enable OpenMP thread-level parallelization (true or false)
-- `ENABLE_MPI`: Turn on the MPI parallel version of the code
+- `ENABLE_OPENMP`: Enable OpenMP thread-level parallelization (true or false, adds
+`-omp` to the binary name)
+- `ENABLE_MPI`: Turn on the MPI parallel version of the code (adds `-mpi` to the binary
+name)
 - `DATA_TYPE`: Switch between single precision (`SP`) and double precision (`DP`) floating
 point. This is controlled by defines.
 - `ATOM_DATA_LAYOUT`: Switch between array-of-structure (`AOS`) and structure-of-array
@@ -119,20 +137,10 @@ kernels do not support it. Atom charges are given per atom type.
 same molecule (consecutive atom ids, `atom->molsize` atoms per molecule) do not
 interact via LJ or the direct Coulomb term, but get the exclusion correction of the
 selected `COULOMB_RULE`. `auto` enables it whenever `COULOMB_RULE` is not `none`.
-- `ACCURATE_RECIPROCAL` (default: false): Refine the hardware reciprocal and
-reciprocal square root estimates (12-14 bits) used by the SIMD kernels (cluster-pair
-and verlet-list with `USE_SIMD_KERNEL`) with Newton-Raphson steps. Needed
-when forces have to agree with a code that evaluates 1/r^2 to full precision, e.g. to
-compare against GROMACS.
 - `DEBUG`: Enable additional debug output
-- `SORT_ATOMS`: Resort atoms to ensure that atoms that are nearby are also close
-to each other in the data structures
-- `USE_REFERENCE_KERNEL`: Enforce usage of the C reference implementation for
-validation (automatically set for GPU and `SIMD=NONE` builds). It uses 4x4 clusters
-whatever the SIMD width.
-- `KERNEL_PREFETCH` (default: true): Software prefetch of the j-cluster data in the
-CPU cluster-pair SIMD kernels. GROMACS does not prefetch, set it to false (binary
-suffix `-nopf`) for a like-for-like comparison.
+- `USE_REFERENCE_KERNEL`: Enforce usage of the C reference implementation of the
+cluster-pair scheme for validation (automatically set for GPU and `SIMD=NONE` builds,
+binary name `CP-ref` on the CPU). It uses 4x4 clusters whatever the SIMD width.
 - `USE_SCALAR_KERNEL`: Use scalar version and rely on the compiler for
 auto-vectorization
 - `USE_SIMD_KERNEL`: Use hand-written SIMD intrinsic kernels for force computation
@@ -160,7 +168,13 @@ atomicAdd (more atomic contention). Tune based on system size and occupancy.
 - `XTC_OUTPUT`: Enable XTC trajectory output (GROMACS file format)
 - `MEM_TRACER`: Trace memory addresses for cache simulation (true or false)
 - `INDEX_TRACER`: Trace indexes and distances for gather-MD analysis (true or false)
-- `COMPUTE_STATS`: Compute and print additional runtime statistics
+- `COMPUTE_STATS`: Compute and print additional runtime statistics. The C kernels (the
+verletlist kernel without `USE_SIMD_KERNEL` and the cluster-pair reference kernel) also
+count the pairs inside and outside of the cut-off.
+
+The former build options `ACCURATE_RECIPROCAL`, `KERNEL_PREFETCH` and `SORT_ATOMS` are
+the runtime options `--accurate-recip`, `--no-prefetch` and `--sort-every` now; make
+stops with a hint when they are given.
 
 ### Build for GPU targets
 
@@ -189,53 +203,96 @@ Common `GPU_ARCH` values: `gfx90a` (MI250X), `gfx940` (MI300A APU),
 
 MD-Bench can be executed without any arguments, in this case the full neighbor
 list testcase with LJ force will be computed for 200 steps and a size of
-32x32x32 unit cells.
+32x32x32 unit cells. Both schemes accept the same options (`-h` lists them), options
+that only one scheme implements stop the other one with an error, and so does an unknown
+option.
 
-- `-p / --params <string>`: file to read parameters from (can be specified more
-than once). Default initialization sets parameters for default LJ testcase.
-Supports `outer_skin = <value>` to enable double-cutoff pruning (outer cutoff =
-`cutforce + skin + outer_skin`; default 0.0 disables it).
+Input and system:
+
+- `-p / --param <file>`: file to read parameters from (can be specified more
+than once, `--params` is accepted as well). Default initialization sets parameters for
+default LJ testcase. Supports `outer_skin = <value>` to enable double-cutoff pruning
+(outer cutoff = `cutforce + skin + outer_skin`; default 0.0 disables it).
 - `-f <string>`: force field (`lj`, `eam`, `lj_table`), default `lj`. For
 anything different than `lj` you also need to provide a specific parameter file.
 `lj_table` uses tabulated cubic Hermite spline interpolation. It is available for
 `OPT_SCHEME=verletlist`, and for `OPT_SCHEME=clusterpair` only when built with the
 reference kernel (`USE_REFERENCE_KERNEL=true`).
-- `-i <string>`:  input file with atom positions (dump). MD-Bench supports
+- `-i <file>`:  input file with atom positions. MD-Bench supports
 Brookhaven protein data bank (.pdb), GROMACS GROMOS87 (.gro), and LAMMPS dump
 (.dmp) file formats
-- `-e <string>`:  input file for EAM parameters
-- `-n / --nsteps <int>`:  set number of timesteps for simulation (default 200)
+- `-e <file>`:  input file for EAM parameters
 - `-nx/-ny/-nz <int>`:  set linear dimension of systembox in x/y/z direction
 (default 32 in every dimension)
+- `-m / --mass <real>`: atom mass
+- `--ntypes <int>`: number of atom types
+- `-setup <int>`: 1 (default) creates the FCC lattice of the argon/copper setup, 0 skips
+it
+- `-gmxbench`:  use the water system of the GROMACS non-bonded benchmark
+(`src/gromacs/nbnxm/benchmark`) instead of the default testcase: 3000 SPC/E-like
+atoms with charges and intramolecular exclusions, cut-off 1.0 and no skin unless
+`-r`/`-s` are given. `-size <int>` replicates the box (power of two) as `gmx
+nonbonded-benchmark -size` does. Available in both schemes. Build with `COULOMB_RULE=ewald`
+(or `rf`) and `CLUSTER_PAIR_KERNEL=4xN`, and run with `--accurate-recip` to compare with
+GROMACS. It is a force kernel benchmark like GROMACS', so it needs `--kernel-bench` or `-n
+0`.
+- `-w <file>`:  write input atoms to file (verletlist)
+
+Simulation and neighbor lists:
+
+- `-n / --nsteps <int>`:  set number of timesteps for simulation (default 200)
+- `-r / --radius <real>`:   set cutoff radius (default 2.5)
+- `-s / --skin <real>`:   set skin (verlet buffer, default 0.3)
+- `--outer-skin <real>`: additive outer skin, > 0 enables the dual pair list
+- `--prune-every <int>`: steps between prunings of the inner list (default 5)
+- `--reneigh-every <int>`: steps between neighbor-list builds (default 20)
+- `--displacement-reneigh`: rebuild the lists when an atom moved more than skin/2 (use
+`--reneigh-every 0` to disable the fixed interval)
+- `--sort-every <int>`: sort the atoms spatially every `<int>` steps, followed by a
+neighbor-list build; 0 (default) disables it (verletlist; the cluster-pair scheme sorts
+the atoms into clusters at every build). Parameter file key `resort_every`.
 - `-half <int>`: use half (1) or full (0) neighbor lists (default 0 - full
 neighbor list). The cluster-pair SIMD kernels without MPI keep only half of
 the periodic ghost clusters with half lists, so a half list has about half the entries of
 a full list. With several OpenMP threads the half-list kernels accumulate into per-thread
 force arrays that are summed afterwards
-- `-r / --radius <real>`:   set cutoff radius (default 2.5)
-- `-s / --skin <real>`:   set skin (verlet buffer, default 0.3)
-- `-w <file>`:  write input atoms to file
-- `--freq <real>`:  processor frequency (GHz), used to calculate cycle metrics
-(default 2.4)
-- `--vtk <string>`:    VTK output file for visualization
-- `-gmxbench`:  use the water system of the GROMACS non-bonded benchmark
-(`src/gromacs/nbnxm/benchmark`) instead of the default testcase: 3000 SPC/E-like
-atoms with charges and intramolecular exclusions, cut-off 1.0 and no skin unless
-`-r`/`-s` are given. `-size <int>` replicates the box (power of two) as `gmx
-nonbonded-benchmark -size` does. Available in both schemes. Build with `COULOMB_RULE=ewald` (or `rf`),
-`CLUSTER_PAIR_KERNEL=4xN` and `ACCURATE_RECIPROCAL=true` to compare with GROMACS. It is a
-force kernel benchmark like GROMACS', so it needs `--kernel-bench` or `-n 0`.
-- `--kernel-bench <int>`:  after setup only run the force kernel this many times on the
-fixed neighbor lists and report the time per call and the useful pair rate, as the
-GROMACS benchmark does
-- `--dump-forces <file>`:  write the forces of a single kernel pass (`atom id fx fy
-fz`, original atom order) to a text file, with `-energy` also the energies
+- `-method <int>`: ghost interactions with MPI: 0 full shell, 1 half shell, 2 eighth
+shell, 3 half stencil (verletlist)
+- `-bal <int>`: load balancing with MPI: 0 none, 1 RCB, 2 mean time RCB, 3 staggered
+
+Force kernel:
+
 - `-energy`:  also compute the LJ and Coulomb energies in the force kernels (GROMACS'
 energy kernels, `gmx nonbonded-benchmark -energy`), reported by `--kernel-bench` and
 `--dump-forces`. All LJ kernels except the verletlist explicit SIMD kernels.
 - `-halflj`:  LJ only for the first half of the i-clusters that have at most half of
 their atoms with LJ, whose LJ atoms are sorted to the front (`gmx nonbonded-benchmark
 -halflj`). CPU cluster-pair kernels only.
+- `--accurate-recip`: refine the hardware reciprocal and reciprocal square root estimates
+(12-14 bits) of the SIMD kernels (cluster-pair and verletlist with `USE_SIMD_KERNEL`) with
+Newton-Raphson steps. Needed when forces have to agree with a code that evaluates 1/r^2 to
+full precision, e.g. to compare against GROMACS. Parameter file key
+`accurate_reciprocal`.
+- `--no-prefetch`: no software prefetch of the j-cluster data in the CPU cluster-pair
+SIMD kernels. GROMACS does not prefetch, use it for a like-for-like comparison.
+Parameter file key `kernel_prefetch`.
+- `--kernel-bench <int>`:  after setup only run the force kernel this many times on the
+fixed neighbor lists and report the time per call and the useful pair rate, as the
+GROMACS benchmark does
+- `--dump-forces <file>`:  write the forces of a single kernel pass (`atom id fx fy
+fz`, original atom order) to a text file, with `-energy` also the energies
+
+The SIMD kernels are compiled once per combination of `--accurate-recip` and
+`--no-prefetch` (`src/common/kernel_variant.h`), so these options select a kernel copy
+and add no work to the kernel.
+
+Output:
+
+- `--freq <real>`:  processor frequency (GHz), used to calculate cycle metrics
+(default 2.4)
+- `--vtk <file>`:    VTK output file for visualization
+- `--xtc <file>`:    XTC trajectory (clusterpair, build with `XTC_OUTPUT=true`)
+- `-v / --verbose`: per-routine timing breakdown in the performance report
 
 ## Available testcases
 
@@ -303,9 +360,9 @@ Run the benchmark with MD-Bench (one thread, the default of GROMACS' benchmark):
 ```shell=bash
 # 4xN kernel (SIMD=AVX2 and single precision give the 4x8 kernel of GROMACS' 4xM)
 make OPT_SCHEME=clusterpair SIMD=AVX2 DATA_TYPE=SP CLUSTER_PAIR_KERNEL=4xN \
-     COULOMB_RULE=ewald ACCURATE_RECIPROCAL=true
-OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-X86-AVX2-SP-geometric-ewald-accrecip \
-     -gmxbench -size 1 -half 1 --kernel-bench 500
+     COULOMB_RULE=ewald
+OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-X86-AVX2-SP-geometric-ewald-omp \
+     -gmxbench -size 1 -half 1 --kernel-bench 500 --accurate-recip
 ```
 
 `-size` replicates the box (a power of two, 3000 atoms times this value), `-half 1` uses
@@ -333,8 +390,9 @@ adds the `-forces` option used to compare results):
 ```shell=bash
 gmx nonbonded-benchmark -size 1 -nt 1 -simd 4xm -coulomb ewald -combrule geometric \
     -cutoff 1.0 -iter 500 -time -forces gmx_forces.txt
-OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-X86-AVX2-SP-geometric-ewald-accrecip \
-    -gmxbench -size 1 -half 1 --kernel-bench 500 --dump-forces mdbench_forces.txt
+OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-X86-AVX2-SP-geometric-ewald-omp \
+    -gmxbench -size 1 -half 1 --kernel-bench 500 --accurate-recip \
+    --dump-forces mdbench_forces.txt
 python3 tests/gromacs_nonbonded/compare_forces.py gmx_forces.txt mdbench_forces.txt
 ```
 
@@ -348,9 +406,10 @@ Other kernels: `CLUSTER_PAIR_KERNEL=2xNN` (compare with `-simd 2xmm`; `run_compa
 does with `SIMD=AVX512` and a `gmx` built with `GMX_SIMD=AVX_512`), `COULOMB_RULE=rf`
 (compare with `-coulomb reaction-field`), `COULOMB_RULE=ewald_table` (compare with
 `-table`). The options `-energy` and `-halflj` are the same in both programs.
-`ACCURATE_RECIPROCAL=true` is needed for the forces to agree with GROMACS (rms error about
+`--accurate-recip` is needed for the forces to agree with GROMACS (rms error about
 1e-6 in single precision, energies about 1e-6 relative), without it the kernels use the
-12-bit hardware estimates and are a bit faster. `-gmxbench` is a kernel benchmark: the
+12-bit hardware estimates and are a bit faster. `--no-prefetch` turns off the j-cluster
+prefetch, which GROMACS does not have. `-gmxbench` is a kernel benchmark: the
 molecules have no bonded terms or constraints, so MD-Bench refuses to integrate them
 (use `--kernel-bench` or `-n 0`).
 

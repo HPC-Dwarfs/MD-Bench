@@ -414,7 +414,8 @@ static inline void zeroForces(Atom* atom, const int ghosts)
 }
 
 /* j-cluster data prefetch, a few list entries ahead: the list is an indirection into
- * data that does not fit the L1 cache. Disabled by KERNEL_PREFETCH=false in config.mk */
+ * data that does not fit the L1 cache. The copy of the kernels without it (the
+ * *_noprefetch.c wrappers define KERNEL_NO_PREFETCH) runs with --no-prefetch */
 #define PREFETCH_READ     0
 #define PREFETCH_WRITE    1
 #define PREFETCH_LOCALITY 3 // keep in all cache levels

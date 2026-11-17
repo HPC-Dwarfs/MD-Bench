@@ -44,12 +44,6 @@ if "${MPI_RUN}" --help 2>&1 | grep -q "\-\-oversubscribe"; then
   MPI_EXTRA_FLAGS="--oversubscribe"
 fi
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 
 # Step 1: Build serial (non-MPI) binary
 echo "Building serial (non-MPI) Verlet-list binary..."
@@ -58,7 +52,8 @@ rm -rf build/ >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=false >/dev/null
 
-SERIAL_BIN="./MDBench-${VL_TAG}"
+SERIAL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+    DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=false print-target)"
 if [[ ! -x "${SERIAL_BIN}" ]]; then
   echo "Serial binary '${SERIAL_BIN}' not found" >&2
   exit 1
@@ -68,10 +63,6 @@ SERIAL_BIN="${SERIAL_BIN}-serial"
 
 # Step 2: Build MPI binary
 echo "Building MPI Verlet-list binary..."
-# MPI and non-MPI builds share the build directory (the tag does not include MPI), so
-# remove the MPI objects on exit, or the next non-MPI build links against them
-trap 'make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
-     DATA_TYPE="${DATA_TYPE}" clean >/dev/null 2>&1 || true' EXIT
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
 if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
@@ -81,7 +72,8 @@ if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SI
   exit 0
 fi
 
-MPI_BIN="./MDBench-${VL_TAG}"
+MPI_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+    DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=true print-target)"
 if [[ ! -x "${MPI_BIN}" ]]; then
   echo "MPI binary '${MPI_BIN}' not found" >&2
   rm -f "${SERIAL_BIN}"

@@ -52,21 +52,11 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/mdbench_gmxcmp.XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 cd "${ROOT_DIR}"
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-
-build() { # rule accurate
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE=SP \
-       OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${KERNEL}" COULOMB_RULE="$1" \
-       ACCURATE_RECIPROCAL="$2" >/dev/null
-}
-binary() { # rule accurate
-  local suffix=""
-  [ "$2" = "true" ] && suffix="-accrecip"
-  echo "./MDBench-CP-${KERNEL}-${TOOL_TAG}-SP-geometric-$1${suffix}"
+build() { # rule, prints the binary
+  local cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE=SP
+             OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${KERNEL}" COULOMB_RULE="$1")
+  make "${cfg[@]}" >/dev/null
+  make -s "${cfg[@]}" print-target
 }
 mdb_value() { # file label
   awk -F': *' -v k="$2" '$1 ~ k {gsub(/ us$/, "", $2); print $2}' "$1" | head -n 1
@@ -85,10 +75,7 @@ for size in "${SIZES[@]}"; do
     echo
     echo "=== size ${size} ($((3000 * size)) atoms), Coulomb: ${rule}, ${KERNEL} vs ${GMX_KERNEL} ==="
 
-    build "${rule}" true
-    bin_acc="$(binary "${rule}" true)"
-    build "${rule}" false
-    bin_fast="$(binary "${rule}" false)"
+    bin="$(build "${rule}")"
 
     rows=()
     for variant in "${VARIANT_LIST[@]}"; do
@@ -106,8 +93,9 @@ for size in "${SIZES[@]}"; do
       for half in 1 0; do
         # The full list only for the plain force kernel
         [ "${half}" = "0" ] && [ -n "${variant}" ] && continue
-        OMP_NUM_THREADS=1 "${PIN[@]}" "${bin_acc}" -gmxbench -size "${size}" -half "${half}" \
-            --kernel-bench "${ITER}" "${opts[@]}" --dump-forces "${WORK}/mdb_forces.txt" \
+        OMP_NUM_THREADS=1 "${PIN[@]}" "${bin}" -gmxbench -size "${size}" -half "${half}" \
+            --kernel-bench "${ITER}" --accurate-recip "${opts[@]}" \
+            --dump-forces "${WORK}/mdb_forces.txt" \
             >"${WORK}/mdb.log"
         # GROMACS sums energies in single precision (2e-4 off the exact RF energy at size 8)
         if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/gmx_forces.txt" \
@@ -123,7 +111,7 @@ for size in "${SIZES[@]}"; do
             "$(mdb_value "${WORK}/mdb.log" 'Useful pairs/us')")")
       done
 
-      OMP_NUM_THREADS=1 "${PIN[@]}" "${bin_fast}" -gmxbench -size "${size}" -half 1 \
+      OMP_NUM_THREADS=1 "${PIN[@]}" "${bin}" -gmxbench -size "${size}" -half 1 \
           --kernel-bench "${ITER}" "${opts[@]}" >"${WORK}/mdb_fast.log"
       rows+=("$(row "MD-Bench ${KERNEL} half ${name}, 1/r^2 estimate" \
           "$(mdb_value "${WORK}/mdb_fast.log" 'Time per iteration')" \

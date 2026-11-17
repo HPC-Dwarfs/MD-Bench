@@ -22,19 +22,12 @@ cd "${ROOT_DIR}"
 echo "Building Verlet-list binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."
 make clean >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
-VL_BIN="./MDBench-${VL_TAG}"
+VL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" print-target)"
 
 echo "Building Cluster-pair binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."
 make clean >/dev/null 2>&1 || true
 make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
-CP_TAG="CP-${CLUSTER_PAIR_KERNEL}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
-CP_BIN="./MDBench-${CP_TAG}"
+CP_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" LJ_COMB_RULE="${LJ_COMB_RULE}" print-target)"
 
 for bin in "${VL_BIN}" "${CP_BIN}"; do
   if [[ ! -x "${bin}" ]]; then

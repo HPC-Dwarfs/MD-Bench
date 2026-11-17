@@ -56,18 +56,16 @@ for rule in rf ewald none; do
     for dtype in SP DP; do
       if [ "${dtype}" = "DP" ]; then tol="1e-7"; etol="1e-9"; else tol="5e-5"; etol="2e-5"; fi
       excl=auto
-      suffix="-${rule}"
-      if [ "${rule}" = "none" ]; then excl=true; suffix="-excl"; fi
+      if [ "${rule}" = "none" ]; then excl=true; fi
+      cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" "${ARCH_ARG}" DATA_TYPE="${dtype}"
+           COULOMB_RULE="${rule}" EXCLUSIONS="${excl}")
       if [ "${kernel}" = "VL" ]; then
-        make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" "${ARCH_ARG}" DATA_TYPE="${dtype}" \
-             OPT_SCHEME=verletlist COULOMB_RULE="${rule}" EXCLUSIONS="${excl}" >/dev/null
-        bin="./MDBench-VL-${TOOLCHAIN}-${ISA}-${dtype}-geometric${suffix}"
+        cfg+=(OPT_SCHEME=verletlist)
       else
-        make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" "${ARCH_ARG}" DATA_TYPE="${dtype}" \
-             OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" COULOMB_RULE="${rule}" \
-             EXCLUSIONS="${excl}" >/dev/null
-        bin="./MDBench-CP-${kernel}-${TOOLCHAIN}-${ISA}-${dtype}-geometric${suffix}"
+        cfg+=(OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}")
       fi
+      make "${cfg[@]}" >/dev/null
+      bin="$(make -s "${cfg[@]}" print-target)"
       for size in 1 8; do
         for half in 0 1; do
           for opts in "-n 0" "--kernel-bench 2" "--kernel-bench 2 -energy"; do

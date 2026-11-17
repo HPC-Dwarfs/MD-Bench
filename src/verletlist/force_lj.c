@@ -178,11 +178,6 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
                 vlj += w * pvlj;
                 vc += w * pvc;
             }
-#ifdef USE_REFERENCE_KERNEL
-            addStat(stats->atoms_within_cutoff, 1);
-        } else {
-            addStat(stats->atoms_outside_cutoff, 1);
-#endif
         }
     }
 
@@ -193,7 +188,22 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
         *elj += vlj;
         *ec += vc;
     }
-#ifdef USE_REFERENCE_KERNEL
+#ifdef COMPUTE_STATS
+    // Separate loop: a shared counter in the SIMD loop above loses increments
+    long long int within = 0;
+    for (int k = 0; k < numneighs; k++) {
+        const int j         = neighs(neighbors_ptr, i, k, nlocal, neighbor);
+        const MD_FLOAT delx = xtmp - atom_access_x(x_ptr, j);
+        const MD_FLOAT dely = ytmp - atom_access_y(y_ptr, j);
+        const MD_FLOAT delz = ztmp - atom_access_z(z_ptr, j);
+#if LJ_COMB_RULE == LJ_COMB_FULL
+        const MD_FLOAT cutforcesq =
+            atom->cutforcesq[type_i * atom->ntypes + atom->type[j]];
+#endif
+        within += (delx * delx + dely * dely + delz * delz < cutforcesq);
+    }
+    addStat(stats->atoms_within_cutoff, within);
+    addStat(stats->atoms_outside_cutoff, numneighs - within);
     if (!reaction && numneighs % VECTOR_WIDTH > 0) {
         addStat(stats->atoms_outside_cutoff, VECTOR_WIDTH - (numneighs % VECTOR_WIDTH));
     }

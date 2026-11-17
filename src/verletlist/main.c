@@ -23,6 +23,7 @@
 #include <allocate.h>
 #include <atom.h>
 #include <balance.h>
+#include <cmdline.h>
 #include <comm.h>
 #include <device.h>
 #include <eam.h>
@@ -45,8 +46,6 @@
 
 extern void copyDataToCUDADevice(Atom*);
 extern void copyDataFromCUDADevice(Atom*);
-
-#define HLINE "-----------------------------------------------------------------------\n"
 
 double setup(Parameter* param,
     Eam* eam,
@@ -125,10 +124,10 @@ double setup(Parameter* param,
         adjustThermo(param, atom);
     }
 
-#ifdef SORT_ATOMS
-    atom->Nghost = 0;
-    sortAtom(atom);
-#endif
+    if (param->resort_every > 0) {
+        atom->Nghost = 0;
+        sortAtom(atom);
+    }
 
     // initDevice must precede setupPbc: the CUDA setupPbc reads positions on
     // the device, so the initial H2D upload has to happen first.
@@ -383,222 +382,9 @@ int main(int argc, char** argv)
         // LIKWID_MARKER_REGISTER("pbc");
     }
 
-    int cutoffGiven = 0, skinGiven = 0;
     initComm(&argc, &argv, &comm);
     initParameter(&param);
-    for (int i = 0; i < argc; i++) {
-        if ((strcmp(argv[i], "-p") == 0) || strcmp(argv[i], "--params") == 0) {
-            readParameter(&param, argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-f") == 0)) {
-            if ((param.force_field = str2ff(argv[++i])) < 0) {
-                fprintf(stderr, "Invalid force field!\n");
-                exit(-1);
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-i") == 0)) {
-            param.input_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-e") == 0)) {
-            param.eam_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-n") == 0) || (strcmp(argv[i], "--nsteps") == 0)) {
-            param.ntimes = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-nx") == 0)) {
-            param.nx = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-ny") == 0)) {
-            param.ny = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-nz") == 0)) {
-            param.nz = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-half") == 0)) {
-            param.half_neigh = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-method") == 0)) {
-            param.method = atoi(argv[++i]);
-            if (param.method > 3 || param.method < 0) {
-                fprintf_once(comm.myproc, stderr, "Method does not exist!\n");
-                endComm(&comm);
-                exit(0);
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-bal") == 0)) {
-            param.balance = atoi(argv[++i]);
-            if (param.balance > 3 || param.balance < 0) {
-                fprintf_once(comm.myproc, stderr, "Load Balance does not exist!\n");
-                endComm(&comm);
-                exit(0);
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-r") == 0) || (strcmp(argv[i], "--radius") == 0)) {
-            param.cutforce = atof(argv[++i]);
-            cutoffGiven    = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-s") == 0) || (strcmp(argv[i], "--skin") == 0)) {
-            param.skin = atof(argv[++i]);
-            skinGiven  = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-gmxbench") == 0)) {
-            param.gmxbenchmark = true;
-            if (param.input_file != NULL) {
-                free(param.input_file);
-                param.input_file = NULL;
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-size") == 0)) {
-            param.size = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-energy") == 0)) {
-            param.compute_energy = true;
-            continue;
-        }
-        if ((strcmp(argv[i], "-halflj") == 0)) {
-            param.half_lj = true;
-            continue;
-        }
-        if ((strcmp(argv[i], "--kernel-bench") == 0)) {
-            param.kernel_bench = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--dump-forces") == 0)) {
-            param.dump_forces_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--freq") == 0)) {
-            param.proc_freq = atof(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--vtk") == 0)) {
-            param.vtk_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-w") == 0)) {
-            param.write_atom_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--ntypes") == 0)) {
-            param.ntypes = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-setup") == 0)) {
-            param.setup = atoi(argv[++i]);
-            continue;
-        }
-
-        if (strcmp(argv[i], "--displacement-reneigh") == 0) {
-            param.displacement_reneigh = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-v") == 0) || (strcmp(argv[i], "--verbose") == 0)) {
-            param.verbose = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
-            if (comm.myproc == 0) {
-                printf("MD Bench: A performance-oriented prototyping harness for MD "
-                       "algorithms\n");
-                printf(HLINE);
-                printf("-p / --params <string>:     file to read parameters from (can be "
-                       "specified more than once)\n");
-                printf("-f <string>:                force field (lj or eam), "
-                       "default lj\n");
-                printf("-i <string>:                input file with atom positions "
-                       "(dump)\n");
-                printf("-e <string>:                input file for EAM\n");
-                printf("-n / --nsteps <int>:        set number of timesteps for "
-                       "simulation\n");
-                printf("-nx/-ny/-nz <int>:          set linear dimension of systembox in "
-                       "x/y/z direction\n");
-                printf("-half <int>:                use half (1) or full (0) neighbor "
-                       "lists\n");
-                printf("-r / --radius <real>:       set cutoff radius\n");
-                printf("-s / --skin <real>:         set skin (verlet buffer)\n");
-                printf("-w <file>:                  write input atoms to file\n");
-                printf("--ntypes <int>:             set number of atom types\n");
-                printf("--freq <real>:              processor frequency (GHz)\n");
-                printf("--vtk <string>:             VTK file for visualization\n");
-                printf(
-                    "--displacement-reneigh:     rebuild neighbor list based on atom "
-                    "displacement (skin/2 threshold); use --reneigh-every 0 to disable "
-                    "fixed-interval rebuild\n");
-                printf("-gmxbench:                  use the water system of the GROMACS "
-                       "non-bonded benchmark (cut-off 1.0 and no skin unless -r/-s are "
-                       "given)\n");
-                printf("-size <int>:                replicate the -gmxbench system this many "
-                       "times (power of two)\n");
-                printf("--kernel-bench <int>:       after setup, only run the force kernel "
-                       "this many times on the fixed neighbor lists and report its time\n");
-                printf("--dump-forces <file>:       write the forces of a single kernel pass "
-                       "(atom id, fx, fy, fz) to a text file\n");
-                printf("-energy:                    also compute the LJ and Coulomb "
-                       "energies, reported by "
-                       "--kernel-bench and --dump-forces\n");
-                printf("-v / --verbose:             print a per-routine timing breakdown "
-                       "in the performance report\n");
-                printf(HLINE);
-            }
-
-            exit(EXIT_SUCCESS);
-        }
-    }
-
-    if (param.balance > 0 && param.method == 1) {
-        if (comm.myproc == 0)
-            fprintf(stderr, "Half Shell is not supported by load balance!\n");
-        fprintf_once(comm.myproc,
-            stderr,
-            "Half Shell is not supported by load balance!\n");
-        endComm(&comm);
-        exit(0);
-    }
-
-    if (param.gmxbenchmark && param.kernel_bench == 0 && param.ntimes != 0) {
-        // The water has no bonds or constraints and is in GROMACS units: no MD
-        fprintf_once(comm.myproc,
-            stderr,
-            "Error: -gmxbench is a force kernel benchmark, use --kernel-bench <n> or -n "
-            "0\n");
-        endComm(&comm);
-        exit(EXIT_FAILURE);
-    }
-    if (param.half_lj) {
-        fprintf_once(comm.myproc,
-            stderr,
-            "Error: -halflj needs the CPU cluster-pair kernels\n");
-        endComm(&comm);
-        exit(EXIT_FAILURE);
-    }
-
-    if (param.gmxbenchmark) {
-        // The GROMACS benchmark builds its pair list with exactly the interaction
-        // cut-off (no buffer)
-        if (!cutoffGiven) {
-            param.cutforce = 1.0;
-        }
-        if (!skinGiven) {
-            param.skin = 0.0;
-        }
-    }
-
-    param.cutneigh = param.cutforce + param.skin + param.outer_skin;
+    parseCommandLine(argc, argv, &param, &comm);
     timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
     if (param.displacement_reneigh) {
         storeReferencePositions(&atom);
@@ -663,8 +449,7 @@ int main(int argc, char** argv)
         printvtk(param.vtk_file, &comm, &atom, &param, 0);
     }
     for (int n = 0; n < param.ntimes; n++) {
-#ifdef SORT_ATOMS
-        bool resort = (n + 1) % param.resort_every == 0;
+        bool resort = param.resort_every > 0 && (n + 1) % param.resort_every == 0;
         if (resort) {
             double sortStart = getTimeStamp();
             DEBUG_MESSAGE("Resorting atoms\n");
@@ -674,9 +459,10 @@ int main(int argc, char** argv)
             timer[NEIGH] += sortElapsed;
             timer[NEIGH_SORT] += sortElapsed;
         }
-#endif
 
-        bool reneigh = (param.reneigh_every > 0 && (n + 1) % param.reneigh_every == 0);
+        // Sorting permutes the atoms and drops the ghosts: the lists have to be rebuilt
+        bool reneigh = resort ||
+                       (param.reneigh_every > 0 && (n + 1) % param.reneigh_every == 0);
         if (!reneigh && param.displacement_reneigh) {
             double checkStart = getTimeStamp();
             reneigh           = needsReneigh(&atom, &param);

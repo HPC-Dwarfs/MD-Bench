@@ -12,6 +12,9 @@
  * option; with ACCURATE_RECIPROCAL they are refined with Newton-Raphson steps to the
  * working precision, which makes the forces comparable with codes that do the same
  * (GROMACS iterates the estimates to full precision).
+ *
+ * The copy of the kernels with ACCURATE_RECIPROCAL (see kernel_variant.h) runs with
+ * --accurate-recip.
  */
 #ifndef __SIMD_MATH_H_
 #define __SIMD_MATH_H_
