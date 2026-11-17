@@ -112,22 +112,7 @@ jobs:
           make clean
           make TOOLCHAIN=${TOOLCHAIN} ISA=${ISA} OPT_SCHEME=${{ matrix.opt_scheme }} SIMD=${{ matrix.simd }} DATA_TYPE=${{ matrix.data_type }}
 
-          # Reconstruct binary name as in Makefile
-          if [ "${{ matrix.opt_scheme }}" = "verletlist" ]; then
-            OPT_TAG="VL"
-          else
-            OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
-          fi
-          TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
-
-          if [ "${{ matrix.simd }}" = "NONE" ]; then
-            TOOL_TAG="${TOOLCHAIN}-${ISA}"
-          else
-            TOOL_TAG="${TOOLCHAIN}-${ISA}-${{ matrix.simd }}"
-          fi
-
-          TAG="${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}${TAG_SUFFIX}"
-          BIN="./MDBench-${TAG}"
+          BIN="$(make -s TOOLCHAIN=${TOOLCHAIN} ISA=${ISA} OPT_SCHEME=${{ matrix.opt_scheme }} SIMD=${{ matrix.simd }} DATA_TYPE=${{ matrix.data_type }} print-target)"
           echo "Using binary ${BIN}"
 
           chmod +x tests/sim_argon_regression.sh
@@ -180,14 +165,7 @@ jobs:
           make clean
           make TOOLCHAIN=${TOOLCHAIN} ISA=${ISA} OPT_SCHEME=${{ matrix.opt_scheme }} SIMD=${{ matrix.simd }} DATA_TYPE=${{ matrix.data_type }}
 
-          if [ "${{ matrix.opt_scheme }}" = "verletlist" ]; then
-            OPT_TAG="VL"
-          else
-            OPT_TAG="CP-${CLUSTER_PAIR_KERNEL:-auto}"
-          fi
-          TAG_SUFFIX="-${LJ_COMB_RULE:-geometric}"
-          TOOL_TAG="${TOOLCHAIN}-${ISA}-${{ matrix.simd }}"
-          BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${{ matrix.data_type }}${TAG_SUFFIX}"
+          BIN="$(make -s TOOLCHAIN=${TOOLCHAIN} ISA=${ISA} OPT_SCHEME=${{ matrix.opt_scheme }} SIMD=${{ matrix.simd }} DATA_TYPE=${{ matrix.data_type }} print-target)"
           echo "Using binary ${BIN}"
 
           chmod +x tests/sim_copper_fcc_regression.sh
