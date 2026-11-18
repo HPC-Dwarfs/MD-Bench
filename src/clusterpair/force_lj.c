@@ -110,10 +110,13 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
 #endif
 
                 for (int cii = 0; cii < CLUSTER_M; cii++) {
+                    const int ci_sca = CI_SCALAR_BASE_INDEX(ci) + cii;
+                    if (atom->cl_id[ci_sca] < 0) {
+                        continue;
+                    }
 #if LJ_COMB_RULE == LJ_COMB_FULL
                     int type_i = ci_t[cii];
 #endif
-                    const int ci_sca  = CI_SCALAR_BASE_INDEX(ci) + cii;
                     const MD_FLOAT qi = cs.epsfac * atom->cl_q[ci_sca];
                     const int mol_i   = atom->cl_mol[ci_sca];
                     MD_FLOAT xtmp = ci_x[CL_X_INDEX_3D(cii)];
@@ -124,6 +127,10 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                     MD_FLOAT fiz  = 0;
 
                     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
+                        const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
+                        if (atom->cl_id[cj_sca] < 0) {
+                            continue;
+                        }
                         int cond;
 #if CLUSTER_M == CLUSTER_N
                         cond = neighbor->half_neigh ? (ci_cj0 != cj || cii < cjj)
@@ -163,7 +170,6 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                                                           : epsilon;
 
                             if (rsq < cutforcesq) {
-                                const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
                                 MD_FLOAT force   = pairForceScalar(rsq,
                                     sigma6,
                                     eps_pair,
@@ -276,6 +282,10 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
             MD_FLOAT* cj_f  = &atom->cl_f[cj_vec_base];
 
             for (int css = 0; css < CLUSTER_N; css++) {
+                const int cs_sca = CJ_SCALAR_BASE_INDEX(cs) + css;
+                if (atom->cl_id[cs_sca] < 0) {
+                    continue;
+                }
                 MD_FLOAT x = cs_x[CL_X_INDEX_3D(css)];
                 MD_FLOAT y = cs_x[CL_Y_INDEX_3D(css)];
                 MD_FLOAT z = cs_x[CL_Z_INDEX_3D(css)];
@@ -284,12 +294,14 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
                 MD_FLOAT fiy = 0;
                 MD_FLOAT fiz = 0;
 
-                const int cs_sca  = CJ_SCALAR_BASE_INDEX(cs) + css;
                 const MD_FLOAT qi = coul.epsfac * atom->cl_q[cs_sca];
                 const int mol_i   = atom->cl_mol[cs_sca];
 
                 for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
                     const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
+                    if (atom->cl_id[cj_sca] < 0) {
+                        continue;
+                    }
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                     MD_FLOAT sigma6  = atom->cl_sigma3[cs_sca] * atom->cl_sigma3[cj_sca];
                     MD_FLOAT epsilon = atom->cl_sqrt_epsilon[cs_sca] *

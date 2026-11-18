@@ -63,6 +63,7 @@ extern MD_FLOAT* cuda_cl_sigma3;
 #endif
 extern MD_FLOAT* cuda_cl_q;
 extern int* cuda_cl_mol;
+extern int* cuda_cl_id;
 }
 
 __global__ void cudaInitialIntegrateSup_warp(MD_FLOAT* cuda_cl_x,
@@ -159,6 +160,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     int maxneighs,
     MD_FLOAT* cuda_cl_q,
     int* cuda_cl_mol,
+    int* cuda_cl_id,
     CoulombScalar cs,
     double* energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
@@ -253,8 +255,11 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
             const int ci = sci * SCLUSTER_SIZE + sci_ci;
+            const int ai_sca =
+                SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N + cii;
             bool skip    = !((imask >> sci_ci) & 1u) || (ci > order_cj) ||
-                        (ci == order_cj && cii >= cjj);
+                        (ci == order_cj && cii >= cjj) || cuda_cl_id[ai_sca] < 0 ||
+                        cuda_cl_id[cj_sca] < 0;
 
             if (!skip) {
                 int ai        = sci_ci * CLUSTER_M + cii;
@@ -279,8 +284,6 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #endif
 
                 if (rsq < cutforcesq) {
-                    const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
-                                       cii;
                     MD_FLOAT force = pairForceScalar(rsq,
                         sigma6,
                         epsilon,
@@ -413,6 +416,7 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
     int maxneighs,
     MD_FLOAT* cuda_cl_q,
     int* cuda_cl_mol,
+    int* cuda_cl_id,
     CoulombScalar cs,
     double* energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
@@ -499,7 +503,10 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
             const int ci = sci * SCLUSTER_SIZE + sci_ci;
-            bool skip    = !((imask >> sci_ci) & 1u) || (ci == cj && cii == cjj);
+            const int ai_sca =
+                SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N + cii;
+            bool skip    = !((imask >> sci_ci) & 1u) || (ci == cj && cii == cjj) ||
+                        cuda_cl_id[ai_sca] < 0 || cuda_cl_id[cj_sca] < 0;
 
             if (!skip) {
                 int ai        = sci_ci * CLUSTER_M + cii;
@@ -524,8 +531,6 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
 #endif
 
                 if (rsq < cutforcesq) {
-                    const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
-                                       cii;
                     MD_FLOAT force = pairForceScalar(rsq,
                         sigma6,
                         epsilon,
@@ -725,6 +730,7 @@ extern "C" double computeForceLJCudaSup(
             neighbor->maxneighs,
             cuda_cl_q,
             cuda_cl_mol,
+            cuda_cl_id,
             cs,
             energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
@@ -758,6 +764,7 @@ extern "C" double computeForceLJCudaSup(
             neighbor->maxneighs,
             cuda_cl_q,
             cuda_cl_mol,
+            cuda_cl_id,
             cs,
             energies,
 #if LJ_COMB_RULE == LJ_COMB_SINGLE

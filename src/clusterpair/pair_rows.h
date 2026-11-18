@@ -70,6 +70,7 @@ typedef struct {
     Rows a6, b12; // sqrt(6 C6) and sqrt(12 C12), geometric combination rule
     RowInts type; // type * ntypes, full combination rule
     RowInts mol;  // molecule index, exclusions
+    RowInts id;   // original atom index, -1 for padding slots
 } IRows;
 
 /* j-cluster data of the vector */
@@ -79,6 +80,7 @@ typedef struct {
     MD_SIMD_FLOAT a6, b12;
     MD_SIMD_INT type;
     MD_SIMD_INT mol;
+    MD_SIMD_INT id;
 } JData;
 
 /* Values that stay the same for the whole kernel call */
@@ -206,6 +208,11 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
         if (diag != NULL) {
             wm.v[r] = simd_mask_and(diag->v[r], wm.v[r]);
         }
+        const MD_SIMD_MASK valid_i = simd_mask_not(
+            simd_mask_i32_cond_eq(ir->id.v[r], simd_i32_broadcast(-1)));
+        const MD_SIMD_MASK valid_j = simd_mask_not(
+            simd_mask_i32_cond_eq(jd->id, simd_i32_broadcast(-1)));
+        wm.v[r] = simd_mask_and(wm.v[r], simd_mask_and(valid_i, valid_j));
     }
 
     // Clamp after the cut-off check, like GROMACS: padding atoms are at distance zero

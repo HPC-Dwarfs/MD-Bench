@@ -52,6 +52,7 @@ static inline IRows load2xnIRows(const Atom* atom, const int ci, const PairConst
 #if KERNEL_EXCL
         ir.mol.v[r] = simd_i32_broadcast(atom->cl_mol[sca + r]);
 #endif
+        ir.id.v[r] = simd_i32_broadcast(atom->cl_id[sca + r]);
     }
 
     (void)sca;
@@ -80,6 +81,7 @@ static inline JData load2xnJData(const Atom* atom, const int cj)
 #if KERNEL_EXCL
     jd.mol = simd_i32_load(&atom->cl_mol[sca]);
 #endif
+    jd.id = simd_i32_load(&atom->cl_id[sca]);
 
     (void)sca;
     return jd;
