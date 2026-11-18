@@ -13,16 +13,15 @@ ComputeForceFunction computeForce;
 
 void initForce(Parameter* param)
 {
-#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
-    // Electrostatics and exclusions are only in the plain C (force_lj.c) and GPU kernels
+#if COULOMB_RULE != COULOMB_NONE
+    // Electrostatics are only in the plain C (force_lj.c) and GPU kernels
     if (param->force_field != FF_LJ) {
-        fprintf(stderr,
-            "Error: electrostatics and exclusions are only supported with -f lj!\n");
+        fprintf(stderr, "Error: electrostatics are only supported with -f lj!\n");
         exit(EXIT_FAILURE);
     }
 #ifdef __SIMD_KERNEL__
     fprintf(stderr,
-        "Error: electrostatics and exclusions are not supported by the verlet-list "
+        "Error: electrostatics are not supported by the verlet-list "
         "SIMD kernels, build with USE_SIMD_KERNEL=false!\n");
     exit(EXIT_FAILURE);
 #endif
@@ -100,10 +99,14 @@ void initForce(Parameter* param)
         }
 #endif
 #else
+        // The copy with molecular exclusions for systems with molecules
+        // (kernel_variant.h)
         if (param->half_neigh || param->method) {
-            computeForce = computeForceLJHalfNeigh;
+            computeForce = param->molsize > 1 ? computeForceLJHalfNeighExcl
+                                              : computeForceLJHalfNeigh;
         } else {
-            computeForce = computeForceLJFullNeigh;
+            computeForce = param->molsize > 1 ? computeForceLJFullNeighExcl
+                                              : computeForceLJFullNeigh;
         }
 #endif
 #endif

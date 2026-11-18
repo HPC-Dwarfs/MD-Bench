@@ -12,7 +12,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="${ROOT_DIR}/tests/gromacs_nonbonded"
 
 TOOLCHAIN="${TOOLCHAIN:-NVCC}"
-ISA="${ISA:-X86}"
 CUDA_ARCH="${CUDA_ARCH:-sm_80}"
 PYTHON="${PYTHON:-python3}"
 
@@ -55,10 +54,8 @@ for rule in rf ewald none; do
   for kernel in gpusimple supercluster VL; do
     for dtype in SP DP; do
       if [ "${dtype}" = "DP" ]; then tol="1e-7"; etol="1e-9"; else tol="5e-5"; etol="2e-5"; fi
-      excl=auto
-      if [ "${rule}" = "none" ]; then excl=true; fi
-      cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" "${ARCH_ARG}" DATA_TYPE="${dtype}"
-           COULOMB_RULE="${rule}" EXCLUSIONS="${excl}")
+      cfg=(TOOLCHAIN="${TOOLCHAIN}" "${ARCH_ARG}" DATA_TYPE="${dtype}"
+           COULOMB_RULE="${rule}")
       if [ "${kernel}" = "VL" ]; then
         cfg+=(OPT_SCHEME=verletlist)
       else

@@ -14,7 +14,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 OPT_SCHEME="${OPT_SCHEME:-verletlist}"
 
@@ -31,11 +30,11 @@ cd "${ROOT_DIR}"
 echo "Building ${OPT_SCHEME} with AOS layout..."
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ATOM_DATA_LAYOUT=AOS >/dev/null
 
 # The layout is not part of the binary name, both builds give the same path
-BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
+BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
     DATA_TYPE="${DATA_TYPE}" print-target)"
 AOS_BIN="${BIN}"
 
@@ -49,7 +48,7 @@ AOS_BIN="${AOS_BIN}-aos"
 echo "Building ${OPT_SCHEME} with SOA layout..."
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${OPT_SCHEME}" SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ATOM_DATA_LAYOUT=SOA >/dev/null
 
 SOA_BIN="${BIN}"

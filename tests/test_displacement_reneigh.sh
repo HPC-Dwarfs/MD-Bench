@@ -22,7 +22,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 # Clusterpair requires a SIMD width that maps to a valid cluster N (2, 4, or 8).
 # Default to AVX2 (N=4) when the VL SIMD is NONE.
@@ -38,7 +37,7 @@ make_bin() {
     local scheme="$1"
     local simd="$2"
     make clean >/dev/null 2>&1 || true
-    make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" \
+    make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" \
          SIMD="${simd}" DATA_TYPE="${DATA_TYPE}" \
          LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
 }
@@ -46,7 +45,7 @@ make_bin() {
 bin_name() {
     local scheme="$1"
     local simd="$2"
-    make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" \
+    make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" \
          SIMD="${simd}" DATA_TYPE="${DATA_TYPE}" \
          LJ_COMB_RULE="${LJ_COMB_RULE}" print-target
 }

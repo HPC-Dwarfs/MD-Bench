@@ -15,7 +15,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
@@ -49,10 +48,10 @@ fi
 echo "Building serial (non-MPI) Verlet-list binary..."
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=false >/dev/null
 
-SERIAL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+SERIAL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
     DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=false print-target)"
 if [[ ! -x "${SERIAL_BIN}" ]]; then
   echo "Serial binary '${SERIAL_BIN}' not found" >&2
@@ -65,14 +64,14 @@ SERIAL_BIN="${SERIAL_BIN}-serial"
 echo "Building MPI Verlet-list binary..."
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+if ! make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=true >/dev/null 2>&1; then
   echo "SKIP: MPI build failed (ENABLE_MPI=true not supported with this toolchain)."
   rm -f "${SERIAL_BIN}"
   exit 0
 fi
 
-MPI_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+MPI_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
     DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=true print-target)"
 if [[ ! -x "${MPI_BIN}" ]]; then
   echo "MPI binary '${MPI_BIN}' not found" >&2

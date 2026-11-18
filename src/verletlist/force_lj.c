@@ -6,6 +6,7 @@
  */
 #include <atom.h>
 #include <energy.h>
+#include <kernel_variant.h>
 #include <likwid-marker.h>
 #include <neighbor.h>
 #include <pair_scalar.h>
@@ -75,8 +76,9 @@ static inline LoopData loopData(Parameter* param, Atom* atom, Neighbor* neighbor
     return d;
 }
 
-// Neighbor loop of atom i; energy and reaction are constants at the call sites
+// Neighbor loop of atom i; energy, excl and reaction are constants at the call sites
 VL_ALWAYS_INLINE void neighborLoop(const int energy,
+    const int excl,
     const int reaction,
     const LoopData* d,
     const Atom* atom,
@@ -152,6 +154,7 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
                 q_ptr[j],
                 mol_i,
                 mol_ptr[j],
+                excl,
                 cs);
             fix += delx * force;
             fiy += dely * force;
@@ -171,6 +174,7 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
                     q_ptr[j],
                     mol_i,
                     mol_ptr[j],
+                    excl,
                     cs,
                     &pvlj,
                     &pvc);
@@ -216,7 +220,7 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
     (void)sigma3_ptr;
 }
 
-double computeForceLJFullNeigh(
+double KERNEL_FN(computeForceLJFullNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJFullNeigh begin\n");
@@ -240,8 +244,10 @@ double computeForceLJFullNeigh(
 #pragma omp for schedule(runtime) reduction(+ : elj, ec)
         for (int i = 0; i < nlocal; i++) {
             MD_FLOAT fi[3];
+            // KERNEL_EXCL: copy of this file for systems with molecules
             if (energy) {
                 neighborLoop(1,
+                    KERNEL_EXCL,
                     0,
                     &ld,
                     atom,
@@ -258,6 +264,7 @@ double computeForceLJFullNeigh(
                     stats);
             } else {
                 neighborLoop(0,
+                    KERNEL_EXCL,
                     0,
                     &ld,
                     atom,
@@ -292,7 +299,7 @@ double computeForceLJFullNeigh(
     return timeStop - timeStart;
 }
 
-double computeForceLJHalfNeigh(
+double KERNEL_FN(computeForceLJHalfNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJHalfNeigh begin\n");
@@ -335,8 +342,10 @@ double computeForceLJHalfNeigh(
 #pragma omp for schedule(runtime) reduction(+ : elj, ec)
         for (int i = 0; i < nlocal; i++) {
             MD_FLOAT fi[3];
+            // KERNEL_EXCL: copy of this file for systems with molecules
             if (energy) {
                 neighborLoop(1,
+                    KERNEL_EXCL,
                     1,
                     &ld,
                     atom,
@@ -353,6 +362,7 @@ double computeForceLJHalfNeigh(
                     stats);
             } else {
                 neighborLoop(0,
+                    KERNEL_EXCL,
                     1,
                     &ld,
                     atom,
@@ -400,6 +410,7 @@ double computeForceLJHalfNeigh(
     return timeStop - timeStart;
 }
 
+#ifndef KERNEL_EXCLUSIONS
 void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("computeForceGhostShell begin\n");
@@ -412,6 +423,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
     const CoulombScalar cs = coulombScalarInit(param);
+    const int excl         = atom->molsize > 1; // molecular exclusions
 
     for (int i = 0; i < Nshell; i++) {
         int numneigh  = neighbor->numNeighShell[i];
@@ -458,6 +470,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
                     atom->q[jatom],
                     mol_i,
                     atom->mol[jatom],
+                    excl,
                     cs);
                 if (param->compute_energy) {
                     MD_FLOAT vlj, vc;
@@ -468,6 +481,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
                         atom->q[jatom],
                         mol_i,
                         atom->mol[jatom],
+                        excl,
                         cs,
                         &vlj,
                         &vc);
@@ -491,3 +505,4 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
 
     DEBUG_MESSAGE("computeForceGhostShell end\n");
 }
+#endif

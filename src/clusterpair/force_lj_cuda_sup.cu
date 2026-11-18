@@ -148,7 +148,7 @@ extern "C" void cudaFinalIntegrateSup(Parameter* param, Atom* atom)
 }
 
 // ENERGY: also sum the pair energies into energies (-energy), see blockEnergiesAdd()
-template <bool ENERGY>
+template <bool ENERGY, bool EXCL>
 __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* cuda_cl_f,
     int Nclusters_local,
@@ -248,7 +248,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
 #endif
         const int cj_sca  = CJ_SCALAR_BASE_INDEX(cj) + cjj;
         const MD_FLOAT qj = chargeCuda(cuda_cl_q, cj_sca);
-        const int mol_j   = moleculeCuda(cuda_cl_mol, cj_sca);
+        const int mol_j   = moleculeCuda<EXCL>(cuda_cl_mol, cj_sca);
 
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
@@ -281,13 +281,14 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
                 if (rsq < cutforcesq) {
                     const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
                                        cii;
-                    MD_FLOAT force   = pairForceScalar(rsq,
+                    MD_FLOAT force = pairForceScalar(rsq,
                         sigma6,
                         epsilon,
                         cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
                         qj,
-                        moleculeCuda(cuda_cl_mol, ai_sca),
+                        moleculeCuda<EXCL>(cuda_cl_mol, ai_sca),
                         mol_j,
+                        EXCL,
                         cs);
                     if (ENERGY) {
                         MD_FLOAT vlj, vc;
@@ -296,8 +297,9 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
                             epsilon,
                             cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
                             qj,
-                            moleculeCuda(cuda_cl_mol, ai_sca),
+                            moleculeCuda<EXCL>(cuda_cl_mol, ai_sca),
                             mol_j,
+                            EXCL,
                             cs,
                             &vlj,
                             &vc);
@@ -401,7 +403,7 @@ __global__ void computeForceLJCudaSup_halfwarp(MD_FLOAT* cuda_cl_x,
     }
 }
 
-template <bool ENERGY>
+template <bool ENERGY, bool EXCL>
 __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* cuda_cl_f,
     int Nclusters_local,
@@ -492,7 +494,7 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
 #endif
         const int cj_sca  = CJ_SCALAR_BASE_INDEX(cj) + cjj;
         const MD_FLOAT qj = chargeCuda(cuda_cl_q, cj_sca);
-        const int mol_j   = moleculeCuda(cuda_cl_mol, cj_sca);
+        const int mol_j   = moleculeCuda<EXCL>(cuda_cl_mol, cj_sca);
 
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
@@ -524,13 +526,14 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
                 if (rsq < cutforcesq) {
                     const int ai_sca = SCI_SCALAR_BASE_INDEX(sci) + sci_ci * CLUSTER_N +
                                        cii;
-                    MD_FLOAT force   = pairForceScalar(rsq,
+                    MD_FLOAT force = pairForceScalar(rsq,
                         sigma6,
                         epsilon,
                         cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
                         qj,
-                        moleculeCuda(cuda_cl_mol, ai_sca),
+                        moleculeCuda<EXCL>(cuda_cl_mol, ai_sca),
                         mol_j,
+                        EXCL,
                         cs);
                     if (ENERGY) {
                         MD_FLOAT vlj, vc;
@@ -539,8 +542,9 @@ __global__ void computeForceLJCudaSup_fullwarp(MD_FLOAT* cuda_cl_x,
                             epsilon,
                             cs.epsfac * chargeCuda(cuda_cl_q, ai_sca),
                             qj,
-                            moleculeCuda(cuda_cl_mol, ai_sca),
+                            moleculeCuda<EXCL>(cuda_cl_mol, ai_sca),
                             mol_j,
+                            EXCL,
                             cs,
                             &vlj,
                             &vc);
@@ -701,12 +705,16 @@ extern "C" double computeForceLJCudaSup(
     dim3 block_size = dim3(CLUSTER_N, CLUSTER_M, 1);
     dim3 grid_size  = dim3(atom->Nclusters_local, GPU_J_SLICES, 1);
     double* energies = deviceEnergies(param);
+    const bool excl  = atom->molsize > 1; // molecular exclusions
     double S        = getTimeStamp();
     LIKWID_MARKER_START("force");
 
     if (neighbor->half_neigh) {
-        auto kernel = param->compute_energy ? computeForceLJCudaSup_halfwarp<true>
-                                            : computeForceLJCudaSup_halfwarp<false>;
+        auto kernel = param->compute_energy
+                          ? (excl ? computeForceLJCudaSup_halfwarp<true, true>
+                                  : computeForceLJCudaSup_halfwarp<true, false>)
+                          : (excl ? computeForceLJCudaSup_halfwarp<false, true>
+                                  : computeForceLJCudaSup_halfwarp<false, false>);
         kernel<<<grid_size, block_size>>>(cuda_cl_x,
             cuda_cl_f,
             atom->Nclusters_local,
@@ -736,8 +744,11 @@ extern "C" double computeForceLJCudaSup(
 #endif
         );
     } else {
-        auto kernel = param->compute_energy ? computeForceLJCudaSup_fullwarp<true>
-                                            : computeForceLJCudaSup_fullwarp<false>;
+        auto kernel = param->compute_energy
+                          ? (excl ? computeForceLJCudaSup_fullwarp<true, true>
+                                  : computeForceLJCudaSup_fullwarp<true, false>)
+                          : (excl ? computeForceLJCudaSup_fullwarp<false, true>
+                                  : computeForceLJCudaSup_fullwarp<false, false>);
         kernel<<<grid_size, block_size>>>(cuda_cl_x,
             cuda_cl_f,
             atom->Nclusters_local,

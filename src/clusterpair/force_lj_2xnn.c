@@ -53,7 +53,7 @@ static inline IRows load2xnnIRows(const Atom* atom, const int ci, const PairCons
         ir.type.v[r] = simd_i32_load_h_dual_scaled(&atom->cl_t[sca + 2 * r],
             atom->ntypes);
 #endif
-#if USE_EXCLUSIONS
+#if KERNEL_EXCL
         ir.mol.v[r] = simd_i32_load_h_dual_scaled(&atom->cl_mol[sca + 2 * r], 1);
 #endif
     }
@@ -82,7 +82,7 @@ static inline JData load2xnnJData(const Atom* atom, const int cj)
 #elif LJ_COMB_RULE == LJ_COMB_FULL
     jd.type = simd_i32_load_h_duplicate(&atom->cl_t[sca]);
 #endif
-#if USE_EXCLUSIONS
+#if KERNEL_EXCL
     jd.mol = simd_i32_load_h_duplicate(&atom->cl_mol[sca]);
 #endif
 
@@ -176,8 +176,15 @@ MD_ALWAYS_INLINE void iClusterHalf2xnn(Parameter* param,
         const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
         const JData jd      = load2xnnJData(atom, cj);
         const RowMasks diag = load2xnnDiagMasks(atom->masks_2xnn_hn, ci, cj);
-        const PairForces p =
-            pairForces((CLUSTER_M / 2), nrlj, energy, &ir, &jd, &diag, 1, pc, atom);
+        const PairForces p  = pairForces((CLUSTER_M / 2),
+            nrlj,
+            energy,
+            &ir,
+            &jd,
+            &diag,
+            KERNEL_EXCL,
+            pc,
+            atom);
 
         accumulateForces((CLUSTER_M / 2), &fx, &fy, &fz, &p);
         if (cj < nlocal_clusters || param->method) {
@@ -361,8 +368,15 @@ MD_ALWAYS_INLINE void iClusterFull2xnn(Atom* atom,
         const int cj        = neighs(neighbor->neighbors, ci, k, nbM, neighbor);
         const JData jd      = load2xnnJData(atom, cj);
         const RowMasks diag = load2xnnDiagMasks(atom->masks_2xnn_fn, ci, cj);
-        const PairForces p =
-            pairForces((CLUSTER_M / 2), nrlj, energy, &ir, &jd, &diag, 1, pc, atom);
+        const PairForces p  = pairForces((CLUSTER_M / 2),
+            nrlj,
+            energy,
+            &ir,
+            &jd,
+            &diag,
+            KERNEL_EXCL,
+            pc,
+            atom);
 
         accumulateForces((CLUSTER_M / 2), &fx, &fy, &fz, &p);
         if (energy) accumulateEnergies((CLUSTER_M / 2), &e, &p);

@@ -11,7 +11,6 @@ DATA_DIR="${ROOT_DIR}/data/argon"
 
 # Build configuration
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
@@ -22,17 +21,17 @@ cd "${ROOT_DIR}"
 echo "Building SIMD kernel binary..."
 rm -rf build/ >/dev/null 2>&1 || true  # Force clean build directory
 make clean >/dev/null 2>&1 || true
-if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
+if ! make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
      USE_SIMD_KERNEL=true >/dev/null 2>&1; then
   echo "ERROR: Failed to build SIMD binary" >&2
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
+  make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
        DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
        USE_SIMD_KERNEL=true
   exit 1
 fi
 
-SIMD_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
+SIMD_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
     OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" USE_SIMD_KERNEL=true print-target)"
 
 # Rename SIMD binary to preserve it before building SCALAR variant
@@ -47,17 +46,17 @@ SIMD_BIN="${SIMD_BIN}-simd"
 echo "Building SCALAR kernel binary..."
 rm -rf build/ >/dev/null 2>&1 || true  # Force clean build directory
 make clean >/dev/null 2>&1 || true
-if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
+if ! make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
      USE_SIMD_KERNEL=false >/dev/null 2>&1; then
   echo "ERROR: Failed to build SCALAR binary" >&2
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
+  make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
        DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
        USE_SIMD_KERNEL=false
   exit 1
 fi
 
-SCALAR_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
+SCALAR_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
     OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" USE_SIMD_KERNEL=false print-target)"
 # Rename to avoid confusion with SIMD binary
 if [[ ! -x "${SCALAR_BIN}" ]]; then

@@ -23,7 +23,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
 TOOLCHAIN="GCC"
-ISA="X86"
 DATA_TYPE="DP"
 
 check_output() {
@@ -50,12 +49,12 @@ echo "=== verletlist stub ==="
 SIMD="NONE"
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" >/dev/null
 # Relative, the stub target is <binary>-stub
-VL_BIN="./$(basename "$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist \
+VL_BIN="./$(basename "$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist \
     SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" print-target)")"
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" "${VL_BIN}-stub" >/dev/null
 
 for pattern in seq fix rand; do
@@ -67,11 +66,11 @@ echo "=== clusterpair stub ==="
 SIMD="AVX2"
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=clusterpair SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" >/dev/null
-CP_BIN="./$(basename "$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair \
+CP_BIN="./$(basename "$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=clusterpair \
     SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" print-target)")"
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=clusterpair SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=clusterpair SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" "${CP_BIN}-stub" >/dev/null
 
 for pattern in seq fix; do

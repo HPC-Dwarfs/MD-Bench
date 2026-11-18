@@ -13,7 +13,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
@@ -23,11 +22,11 @@ cd "${ROOT_DIR}"
 
 echo "Building Verlet-list binary (SIMD=${SIMD}, LJ_COMB_RULE=${LJ_COMB_RULE})..."
 make clean >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" \
      USE_SIMD_KERNEL="${USE_SIMD_KERNEL}" >/dev/null
 
-VL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+VL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
     DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" USE_SIMD_KERNEL="${USE_SIMD_KERNEL}" \
     print-target)"
 

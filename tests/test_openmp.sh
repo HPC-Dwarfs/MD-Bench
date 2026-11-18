@@ -9,7 +9,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX512}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 
@@ -106,13 +105,13 @@ for scheme in verletlist clusterpair; do
   for lj_rule in geometric full; do
     echo "=== Building ${scheme} (LJ_COMB_RULE=${lj_rule}) ==="
     make clean >/dev/null 2>&1 || true
-    if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
+    if ! make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
          DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${lj_rule}" ENABLE_OPENMP=true >/dev/null; then
       echo "SKIP: build failed for ${scheme}/${lj_rule} (unsupported configuration)."
       continue
     fi
 
-    BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
+    BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
         DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${lj_rule}" ENABLE_OPENMP=true print-target)"
     if [[ ! -x "${BIN}" ]]; then
       echo "Binary '${BIN}' not found" >&2

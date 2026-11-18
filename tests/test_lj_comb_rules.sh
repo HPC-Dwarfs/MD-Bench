@@ -23,7 +23,7 @@ build_and_run() {
     local timesteps="${4:-10}"
 
     rm -rf ./build ./MDBench-*
-    if ! make -j4 TOOLCHAIN=GCC ISA=X86 SIMD=$simd DATA_TYPE=DP OPT_SCHEME=$opt_scheme LJ_COMB_RULE=$lj_rule >/dev/null 2>&1; then
+    if ! make -j4 TOOLCHAIN=GCC SIMD=$simd DATA_TYPE=DP OPT_SCHEME=$opt_scheme LJ_COMB_RULE=$lj_rule >/dev/null 2>&1; then
         return 1
     fi
 

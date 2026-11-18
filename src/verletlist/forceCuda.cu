@@ -29,7 +29,7 @@ extern "C" {
 #include <pair_scalar.h>
 
 // ENERGY: also sum the pair energies into energies (-energy), see warpEnergiesAdd()
-template <bool ENERGY>
+template <bool ENERGY, bool EXCL>
 __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -72,11 +72,7 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
 #else
     const MD_FLOAT qi = (MD_FLOAT)0.0;
 #endif
-#if USE_EXCLUSIONS
-    const int mol_i = atom->mol[i];
-#else
-    const int mol_i = 0;
-#endif
+    const int mol_i = EXCL ? atom->mol[i] : 0;
 
     for (int k = 0; k < numneighs; k++) {
         // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
@@ -105,12 +101,9 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
 #else
             const MD_FLOAT qj = (MD_FLOAT)0.0;
 #endif
-#if USE_EXCLUSIONS
-            const int mol_j = __ldg(&atom->mol[j]);
-#else
-            const int mol_j = 0;
-#endif
-            MD_FLOAT force = pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, cs);
+            const int mol_j = EXCL ? __ldg(&atom->mol[j]) : 0;
+            MD_FLOAT force =
+                pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, EXCL, cs);
             if (ENERGY) {
                 MD_FLOAT vlj, vc;
                 pairEnergyScalar(rsq,
@@ -120,6 +113,7 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
                     qj,
                     mol_i,
                     mol_j,
+                    EXCL,
                     cs,
                     &vlj,
                     &vc);
@@ -140,7 +134,7 @@ __global__ void computeForceLJCudaFullNeigh(DeviceAtom a,
     }
 }
 
-template <bool ENERGY>
+template <bool ENERGY, bool EXCL>
 __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -183,11 +177,7 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
 #else
     const MD_FLOAT qi = (MD_FLOAT)0.0;
 #endif
-#if USE_EXCLUSIONS
-    const int mol_i = atom->mol[i];
-#else
-    const int mol_i = 0;
-#endif
+    const int mol_i = EXCL ? atom->mol[i] : 0;
 
     for (int k = 0; k < numneighs; k++) {
         // __ldg: neighbor indices and per-atom/per-type LJ data are read-only
@@ -216,12 +206,9 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
 #else
             const MD_FLOAT qj = (MD_FLOAT)0.0;
 #endif
-#if USE_EXCLUSIONS
-            const int mol_j = __ldg(&atom->mol[j]);
-#else
-            const int mol_j = 0;
-#endif
-            MD_FLOAT force = pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, cs);
+            const int mol_j = EXCL ? __ldg(&atom->mol[j]) : 0;
+            MD_FLOAT force =
+                pairForceScalar(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, EXCL, cs);
             if (ENERGY) {
                 MD_FLOAT vlj, vc;
                 pairEnergyScalar(rsq,
@@ -231,6 +218,7 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
                     qj,
                     mol_i,
                     mol_j,
+                    EXCL,
                     cs,
                     &vlj,
                     &vc);
@@ -369,6 +357,7 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     GPU_PROFILE_START("force_lj");
     const int num_blocks = ceil((float)Nlocal / (float)num_threads_per_block);
     double* energies     = deviceEnergies(param);
+    const bool excl      = atom->molsize > 1; // molecular exclusions
     double S             = getTimeStamp();
     LIKWID_MARKER_START("force");
 
@@ -380,8 +369,11 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
         memsetGPU(atom->d_atom.fy, 0, sizeof(MD_FLOAT) * Nmax);
         memsetGPU(atom->d_atom.fz, 0, sizeof(MD_FLOAT) * Nmax);
 #endif
-        auto kernel = param->compute_energy ? computeForceLJCudaHalfNeigh<true>
-                                            : computeForceLJCudaHalfNeigh<false>;
+        auto kernel = param->compute_energy
+                          ? (excl ? computeForceLJCudaHalfNeigh<true, true>
+                                  : computeForceLJCudaHalfNeigh<true, false>)
+                          : (excl ? computeForceLJCudaHalfNeigh<false, true>
+                                  : computeForceLJCudaHalfNeigh<false, false>);
         kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
@@ -394,8 +386,11 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
             cs,
             energies);
     } else {
-        auto kernel = param->compute_energy ? computeForceLJCudaFullNeigh<true>
-                                            : computeForceLJCudaFullNeigh<false>;
+        auto kernel = param->compute_energy
+                          ? (excl ? computeForceLJCudaFullNeigh<true, true>
+                                  : computeForceLJCudaFullNeigh<true, false>)
+                          : (excl ? computeForceLJCudaFullNeigh<false, true>
+                                  : computeForceLJCudaFullNeigh<false, false>);
         kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,

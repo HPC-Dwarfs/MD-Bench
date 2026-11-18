@@ -66,10 +66,8 @@ double setup(Parameter* param,
 
     timeStart = getTimeStamp();
     initAtom(atom);
-    initForce(param);
     initPbc(atom);
     initStats(stats);
-    initNeighbor(neighbor, param);
     if (param->input_file == NULL) {
         if (param->gmxbenchmark) {
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
@@ -85,6 +83,9 @@ double setup(Parameter* param,
     }
     // Before the atoms are distributed over the MPI ranks, so the ids are global
     initAtomIds(atom);
+    // After the atoms: the kernel copy depends on the system (molecules, param->molsize)
+    initForce(param);
+    initNeighbor(neighbor, param);
 #if COULOMB_IS_EWALD
     param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
 #endif

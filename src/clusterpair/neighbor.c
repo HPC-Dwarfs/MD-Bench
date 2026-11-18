@@ -306,10 +306,10 @@ static unsigned int get_imask_simd_j8(int rdiag, int ci, int cj)
 #error "Invalid cluster configuration"
 #endif
 
-#if USE_EXCLUSIONS
 /* Returns whether any atom of i-cluster ci is excluded from any atom of j-cluster cj,
  * i.e. both belong to the same molecule. Such cluster pairs are kept in the masked
- * part of the neighbor list, where the kernels evaluate the exclusions. */
+ * part of the neighbor list, where the kernels evaluate the exclusions (only for systems
+ * with molecules, atom->molsize > 1). */
 static int clusterPairHasExclusion(Atom* atom, int ci, int cj)
 {
     const int* mol_i = &atom->cl_mol[CI_SCALAR_BASE_INDEX(ci)];
@@ -325,7 +325,6 @@ static int clusterPairHasExclusion(Atom* atom, int ci, int cj)
 
     return 0;
 }
-#endif
 
 void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 {
@@ -762,11 +761,9 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
                                     unsigned int imask = get_imask_simd(1, ci, cj);
 
                                     if (n < neighbor->maxneighs) {
-                                        if (imask == NBNXN_INTERACTION_MASK_ALL
-#if USE_EXCLUSIONS
-                                            && !clusterPairHasExclusion(atom, ci, cj)
-#endif
-                                        ) {
+                                        if (imask == NBNXN_INTERACTION_MASK_ALL &&
+                                            (atom->molsize <= 1 ||
+                                                !clusterPairHasExclusion(atom, ci, cj))) {
                                             neighs_padded(neighbor->neighbors,
                                                 ci,
                                                 n,

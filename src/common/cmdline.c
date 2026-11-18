@@ -219,6 +219,17 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
         cmdError(comm,
             "-gmxbench is a force kernel benchmark, use --kernel-bench <n> or -n 0");
     }
+    // The molecules of -gmxbench need the exclusions of the LJ kernels
+    if (param->gmxbenchmark && param->force_field != FF_LJ) {
+        cmdError(comm, "-gmxbench needs -f lj");
+    }
+#if !defined(CLUSTER_PAIR) && defined(__SIMD_KERNEL__)
+    if (param->gmxbenchmark) {
+        cmdError(comm,
+            "the verlet-list SIMD kernels have no molecular exclusions for -gmxbench, "
+            "build with USE_SIMD_KERNEL=false");
+    }
+#endif
 #if !defined(CLUSTER_PAIR) || defined(CUDA_TARGET)
     if (param->half_lj) {
         cmdError(comm, "-halflj needs the CPU cluster-pair kernels");

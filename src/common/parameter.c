@@ -145,6 +145,7 @@ void initParameter(Parameter* param)
     param->energy_lj         = 0.0;
     param->energy_coul       = 0.0;
     param->half_lj           = false;
+    param->molsize             = 0;
     param->accurate_reciprocal = 0;
     param->kernel_prefetch     = 1;
 #ifdef _OPENMP
@@ -457,9 +458,11 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Half-LJ i-clusters:                %s\n",
         param->half_lj ? "yes" : "no");
-#if USE_EXCLUSIONS
-    fprintf(stdout, "    Molecular exclusions:              yes\n");
-#endif
+    if (param->molsize > 1) {
+        fprintf(stdout,
+            "    Molecular exclusions:              yes (%d atoms per molecule)\n",
+            param->molsize);
+    }
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     if (param->epsilon_per_type != NULL) {
         fprintf(stdout, "    Per-type epsilon:                  ");

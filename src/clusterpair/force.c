@@ -14,11 +14,10 @@ ComputeForceFunction computeForce;
 
 void initForce(Parameter* param)
 {
-#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
-    // The EAM and tabulated kernels have no electrostatics or exclusions
+#if COULOMB_RULE != COULOMB_NONE
+    // The EAM and tabulated kernels have no electrostatics
     if (param->force_field != FF_LJ) {
-        fprintf(stderr,
-            "Error: electrostatics and exclusions are only supported with -f lj!\n");
+        fprintf(stderr, "Error: electrostatics are only supported with -f lj!\n");
         exit(EXIT_FAILURE);
     }
 #endif

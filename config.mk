@@ -1,14 +1,13 @@
 # Compiler tool chain (GCC/CLANG/ICC/ICX/ONEAPI/NVCC/HIPCC)
 TOOLCHAIN ?= GCC
-# ISA of instruction code (X86/ARM)
-ISA ?= X86
 # Assembly syntax used when emitting .s files on X86 (intel/att), passed to the
 # compiler as -masm=<value>. Only affects the X86 toolchains (GCC/ICC/ICX/CLANG/
 # NVCC/HIPCC); ARM's assembler has no equivalent flag, so this is ignored there.
 ASM_SYNTAX ?= intel
-# Instruction set for instrinsic kernels (NONE/<X86-SIMD>/<ARM-SIMD>)
-# with X86-SIMD options: NONE/SSE/AVX/AVX_FMA/AVX2/AVX512
-# with ARM-SIMD options: NONE/NEON/SVE/SVE2 (SVE not width-agnostic yet!)
+# Instruction set, it also selects the architecture (ISA) of the build:
+# X86: X86_SCALAR/SSE/AVX/AVX_FMA/AVX2/AVX512
+# ARM: ARM_SCALAR/NEON/SVE/SVE2 (SVE not width-agnostic yet!)
+# *_SCALAR is plain scalar code without SIMD extensions, NONE the one of the build machine
 SIMD ?= AVX512
 # Optimization scheme (verletlist/clusterpair)
 OPT_SCHEME ?= verletlist
@@ -44,10 +43,6 @@ LJ_COMB_RULE ?= geometric
 # ewald: real-space Ewald part with an analytical force correction
 # ewald_table: real-space Ewald part with GROMACS' tabulated correction (CPU kernels)
 COULOMB_RULE ?= none
-# Molecular exclusions (true/false), atoms of the same molecule skip LJ and the direct
-# Coulomb term (the Ewald/RF exclusion correction is still applied). Defaults to true
-# whenever COULOMB_RULE is not none.
-EXCLUSIONS ?= auto
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
 # Trace indexes and distances for gather-md (true or false)
@@ -109,15 +104,34 @@ OPTIONS =  -DALIGNMENT=64
 DEFINES =
 NBLIST_DATA_LAYOUT_DEFAULT=AOS
 
-ifeq ($(strip $(TOOLCHAIN)),HIPCC)
-	VECTOR_WIDTH=1
-	SIMD=NONE
-	USE_REFERENCE_KERNEL=true
-	NBLIST_DATA_LAYOUT_DEFAULT=SOA
+# The architecture follows from SIMD
+ifeq ($(origin ISA),command line)
+    $(error ISA is derived from SIMD now, use SIMD=X86_SCALAR or ARM_SCALAR for scalar code)
 endif
-ifeq ($(strip $(TOOLCHAIN)),NVCC)
+GPU_TOOLCHAIN := $(filter $(strip $(TOOLCHAIN)),NVCC HIPCC)
+ifneq ($(GPU_TOOLCHAIN),)
+    override SIMD := NONE
+endif
+ifeq ($(strip $(SIMD)),NONE)
+    override SIMD := $(if $(filter aarch64 arm64,$(shell uname -m)),ARM,X86)_SCALAR
+endif
+X86_SIMD_SET = X86_SCALAR SSE AVX AVX_FMA AVX2 AVX512
+ARM_SIMD_SET = ARM_SCALAR NEON SVE SVE2
+ifneq ($(filter $(strip $(SIMD)),$(X86_SIMD_SET)),)
+    ISA := X86
+else ifneq ($(filter $(strip $(SIMD)),$(ARM_SIMD_SET)),)
+    ISA := ARM
+else
+    $(error Invalid SIMD=$(SIMD), must be one of: NONE $(X86_SIMD_SET) $(ARM_SIMD_SET))
+endif
+SIMD_TAG := $(strip $(SIMD))
+# Scalar code is SIMD=NONE for the toolchain files and the defines below
+ifneq ($(filter %_SCALAR,$(SIMD)),)
+    override SIMD := NONE
+endif
+
+ifneq ($(GPU_TOOLCHAIN),)
 	VECTOR_WIDTH=1
-	SIMD=NONE
 	USE_REFERENCE_KERNEL=true
 	NBLIST_DATA_LAYOUT_DEFAULT=SOA
 endif
@@ -198,6 +212,9 @@ endif
 
 # Former build options that are runtime options now
 RUNTIME_OPTIONS = SORT_ATOMS:--sort-every ACCURATE_RECIPROCAL:--accurate-recip KERNEL_PREFETCH:--no-prefetch
+ifeq ($(origin EXCLUSIONS),command line)
+    $(error EXCLUSIONS is gone, the molecular exclusions are on when the system has molecules (-gmxbench))
+endif
 $(foreach o,$(RUNTIME_OPTIONS),$(if $(filter-out undefined,$(origin $(word 1,$(subst :, ,$(o))))),$(error $(word 1,$(subst :, ,$(o))) is a runtime option now, use $(word 2,$(subst :, ,$(o))) of the binary)))
 
 # Translate LJ_COMB_RULE to compiler define
@@ -211,38 +228,20 @@ else
     $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, full)
 endif
 
-# Translate COULOMB_RULE and EXCLUSIONS to compiler defines
+# Translate COULOMB_RULE to compiler defines
 ifeq ($(strip $(COULOMB_RULE)),none)
     DEFINES += -DCOULOMB_RULE=0
-    ifeq ($(strip $(EXCLUSIONS)),auto)
-        EXCLUSIONS_RESOLVED = false
-    endif
 else ifeq ($(strip $(COULOMB_RULE)),rf)
     DEFINES += -DCOULOMB_RULE=1
-    ifeq ($(strip $(EXCLUSIONS)),auto)
-        EXCLUSIONS_RESOLVED = true
-    endif
 else ifeq ($(strip $(COULOMB_RULE)),ewald)
     DEFINES += -DCOULOMB_RULE=2
-    ifeq ($(strip $(EXCLUSIONS)),auto)
-        EXCLUSIONS_RESOLVED = true
-    endif
 else ifeq ($(strip $(COULOMB_RULE)),ewald_table)
     ifneq ($(filter $(strip $(TOOLCHAIN)),NVCC HIPCC),)
         $(error COULOMB_RULE=ewald_table is only supported by the CPU kernels)
     endif
     DEFINES += -DCOULOMB_RULE=3
-    ifeq ($(strip $(EXCLUSIONS)),auto)
-        EXCLUSIONS_RESOLVED = true
-    endif
 else
     $(error Invalid COULOMB_RULE, must be one of: none, rf, ewald, ewald_table)
-endif
-ifneq ($(strip $(EXCLUSIONS)),auto)
-    EXCLUSIONS_RESOLVED = $(strip $(EXCLUSIONS))
-endif
-ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
-    DEFINES += -DUSE_EXCLUSIONS=1
 endif
 
 ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
@@ -371,11 +370,6 @@ TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
 ifneq ($(strip $(COULOMB_RULE)),none)
     TAG_SUFFIX := $(TAG_SUFFIX)-$(strip $(COULOMB_RULE))
 endif
-ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
-    ifeq ($(strip $(COULOMB_RULE)),none)
-        TAG_SUFFIX := $(TAG_SUFFIX)-excl
-    endif
-endif
 ifeq ($(strip $(ENABLE_OPENMP)),true)
     TAG_SUFFIX := $(TAG_SUFFIX)-omp
 endif
@@ -383,10 +377,11 @@ ifeq ($(strip $(ENABLE_MPI)),true)
     TAG_SUFFIX := $(TAG_SUFFIX)-mpi
 endif
 
-ifeq ($(strip $(SIMD)),NONE)
-		TOOL_TAG = $(TOOLCHAIN)-$(ISA)
+# GPU builds run no CPU SIMD code
+ifneq ($(GPU_TOOLCHAIN),)
+    TOOL_TAG = $(TOOLCHAIN)
 else
-		TOOL_TAG = $(TOOLCHAIN)-$(ISA)-$(SIMD)
+    TOOL_TAG = $(TOOLCHAIN)-$(SIMD_TAG)
 endif
 
 ifeq ($(strip $(SIMD_COMPRESS)),true)

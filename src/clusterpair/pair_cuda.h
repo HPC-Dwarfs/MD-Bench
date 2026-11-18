@@ -25,16 +25,11 @@ static __device__ __forceinline__ MD_FLOAT chargeCuda(const MD_FLOAT* cl_q, int 
 #endif
 }
 
-/* Molecule of the cluster slot sca, 0 without exclusions (cl_mol is then not on the GPU) */
+/* Molecule of the cluster slot sca, 0 without exclusions (cl_mol is then not copied) */
+template <bool EXCL>
 static __device__ __forceinline__ int moleculeCuda(const int* cl_mol, int sca)
 {
-#if USE_EXCLUSIONS
-    return cl_mol[sca];
-#else
-    (void)cl_mol;
-    (void)sca;
-    return 0;
-#endif
+    return EXCL ? cl_mol[sca] : 0;
 }
 
 // Block sum of the energies (NT threads, all must call it) added to energies[0..1]

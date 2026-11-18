@@ -45,8 +45,36 @@ ifneq ($(VARIANT),)
 endif
 
 # Flags only for the SIMD force kernels, empty unless the toolchain defines them
-KERNEL_OBJ = $(addprefix $(BUILD_DIR)/,$(notdir $(patsubst %.c,%.o,$(wildcard $(SRC_DIR)/force_lj_4xn*.c $(SRC_DIR)/force_lj_2xn*.c))))
+KERNEL_OBJ = $(addprefix $(BUILD_DIR)/,force_lj_4xn.o force_lj_2xnn.o force_lj_2xn.o)
 $(KERNEL_OBJ): CFLAGS += $(KERNEL_CFLAGS)
+
+# Copies of the CPU SIMD kernels for runtime options (src/common/kernel_variant.h): each
+# kernel file is compiled once more per combination, as <file>.<option>[-<option>...].o
+KERNEL_COPY_FLAGS_accurate   = -DACCURATE_RECIPROCAL
+KERNEL_COPY_FLAGS_noprefetch = -DKERNEL_NO_PREFETCH
+KERNEL_COPY_FLAGS_excl       = -DKERNEL_EXCLUSIONS
+KERNEL_COPIES = excl noprefetch noprefetch-excl accurate accurate-excl accurate-noprefetch \
+                accurate-noprefetch-excl
+ifeq ($(strip $(OPT_SCHEME))-$(strip $(USE_REFERENCE_KERNEL)),clusterpair-false)
+KERNEL_COPY_OBJ    = $(foreach s,force_lj_4xn force_lj_2xnn force_lj_2xn,\
+                       $(foreach c,$(KERNEL_COPIES),$(BUILD_DIR)/$(s).$(c).o))
+KERNEL_COPY_CFLAGS = $(KERNEL_CFLAGS)
+else ifeq ($(strip $(OPT_SCHEME))-$(GPU_TOOLCHAIN),verletlist-)
+# The verlet-list C kernels for systems with molecules, the SIMD kernels for --accurate-recip
+KERNEL_COPY_OBJ = $(BUILD_DIR)/force_lj.excl.o
+ifeq ($(strip $(USE_SIMD_KERNEL)),true)
+KERNEL_COPY_OBJ += $(BUILD_DIR)/force_lj_simd.accurate.o
+endif
+endif
+OBJ += $(KERNEL_COPY_OBJ)
+
+define KERNEL_COPY_RULE
+$$(BUILD_DIR)/%.$(1).o: %.c $$(MAKE_DIR)/include_$$(TOOLCHAIN).mk $$(CONFIG_STAMP)
+	$$(info ===>  COMPILE  $$@)
+	$$(Q)$$(CC) -c $$(CPPFLAGS) $$(CFLAGS) $$(KERNEL_COPY_CFLAGS) $(2) $$< -o $$@
+	$$(Q)$$(CC) $$(CPPFLAGS) $$(CFLAGS) $(2) -MT $$@ -MM $$< > $$(@:.o=.d)
+endef
+$(foreach c,$(KERNEL_COPIES),$(eval $(call KERNEL_COPY_RULE,$(c),$(foreach f,$(subst -, ,$(c)),$(KERNEL_COPY_FLAGS_$(f))))))
 
 # Rebuild everything when the compiler or any flag changes (options outside the binary tag)
 CONFIG_STAMP  = $(BUILD_DIR)/config.stamp

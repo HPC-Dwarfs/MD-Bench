@@ -57,6 +57,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
     }
 
     const CoulombScalar cs = coulombScalarInit(param);
+    const int excl         = atom->molsize > 1; // molecular exclusions
     const int nf           = threadForcesReserve(atom);
     const int energy       = param->compute_energy;
     const int half_list    = neighbor->half_neigh || param->method;
@@ -170,6 +171,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                                     atom->cl_q[cj_sca],
                                     mol_i,
                                     atom->cl_mol[cj_sca],
+                                    excl,
                                     cs);
                                 if (energy) {
                                     MD_FLOAT vlj, vc;
@@ -180,6 +182,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
                                         atom->cl_q[cj_sca],
                                         mol_i,
                                         atom->cl_mol[cj_sca],
+                                        excl,
                                         cs,
                                         &vlj,
                                         &vc);
@@ -257,6 +260,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
     MD_FLOAT epsilon = param->epsilon;
 #endif
     const CoulombScalar coul = coulombScalarInit(param);
+    const int excl           = atom->molsize > 1; // molecular exclusions
 
     for (int ci = 0; ci < Nshell; ci++) {
         int numneighs   = neighbor->numNeighShell[ci];
@@ -310,6 +314,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
                             atom->cl_q[cj_sca],
                             mol_i,
                             atom->cl_mol[cj_sca],
+                            excl,
                             coul);
                         if (param->compute_energy) {
                             MD_FLOAT vlj, vc;
@@ -320,6 +325,7 @@ void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
                                 atom->cl_q[cj_sca],
                                 mol_i,
                                 atom->cl_mol[cj_sca],
+                                excl,
                                 coul,
                                 &vlj,
                                 &vc);

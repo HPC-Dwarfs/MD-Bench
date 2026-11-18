@@ -228,20 +228,16 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
 #endif
 
     RowMasks interact;
-#if USE_EXCLUSIONS
     if (excl) {
         for (int r = 0; r < nr; r++) {
             interact.v[r] = simd_mask_not(simd_mask_i32_cond_eq(ir->mol.v[r], jd->mol));
         }
     }
-#endif
     for (int r = 0; r < nrlj; r++) {
         six.v[r] = simd_real_mul(rinvsq.v[r], simd_real_mul(rinvsq.v[r], rinvsq.v[r]));
-#if USE_EXCLUSIONS
         if (excl) {
             six.v[r] = simd_real_select_by_mask(six.v[r], interact.v[r]);
         }
-#endif
     }
 
     for (int r = 0; r < nrlj; r++) {
@@ -267,12 +263,8 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
 #if COULOMB_RULE != COULOMB_NONE
     Rows rinv_coul;
     for (int r = 0; r < nr; r++) {
-#if USE_EXCLUSIONS
         rinv_coul.v[r] = excl ? simd_real_select_by_mask(rinv.v[r], interact.v[r])
                               : rinv.v[r];
-#else
-        rinv_coul.v[r] = rinv.v[r];
-#endif
     }
     Rows fcoul;
 #if COULOMB_RULE == COULOMB_RF

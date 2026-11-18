@@ -11,7 +11,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="${ROOT_DIR}/tests/gromacs_nonbonded"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 PYTHON="${PYTHON:-python3}"
 
@@ -47,10 +46,8 @@ for rule in rf ewald ewald_table none; do
     if [ "${dtype}" = "DP" ]; then tol="1e-7"; etol="1e-9"; else tol="5e-5"; etol="2e-5"; fi
     # GROMACS sizes the Ewald table for single precision force accuracy, also in double
     if [ "${rule}" = "ewald_table" ] && [ "${dtype}" = "DP" ]; then tol="1e-6"; etol="1e-8"; fi
-    excl=auto
-    if [ "${rule}" = "none" ]; then excl=true; fi
-    cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}"
-         COULOMB_RULE="${rule}" EXCLUSIONS="${excl}")
+    cfg=(TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE="${dtype}"
+         COULOMB_RULE="${rule}")
     kernel_opts=()
     case "${kernel}" in
       VL) cfg+=(OPT_SCHEME=verletlist) ;;

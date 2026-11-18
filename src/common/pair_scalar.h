@@ -5,8 +5,8 @@
  * license that can be found in the LICENSE file.
  */
 /* Scalar force of one atom pair: Lennard-Jones, electrostatics (COULOMB_RULE) and
- * molecular exclusions (USE_EXCLUSIONS), the same physics as pairForces() in
- * clusterpair/pair_rows.h computes for the cluster-pair SIMD kernels. Used by the GPU
+ * molecular exclusions (excl: the system has molecules), the same physics as pairForces()
+ * in clusterpair/pair_rows.h computes for the cluster-pair SIMD kernels. Used by the GPU
  * cluster-pair kernels and by the verlet-list kernels (CPU and GPU). */
 #ifndef __PAIR_SCALAR_H_
 #define __PAIR_SCALAR_H_
@@ -35,6 +35,7 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     MD_FLOAT qj,
     int mol_i,
     int mol_j,
+    const int excl,
     CoulombScalar cs)
 {
     // Padding atoms can sit at the same point. Like GROMACS, clamp the distance so that
@@ -50,20 +51,16 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
     MD_FLOAT force = (MD_FLOAT)(48.0) * sr6 * (sr6 - (MD_FLOAT)(0.5)) * sr2 * epsilon;
 
-#if USE_EXCLUSIONS
-    const int interact = mol_i != mol_j;
+    const int interact = !excl || mol_i != mol_j;
     if (!interact) {
         force = (MD_FLOAT)0.0;
     }
-#endif
 
 #if COULOMB_RULE != COULOMB_NONE
     MD_FLOAT rinv_coul = rinv;
-#if USE_EXCLUSIONS
     if (!interact) {
         rinv_coul = (MD_FLOAT)0.0;
     }
-#endif
     const MD_FLOAT qq = qi * qj;
 #if COULOMB_RULE == COULOMB_RF
     force += qq * (rinv_coul * sr2 - cs.k_rf2);
@@ -81,6 +78,7 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     (void)qj;
     (void)mol_i;
     (void)mol_j;
+    (void)interact;
     (void)cs;
     return force;
 }
@@ -93,6 +91,7 @@ static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
     MD_FLOAT qj,
     int mol_i,
     int mol_j,
+    const int excl,
     CoulombScalar cs,
     MD_FLOAT* vlj,
     MD_FLOAT* vc)
@@ -107,21 +106,17 @@ static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
     MD_FLOAT sr6 = sr2 * sr2 * sr2 * sigma6;
     MD_FLOAT e   = (MD_FLOAT)(4.0) * epsilon * sr6 * (sr6 - (MD_FLOAT)(1.0));
 
-#if USE_EXCLUSIONS
-    const int interact = mol_i != mol_j;
+    const int interact = !excl || mol_i != mol_j;
     if (!interact) {
         e = (MD_FLOAT)0.0;
     }
-#endif
     *vlj = e;
 
 #if COULOMB_RULE != COULOMB_NONE
     MD_FLOAT rinv_coul = rinv;
-#if USE_EXCLUSIONS
     if (!interact) {
         rinv_coul = (MD_FLOAT)0.0;
     }
-#endif
 #if COULOMB_RULE == COULOMB_RF
     *vc = qi * qj * (rinv_coul + cs.k_rf * rsq - cs.c_rf);
 #elif COULOMB_RULE == COULOMB_EWALD
@@ -139,6 +134,7 @@ static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
     (void)qj;
     (void)mol_i;
     (void)mol_j;
+    (void)interact;
     (void)cs;
 }
 

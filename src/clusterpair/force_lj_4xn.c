@@ -48,7 +48,7 @@ static inline IRows load4xnIRows(const Atom* atom, const int ci, const PairConst
 #elif LJ_COMB_RULE == LJ_COMB_FULL
         ir.type.v[r] = simd_i32_broadcast(atom->cl_t[sca + r] * atom->ntypes);
 #endif
-#if USE_EXCLUSIONS
+#if KERNEL_EXCL
         ir.mol.v[r] = simd_i32_broadcast(atom->cl_mol[sca + r]);
 #endif
     }
@@ -76,7 +76,7 @@ static inline JData load4xnJData(const Atom* atom, const int cj)
 #elif LJ_COMB_RULE == LJ_COMB_FULL
     jd.type = simd_i32_load(&atom->cl_t[sca]);
 #endif
-#if USE_EXCLUSIONS
+#if KERNEL_EXCL
     jd.mol = simd_i32_load(&atom->cl_mol[sca]);
 #endif
 
@@ -190,7 +190,7 @@ MD_ALWAYS_INLINE void iClusterHalf4xn(Parameter* param,
         const JData jd      = load4xnJData(atom, cj);
         const RowMasks diag = load4xnDiagMasks(atom, atom->masks_4xn_hn, ci, cj);
         const PairForces p =
-            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, &diag, 1, pc, atom);
+            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, &diag, KERNEL_EXCL, pc, atom);
 
         accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
         if (cj < nlocal_clusters || param->method) {
@@ -375,7 +375,7 @@ MD_ALWAYS_INLINE void iClusterFull4xn(Atom* atom,
         const JData jd      = load4xnJData(atom, cj);
         const RowMasks diag = load4xnDiagMasks(atom, atom->masks_4xn_fn, ci, cj);
         const PairForces p =
-            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, &diag, 1, pc, atom);
+            pairForces(CLUSTER_M, nrlj, energy, &ir, &jd, &diag, KERNEL_EXCL, pc, atom);
 
         accumulateForces(CLUSTER_M, &fx, &fy, &fz, &p);
         if (energy) accumulateEnergies(CLUSTER_M, &e, &p);

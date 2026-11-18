@@ -74,6 +74,7 @@ static int buildGmxBenchAtoms(Atom* atom, Parameter* param)
     const int ntypes             = WATER_NTYPES;
     atom->ntypes                 = ntypes;
     atom->molsize                = numAtomsInMolecule;
+    param->molsize               = numAtomsInMolecule;
 
     int idx = 0;
     for (int x = 0; x < fac[0]; ++x) {

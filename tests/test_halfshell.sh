@@ -19,7 +19,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="${ROOT_DIR}/tests/gromacs_nonbonded"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 PYTHON="${PYTHON:-python3}"
 
@@ -41,7 +40,7 @@ case "${SIMD}" in
 esac
 for config in "${CONFIGS[@]}"; do
   IFS=: read -r kernel dtype tol <<<"${config}"
-  cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}"
+  cfg=(TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE="${dtype}"
        OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}")
   make "${cfg[@]}" >/dev/null
   bin="$(make -s "${cfg[@]}" print-target)"

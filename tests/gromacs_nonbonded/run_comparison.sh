@@ -18,7 +18,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIR="${ROOT_DIR}/tests/gromacs_nonbonded"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 PYTHON="${PYTHON:-python3}"
 ITER="${ITER:-500}"
@@ -53,7 +52,7 @@ trap 'rm -rf "${WORK}"' EXIT
 cd "${ROOT_DIR}"
 
 build() { # rule, prints the binary
-  local cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE=SP
+  local cfg=(TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE=SP
              OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${KERNEL}" COULOMB_RULE="$1")
   make "${cfg[@]}" >/dev/null
   make -s "${cfg[@]}" print-target

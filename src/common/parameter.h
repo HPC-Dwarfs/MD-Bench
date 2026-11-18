@@ -77,11 +77,6 @@ typedef struct {
 #define COULOMB_IS_EWALD                                                                 \
     (COULOMB_RULE == COULOMB_EWALD || COULOMB_RULE == COULOMB_EWALD_TABLE)
 
-// Molecular exclusions: atoms of the same molecule do not interact via LJ and the
-// direct Coulomb term, only through the Coulomb exclusion correction
-#ifndef USE_EXCLUSIONS
-#define USE_EXCLUSIONS 0
-#endif
 
 // Lower limit of the squared distance in the force kernels, as GROMACS'
 // c_nbnxmMinDistanceSquared: below it 1/r^12 overflows. The padding atoms of two clusters
@@ -170,6 +165,9 @@ typedef struct {
     double energy_coul;
     // Half-LJ i-clusters (-halflj), as GROMACS' half-LJ kernels
     bool half_lj;
+    // Atoms per molecule of the system, > 1 turns on the molecular exclusions: atoms of
+    // the same molecule only interact through the Coulomb exclusion correction
+    int molsize;
     // Newton-Raphson refined 1/r^2 and 1/r in the SIMD kernels (--accurate-recip)
     int accurate_reciprocal;
     // j-cluster prefetch of the CPU cluster-pair SIMD kernels (--no-prefetch disables)

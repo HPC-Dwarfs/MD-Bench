@@ -75,12 +75,13 @@ make -s OPT_SCHEME=clusterpair COULOMB_RULE=ewald print-target
 
 Binary names follow `MDBench-<OPT_TAG>-<TOOL_TAG>-<DATA_TYPE><TAG_SUFFIX>` (`config.mk`):
 - `OPT_TAG`: `VL` (+ `-SIMD`, `-NBSIMD`) or `CP-<CLUSTER_PAIR_KERNEL>`, `CP-ref` for the
-  CPU reference kernel (`USE_REFERENCE_KERNEL`, forced by `SIMD=NONE`)
-- `TOOL_TAG`: `<TOOLCHAIN>-<ISA>[-<SIMD>][-CMP]`
-- `TAG_SUFFIX`: `-<LJ_COMB_RULE>[-<COULOMB_RULE>][-excl][-omp][-mpi]` (`-excl` only without
-  Coulomb, `-omp`/`-mpi` for `ENABLE_OPENMP`/`ENABLE_MPI`)
+  CPU reference kernel (`USE_REFERENCE_KERNEL`, forced by scalar `SIMD`)
+- `TOOL_TAG`: `<TOOLCHAIN>-<SIMD>[-CMP]` (`SIMD` resolved, e.g. `X86_SCALAR` for `NONE`),
+  only `<TOOLCHAIN>` for GPU builds
+- `TAG_SUFFIX`: `-<LJ_COMB_RULE>[-<COULOMB_RULE>][-omp][-mpi]` (`-omp`/`-mpi` for
+  `ENABLE_OPENMP`/`ENABLE_MPI`)
 
-e.g. `MDBench-CP-auto-GCC-X86-AVX512-DP-geometric-omp`. Options outside the name (data
+e.g. `MDBench-CP-auto-GCC-AVX512-DP-geometric-omp`. Options outside the name (data
 layouts, tracers, `COMPUTE_STATS`, GPU options, ...) share the binary and build directory;
 `$(BUILD_DIR)/config.stamp` records the compiler and all flags and every object depends
 on it, so changing any option recompiles (no stale objects, the binary always matches its
@@ -93,13 +94,14 @@ Key configuration options in `config.mk`:
 
 - `TOOLCHAIN`: Compiler toolchain (GCC/CLANG/ICC/ICX/NVCC/HIPCC)
 - `OPT_SCHEME`: Algorithmic variant (verletlist/clusterpair)
-- `SIMD`: SIMD instruction set (NONE/SSE/AVX/AVX2/AVX512/NEON/SVE/SVE2)
+- `SIMD`: instruction set, also selects the architecture (`ISA` is derived and may not be
+  given): X86 `X86_SCALAR`/SSE/AVX/AVX_FMA/AVX2/AVX512, ARM `ARM_SCALAR`/NEON/SVE/SVE2;
+  `NONE` = scalar for the build machine (`uname -m`); internally scalar is `SIMD=NONE`
 - `DATA_TYPE`: Precision (SP for single, DP for double)
 - `ATOM_DATA_LAYOUT`: Data layout (AOS for array-of-structures, SOA for structure-of-arrays)
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU and SOA for GPU
 - `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `full` for full pair matrix)
 - `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`/`ewald_table`), the plain LJ kernels of both schemes (CPU and GPU; `ewald_table` CPU only, `config.mk` rejects it for NVCC/HIPCC); adds `-<rule>` to the binary tag
-- `EXCLUSIONS`: Molecular exclusions (`auto`/`true`/`false`), `auto` = on when `COULOMB_RULE` is not `none`
 - `ENABLE_MPI`: Enable MPI parallelization (`-mpi` in the binary name)
 - `ENABLE_OPENMP`: Enable OpenMP parallelization (`-omp` in the binary name)
 - `USE_REFERENCE_KERNEL`: cluster-pair C reference kernel (`CP-ref`); the verlet-list
@@ -108,7 +110,8 @@ Key configuration options in `config.mk`:
   the cut-off
 - Former build options that are runtime options now: `ACCURATE_RECIPROCAL` ->
   `--accurate-recip`, `KERNEL_PREFETCH=false` -> `--no-prefetch`, `SORT_ATOMS` ->
-  `--sort-every <n>`; `config.mk` stops with a hint when they are set
+  `--sort-every <n>`; `EXCLUSIONS` is inferred from the system (`molsize > 1`) and `ISA`
+  from `SIMD`; `config.mk` stops with a hint when any of them is set
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds; **required, no default**. Common values: `gfx90a` (MI250X), `gfx940` (MI300A), `gfx942` (MI300X), `gfx1030` (RX 6800 XT)
 - `LJ_TABLE_INDEX`: Indexing mode for tabulated LJ kernels (`r` or `rsq`); `rsq` avoids a sqrt and is load-bound
 - `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme (auto/4xN/2xNN/2xN/gpusimple/supercluster)
@@ -203,12 +206,15 @@ once in `pair_rows.h` (`pairForces()`): a kernel keeps the i-cluster in "rows"
 the j-cluster (`JData`) and only differs in how it loads, in the diagonal mask table and
 in how it reduces forces. `kernel_math.h` pulls in the reciprocal/rsqrt helpers of `src/common/simd_math.h`
 (`ACCURATE_RECIPROCAL` selects Newton-Raphson refinement). Each kernel file is compiled
-four times: the wrappers `force_lj_<kind>_accurate.c`, `_noprefetch.c` and
-`_accurate_noprefetch.c` define `ACCURATE_RECIPROCAL`/`KERNEL_NO_PREFETCH` and include it,
+eight times: the `Makefile` (`KERNEL_COPIES`, objects `<file>.<options>.o`) adds
+`-DACCURATE_RECIPROCAL`/`-DKERNEL_NO_PREFETCH`/`-DKERNEL_EXCLUSIONS` per combination,
 `KERNEL_FN()` names the entry points of each copy and `SELECT_KERNEL()` in `initForce()`
-picks one by `--accurate-recip`/`--no-prefetch` (`src/common/kernel_variant.h`; the
-verlet-list SIMD kernels have the `--accurate-recip` copy `force_lj_simd_accurate.c`). A
-runtime branch for the prefetch cost up to 2.4% on AVX2, the copies cost nothing. The math is GROMACS': one rsqrt
+picks one by `--accurate-recip`, `--no-prefetch` and `param->molsize > 1`
+(`src/common/kernel_variant.h`). The verlet-list SIMD kernels have an `accurate` copy, the
+verlet-list C kernels (`force_lj.c`) an `excl` copy. Runtime flags inside the kernels cost
+1.5-3% (measured on Genoa: GCC lays out the inlined copies differently), the compiled
+copies are within run-to-run noise of a build without the option. So new kernel options
+should become copies, not branches. The math is GROMACS': one rsqrt
 for 1/r and 1/r^2 (a plain reciprocal without electrostatics), the cut-off/diagonal mask
 applied to 1/r only, LJ from per-atom `cl_sqrt6c6`/`cl_sqrt12c12` products or the
 `ljc6x6`/`ljc12x12` type-pair tables, all phase by phase over the rows.
@@ -250,16 +256,21 @@ with `pairForceScalar()` (`src/common/pair_scalar.h`, host and device code, usin
 scalar copy of the correction in `src/common/coulomb_scalar.h`): the cluster-pair reference
 kernel and eight-shell ghost routine, the cluster-pair GPU kernels (`gpusimple`,
 `supercluster`; loads in `src/clusterpair/pair_cuda.h`) and the verlet-list kernels. They
-compare the molecule index per pair, as their lists have no masked part. `cl_q`/`cl_mol`
-are only copied to the GPU when `COULOMB_RULE`/`EXCLUSIONS` need them. `initForce()`
-aborts for the EAM and tabulated kernels (`-f eam`/`lj_table`) when `COULOMB_RULE`/
-`EXCLUSIONS` are enabled.
+compare the molecule index per pair when the `excl` argument is set (a literal or
+template constant: `EXCL` of the GPU kernels, the `excl` copy of the verlet-list C
+kernels), as their lists have no masked part. `cl_q` is only copied to the GPU with
+`COULOMB_RULE`, `cl_mol` only for systems with molecules. `initForce()` aborts for the EAM
+and tabulated kernels (`-f eam`/`lj_table`) with `COULOMB_RULE`, `-gmxbench` needs `-f lj`.
+Exclusions are a property of the system: on when `atom->molsize > 1` (also
+`param->molsize`, set by `buildGmxBenchAtoms()`); the cluster-pair `initForce()` and
+`initNeighbor()` therefore run after the atoms are created.
 Charges are per atom type (`atom->q_per_type`, copied to `cl_q`). Exclusions are
 molecule based: `atom->molsize` consecutive atom ids form a molecule, `cl_mol` holds the
 molecule index per cluster slot and `cl_id` the original atom index (the atom array
 itself is never permuted, only `updateSingleAtoms()` rewrites it from the clusters).
 `buildNeighborCPU()` keeps cluster pairs that contain an excluded atom pair in the
-masked part of the list (`clusterPairHasExclusion()`), the masked kernel loop compares
+masked part of the list (`clusterPairHasExclusion()`, only with molecules), the masked
+kernel loop of the `excl` copies (`KERNEL_EXCL`) compares
 `cl_mol` per lane and only zeroes LJ and the direct `1/r^3` term: excluded pairs inside
 the cut-off still get the exclusion correction, like in GROMACS' NBNxM kernels. The
 unmasked loop has no exclusion work. Ghost clusters copy `cl_q`/`cl_mol`/`cl_id` in the
@@ -276,7 +287,7 @@ default `USE_SIMD_KERNEL=false`) and its GPU kernels (`forceCuda.cu`): per-atom 
 and `id` (`src/verletlist/atom.h`), set from the type and the original index by
 `setAtomTypeId()`, follow the atom through `copy()`, `sortAtom()`, the ghosts (`ADDGHOST`,
 `updatePbcCPU()`, `computePbcUpdate()` on the GPU) and the MPI buffers. The explicit SIMD
-kernels (`USE_SIMD_KERNEL=true`) refuse `COULOMB_RULE`/`EXCLUSIONS`. The verlet-list half
+kernels (`USE_SIMD_KERNEL=true`) refuse `COULOMB_RULE` and `-gmxbench` (molecules). The verlet-list half
 kernel writes through per-thread force arrays like the cluster pairs
 (`src/verletlist/thread_forces.h`).
 
@@ -428,7 +439,7 @@ kernels, neighbor list construction, integration, box geometry, and thermodynami
 single precision `ASSERT_NEAR` uses a relative tolerance of at least 1e-5:
 ```bash
 make OPT_SCHEME=clusterpair mdbench-tests
-./MDBench-CP-auto-GCC-X86-AVX512-SP-geometric-omp-tests
+./MDBench-CP-auto-GCC-AVX512-SP-geometric-omp-tests
 ```
 
 Regression tests are shell scripts under `tests/` (e.g.
@@ -450,7 +461,7 @@ print-target`. Run everything with:
 ```bash
 make test                                  # unit tests + all regression scripts
 make SIMD=NONE test                        # test a specific configuration
-bash tests/sim_argon_regression.sh ./MDBench-VL-GCC-X86-AVX512-DP-geometric-omp
+bash tests/sim_argon_regression.sh ./MDBench-VL-GCC-AVX512-DP-geometric-omp
 ```
 Apart from `test_gpu_coulomb.sh`, which has to be run by hand on a GPU node, there is no
 automated coverage for the cluster-pair GPU/super-clustering path

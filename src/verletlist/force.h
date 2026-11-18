@@ -21,6 +21,9 @@ enum forcetype { FF_LJ = 0, FF_EAM, FF_LJ_TABLE };
 extern void initForce(Parameter*);
 extern double computeForceLJHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+// Copies with molecular exclusions, see kernel_variant.h
+extern double computeForceLJHalfNeighExcl(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJFullNeighExcl(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);

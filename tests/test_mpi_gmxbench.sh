@@ -11,7 +11,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="${ROOT_DIR}/tests/gromacs_nonbonded"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 PYTHON="${PYTHON:-python3}"
 SIZE="${SIZE:-8}"
@@ -54,7 +53,7 @@ for kernel in "${SIMD_KERNEL}" REF VL; do
       kernel_opts=(--accurate-recip)
       ;;
   esac
-  cfg=(TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE=SP ENABLE_MPI=true
+  cfg=(TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE=SP ENABLE_MPI=true
        COULOMB_RULE=ewald PREFIX_DIR="${WORK}/${kernel}" "${args[@]}")
   make "${cfg[@]}" >/dev/null
   bin="$(make -s "${cfg[@]}" print-target)"
