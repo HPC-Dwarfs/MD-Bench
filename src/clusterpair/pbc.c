@@ -100,7 +100,7 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool firstUpdate)
                 cjX[CL_X_INDEX(cjj)] = CLUSTER_PAD_COORD;
                 cjX[CL_Y_INDEX(cjj)] = CLUSTER_PAD_COORD;
                 cjX[CL_Z_INDEX(cjj)] = CLUSTER_PAD_COORD;
-                cjT[cjj]             = 0;
+                clearClusterAtom(atom, cjScaBase + cjj);
             }
 
             atom->jclusters[cj].bbminx = bbminx;
