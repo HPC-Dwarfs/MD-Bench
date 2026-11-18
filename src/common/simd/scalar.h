@@ -123,6 +123,20 @@ static inline MD_SIMD_FLOAT simd_real_masked_add(
 }
 
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b) { return a & b; }
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return (MD_SIMD_MASK)(~a & ((1u << VECTOR_WIDTH) - 1));
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    MD_SIMD_MASK result = 0;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        if (a.val[i] == b.val[i]) {
+            result |= (1 << i);
+        }
+    }
+    return result;
+}
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     MD_SIMD_MASK result = 0;

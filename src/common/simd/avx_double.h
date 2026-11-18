@@ -168,13 +168,29 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm256_cmp_pd(a, b, _CMP_LT_OQ);
 }
+// 4x32-bit compare result to a 4x64-bit mask: duplicating each lane keeps all-ones and
+// zero (_mm256_cvtepi32_pd would turn -1 into -1.0, not all-ones), without AVX2
+static inline MD_SIMD_MASK simd_mask_from_i32_cmp(__m128i c)
+{
+    const __m256i m = _mm256_insertf128_si256(
+        _mm256_castsi128_si256(_mm_unpacklo_epi32(c, c)), _mm_unpackhi_epi32(c, c), 1);
+    return _mm256_castsi256_pd(m);
+}
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 {
-    return _mm256_cvtepi32_pd(_mm_cmplt_epi32(a, b));
+    return simd_mask_from_i32_cmp(_mm_cmplt_epi32(a, b));
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return simd_mask_from_i32_cmp(_mm_cmpeq_epi32(a, b));
 }
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _mm256_and_pd(a, b);
+}
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return _mm256_xor_pd(a, _mm256_castsi256_pd(_mm256_set1_epi64x(-1)));
 }
 // TODO: Initialize all diagonal cases and just select the proper one (all bits set or
 // diagonal) based on cond0
