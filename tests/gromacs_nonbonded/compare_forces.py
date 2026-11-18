@@ -48,12 +48,17 @@ def main():
         f"{a.label:<34s} atoms={len(r)} rms|F|ref={scale:10.4f}  "
         f"rms_err={rms:.3e}  max_err={mx:.3e}  net_force_test={np.abs(net_t).max():.2e}"
     )
-    bad = (a.tol is not None and rms > a.tol) or (a.tol_max is not None and mx > a.tol_max)
+    bad = (
+        not np.isfinite(rms)
+        or not np.isfinite(mx)
+        or (a.tol is not None and rms > a.tol)
+        or (a.tol_max is not None and mx > a.tol_max)
+    )
     er, et = energies(a.reference), energies(a.test)
     for term in sorted(set(er) & set(et)):
         rel = abs(et[term] - er[term]) / max(abs(er[term]), 1e-30)
         print(f"{'':<34s} energy_{term:<8s} ref={er[term]:.9g} test={et[term]:.9g} rel_err={rel:.3e}")
-        if a.etol is not None and rel > a.etol:
+        if not np.isfinite(rel) or (a.etol is not None and rel > a.etol):
             bad = True
     if a.etol is not None and not (set(er) & set(et)) and et:
         print("no reference energies to compare with")
