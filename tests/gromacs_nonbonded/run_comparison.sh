@@ -79,6 +79,10 @@ for size in "${SIZES[@]}"; do
     rows=()
     for variant in "${VARIANT_LIST[@]}"; do
       read -r -a opts <<<"${variant}"
+      energy_args=()
+      if [[ " ${variant} " == *" -energy "* ]]; then
+        energy_args=(--require-energy)
+      fi
       name="${variant:-forces}"
       "${PIN[@]}" "${GMX}" nonbonded-benchmark -size "${size}" -nt 1 -simd "${GMX_KERNEL}" \
           "${gmx_coulomb[@]}" "${opts[@]}" -combrule geometric -cutoff 1.0 -iter "${ITER}" \
@@ -99,7 +103,7 @@ for size in "${SIZES[@]}"; do
         # GROMACS sums energies in single precision (2e-4 off the exact RF energy at size 8)
         if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/gmx_forces.txt" \
              "${WORK}/mdb_forces.txt" --tol 1e-5 --tol-max 1e-4 --etol 1e-3 \
-             --label "MD-Bench vs GROMACS ${name}, half=${half}"; then
+             "${energy_args[@]}" --label "MD-Bench vs GROMACS ${name}, half=${half}"; then
           status=1
         fi
         list="half"

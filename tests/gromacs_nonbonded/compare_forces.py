@@ -36,6 +36,8 @@ def main():
     ap.add_argument("--tol-max", type=float, default=None, help="max allowed max error / rms reference force")
     ap.add_argument("--label", default="")
     ap.add_argument("--etol", type=float, default=None, help="max allowed relative energy error")
+    ap.add_argument("--require-energy", action="store_true",
+                    help="require both LJ and Coulomb energies in both dumps")
     a = ap.parse_args()
     r, t = load(a.reference), load(a.test)
     if r.shape != t.shape:
@@ -55,6 +57,16 @@ def main():
         or (a.tol_max is not None and mx > a.tol_max)
     )
     er, et = energies(a.reference), energies(a.test)
+    if a.require_energy:
+        expected = {"lj", "coulomb"}
+        missing = sorted(
+            f"{path}: energy_{term}"
+            for path, values in ((a.reference, er), (a.test, et))
+            for term in expected - values.keys()
+        )
+        if missing:
+            print(f"missing required energies: {', '.join(missing)}")
+            bad = True
     for term in sorted(set(er) & set(et)):
         rel = abs(et[term] - er[term]) / max(abs(er[term]), 1e-30)
         print(f"{'':<34s} energy_{term:<8s} ref={er[term]:.9g} test={et[term]:.9g} rel_err={rel:.3e}")

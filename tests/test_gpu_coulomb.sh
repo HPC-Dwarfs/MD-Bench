@@ -66,12 +66,16 @@ for rule in rf ewald none; do
       for size in 1 8; do
         for half in 0 1; do
           for opts in "-n 0" "--kernel-bench 2" "--kernel-bench 2 -energy"; do
+            energy_args=()
+            if [[ " ${opts} " == *" -energy "* ]]; then
+              energy_args=(--require-energy)
+            fi
             # shellcheck disable=SC2086
             "${bin}" -gmxbench -size "${size}" -half "${half}" ${opts} \
                 --dump-forces "${WORK}/f.txt" >/dev/null
             if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/ref_${rule}_${size}.txt" \
                  "${WORK}/f.txt" --tol "${tol}" --tol-max "$(python3 -c "print(${tol}*10)")" \
-                 --etol "${etol}" \
+                 --etol "${etol}" "${energy_args[@]}" \
                  --label "${kernel} ${rule} ${dtype} size=${size} half=${half} ${opts}"; then
               status=1
             fi

@@ -68,7 +68,7 @@ for kernel in "${SIMD_KERNEL}" REF VL; do
         continue
       }
       if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/ref.txt" "${WORK}/f.txt" \
-           --tol 5e-5 --tol-max 5e-4 --etol 2e-5 \
+           --tol 5e-5 --tol-max 5e-4 --etol 2e-5 --require-energy \
            --label "${kernel} np=${np} half=${half}"; then
         status=1
       fi
