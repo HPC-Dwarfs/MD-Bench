@@ -88,12 +88,12 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                              (double)(stats->calculated_forces);
     double avgSimd = stats->force_iters / (double)(atom->Natoms * (param->ntimes + 1));
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-    forceUsefulVolume += 1e-9 *
-                         (double)((atom->Natoms * (param->ntimes + 1)) +
-                                  stats->num_neighs) *
-                         sizeof(int);
-#endif
+    if (param->lj_comb_rule != LJ_COMB_SINGLE) {
+        forceUsefulVolume += 1e-9 *
+                             (double)((atom->Natoms * (param->ntimes + 1)) +
+                                      stats->num_neighs) *
+                             sizeof(int);
+    }
     if (me == 0) {
         printf("Statistics:\n");
         printf("\tVector width: %d, Processor frequency: %.4f GHz\n",
@@ -112,8 +112,7 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
             timer[FORCE] * param->proc_freq * 1e9 / stats->force_iters);
     }
 
-#ifdef USE_REFERENCE_KERNEL
-
+    // Only the C (non-SIMD) kernels count the pairs inside and outside of the cut-off
     long long int within_cutoff_sum  = 0;
     long long int outside_cutoff_sum = 0;
 
@@ -140,7 +139,7 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                              (double)(stats->atoms_within_cutoff +
                                       stats->atoms_outside_cutoff) *
                              100.0;
-    if (me == 0) {
+    if (me == 0 && stats->atoms_within_cutoff + stats->atoms_outside_cutoff > 0) {
         printf("\tAtoms within/outside cutoff radius: %lld/%lld (%.2f%%)\n",
             stats->atoms_within_cutoff,
             stats->atoms_outside_cutoff,
@@ -150,13 +149,12 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
                                 (double)(stats->clusters_within_cutoff +
                                          stats->clusters_outside_cutoff) *
                                 100.0;
-    if (me == 0) {
+    if (me == 0 && stats->clusters_within_cutoff + stats->clusters_outside_cutoff > 0) {
         printf("\tClusters within/outside cutoff radius: %lld/%lld (%.2f%%)\n",
             stats->clusters_within_cutoff,
             stats->clusters_outside_cutoff,
             clusters_eff);
     }
-#endif
 
 #endif
 }

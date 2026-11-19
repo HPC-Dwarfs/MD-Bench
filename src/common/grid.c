@@ -1,4 +1,5 @@
 #include <allocate.h>
+#include <comm.h>
 #include <grid.h>
 #include <math.h>
 #include <parameter.h>
@@ -255,7 +256,7 @@ void nextBisectionLevel(Grid* grid,
     int rank, size;
     int branch = 0, i = 0, m = 0;
     int nsend = 0, nrecv = 0, nrecv2 = 0;
-    int values_per_atom = 7;
+    int values_per_atom = EXCHANGE_SIZE;
     MD_FLOAT bisection, pos;
     MPI_Request request[2] = { MPI_REQUEST_NULL, MPI_REQUEST_NULL };
     MPI_Comm_rank(subComm, &rank);
@@ -579,13 +580,8 @@ void discardAtomsOutsideSubdomainBox(Atom* atom)
         MD_FLOAT z = atom_z(i);
 
         if (x >= xlo && x < xhi && y >= ylo && y < yhi && z >= zlo && z < zhi) {
-            atom_x(n)     = x;
-            atom_y(n)     = y;
-            atom_z(n)     = z;
-            atom_vx(n)    = atom_vx(i);
-            atom_vy(n)    = atom_vy(i);
-            atom_vz(n)    = atom_vz(i);
-            atom->type[n] = atom->type[i];
+            // copy() keeps all per-atom data, e.g. the global atom id of cluster-pair
+            copy(atom, n, i);
             n++;
         }
     }

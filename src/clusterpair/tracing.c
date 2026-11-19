@@ -29,9 +29,9 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
         MEM_TRACE(atom_z(i), 'R');
         INDEX_TRACE_ATOM(i);
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-        MEM_TRACE(atom->type[i], 'R');
-#endif
+        if (param->lj_comb_rule != LJ_COMB_SINGLE) {
+            MEM_TRACE(atom->type[i], 'R');
+        }
 
         DIST_TRACE_SORT(neighbor->neighbors, i, numneighs, Nlocal, neighbor->maxneighs);
         INDEX_TRACE(neighbor->neighbors, i, numneighs, Nlocal, neighbor->maxneighs);
@@ -44,9 +44,9 @@ void traceAddresses(Parameter* param, Atom* atom, Neighbor* neighbor, int timest
             MEM_TRACE(atom_y(j), 'R');
             MEM_TRACE(atom_z(j), 'R');
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-            MEM_TRACE(atom->type[j], 'R');
-#endif
+            if (param->lj_comb_rule != LJ_COMB_SINGLE) {
+                MEM_TRACE(atom->type[j], 'R');
+            }
         }
 
         /*

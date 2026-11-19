@@ -33,6 +33,11 @@ static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm256_sub_pd(a, b);
 }
+
+static inline MD_SIMD_FLOAT simd_real_max(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
+{
+    return _mm256_max_pd(a, b);
+}
 static inline MD_SIMD_FLOAT simd_real_mul(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm256_mul_pd(a, b);
@@ -127,7 +132,8 @@ static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
 {
     MD_FLOAT ret;
     fprintf(stderr,
-        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX with double precision!");
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX with double "
+        "precision!");
     exit(-1);
     return ret;
 }
@@ -162,13 +168,31 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm256_cmp_pd(a, b, _CMP_LT_OQ);
 }
+// 4x32-bit compare result to a 4x64-bit mask: duplicating each lane keeps all-ones and
+// zero (_mm256_cvtepi32_pd would turn -1 into -1.0, not all-ones), without AVX2
+static inline MD_SIMD_MASK simd_mask_from_i32_cmp(__m128i c)
+{
+    const __m256i m = _mm256_insertf128_si256(
+        _mm256_castsi128_si256(_mm_unpacklo_epi32(c, c)),
+        _mm_unpackhi_epi32(c, c),
+        1);
+    return _mm256_castsi256_pd(m);
+}
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
 {
-    return _mm256_cvtepi32_pd(_mm_cmplt_epi32(a, b));
+    return simd_mask_from_i32_cmp(_mm_cmplt_epi32(a, b));
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    return simd_mask_from_i32_cmp(_mm_cmpeq_epi32(a, b));
 }
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _mm256_and_pd(a, b);
+}
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return _mm256_xor_pd(a, _mm256_castsi256_pd(_mm256_set1_epi64x(-1)));
 }
 // TODO: Initialize all diagonal cases and just select the proper one (all bits set or
 // diagonal) based on cond0
@@ -238,13 +262,17 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm_add_epi32(a, b);
 }
+// Low 32 bits of the four products (_mm_mul_epi32 multiplies only lanes 0 and 2)
 static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 {
-    return _mm_mul_epi32(a, b);
+    return _mm_mullo_epi32(a, b);
 }
+// The masked load reads the sign bits of the mask: cvtpd turns an all-ones lane (NaN)
+// into 0x80000000. AVX has no integer masked load, the float one moves the same bits.
 static inline MD_SIMD_INT simd_i32_mask_load(const int* m, MD_SIMD_MASK k)
 {
-    return simd_i32_load(m) & _mm256_cvtpd_epi32(k);
+    const __m128i imask = _mm256_cvtpd_epi32(k);
+    return _mm_castps_si128(_mm_maskload_ps((const float*)m, imask));
 }
 
 static inline MD_SIMD_INT simd_i32_load_h_duplicate(const int* m)
@@ -294,4 +322,33 @@ static inline MD_SIMD_FLOAT simd_real_from_i32(MD_SIMD_INT v)
 static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm_min_epi32(a, b);
+}
+// AVX has no integer gather: the scalar loads of the four lanes
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    _mm_store_si128((__m128i*)m, a);
+}
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    int idx[4] __attribute__((aligned(16)));
+    int result[4] __attribute__((aligned(16)));
+    simd_i32_store(idx, vidx);
+    for (int i = 0; i < 4; i++) {
+        result[i] = *(const int*)((const char*)base + (long)idx[i] * scale);
+    }
+    return _mm_load_si128((const __m128i*)result);
+}
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    unsigned int m = (unsigned int)simd_mask_to_u32(mask);
+    MD_FLOAT vals[4] __attribute__((aligned(32)));
+    int idx[4] __attribute__((aligned(16)));
+    simd_real_store(vals, v);
+    simd_i32_store(idx, vidx);
+    for (int i = 0; i < 4; i++) {
+        if ((m >> i) & 1) {
+            _Pragma("omp atomic") base[idx[i]] -= vals[i];
+        }
+    }
 }

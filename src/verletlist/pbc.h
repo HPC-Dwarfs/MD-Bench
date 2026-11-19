@@ -22,6 +22,7 @@ extern void initPbc(Atom*);
 extern void updatePbcCPU(Atom*, Parameter*, bool);
 extern void updateAtomsPbcCPU(Atom*, Parameter*, bool);
 extern void setupPbcCPU(Atom*, Parameter*);
+extern void reverseGhostForcesCPU(Atom*, Parameter*);
 
 #ifdef CUDA_TARGET
 extern void updatePbcCUDA(Atom*, Parameter*, bool);

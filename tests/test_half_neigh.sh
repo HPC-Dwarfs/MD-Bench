@@ -13,30 +13,23 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 DATA_TYPE="${DATA_TYPE:-DP}"
-LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
+# LJ combination rule of the runs (--lj-comb)
+LJ_COMB="${LJ_COMB:-geometric}"
 USE_SIMD_KERNEL="${USE_SIMD_KERNEL:-false}"
 
 cd "${ROOT_DIR}"
 
-echo "Building Verlet-list binary (SIMD=${SIMD}, LJ_COMB_RULE=${LJ_COMB_RULE})..."
+echo "Building Verlet-list binary (SIMD=${SIMD}, LJ_COMB=${LJ_COMB})..."
 make clean >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
-     DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+     DATA_TYPE="${DATA_TYPE}" \
      USE_SIMD_KERNEL="${USE_SIMD_KERNEL}" >/dev/null
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-OPT_TAG="VL"
-if [ "${USE_SIMD_KERNEL}" = "true" ]; then
-  OPT_TAG="${OPT_TAG}-SIMD"
-fi
-VL_BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
+VL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+    DATA_TYPE="${DATA_TYPE}" USE_SIMD_KERNEL="${USE_SIMD_KERNEL}" \
+    print-target)"
 
 if [[ ! -x "${VL_BIN}" ]]; then
   echo "Binary '${VL_BIN}' is not executable" >&2
@@ -47,11 +40,11 @@ FULL_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_full.XXXXXX")"
 HALF_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_half.XXXXXX")"
 
 echo "Running with full neighbor lists (-half 0)..."
-"${VL_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
+"${VL_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
     -n 200 -half 0 >"${FULL_LOG}"
 
 echo "Running with half neighbor lists (-half 1)..."
-"${VL_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
+"${VL_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
     -n 200 -half 1 >"${HALF_LOG}"
 
 get_last_tp() {

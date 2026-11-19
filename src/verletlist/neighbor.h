@@ -31,7 +31,6 @@ typedef struct {
     int* neighbors;
     int* numneigh;
     int* numneigh_inner;
-    int* neigh_start;
     int maxneighs;
 } DeviceNeighbor;
 
@@ -54,6 +53,8 @@ typedef struct {
     int* neighshell;    // list of neighs for each atom in listShell
     int* listshell;     // Atoms to compute the force
 
+    // LJ combination rule: the variant of the list build (per-type or global cut-off)
+    int lj_comb_rule;
 } Neighbor;
 
 typedef struct {

@@ -7,6 +7,7 @@
 #ifndef __PARAMETER_H_
 #define __PARAMETER_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // Portable vector types compatible with CUDA/HIP.
@@ -34,43 +35,53 @@ typedef struct {
 #define MD_FLOAT3 float3
 #define MD_FLOAT4 float4
 #define MD_UINT   unsigned int
-/*
-#ifdef USE_REFERENCE_KERNEL
-#define MD_SIMD_FLOAT float
-#define MD_SIMD_MASK  uint16_t
-#endif
-*/
 #else
 #define MD_FLOAT  double
 #define MD_FLOAT3 double3
 #define MD_FLOAT4 double4
 #define MD_UINT   unsigned long long int
-/*
-#ifdef USE_REFERENCE_KERNEL
-#define MD_SIMD_FLOAT double
-#define MD_SIMD_MASK  uint8_t
-#endif
-*/
 #endif
 
-// LJ combination rule compile-time macros (Gromacs terminology)
-// Use -DLJ_COMB_RULE=<value> at compile time
+// LJ combination rules (GROMACS terminology), param->lj_comb_rule (--lj-comb). The force
+// kernels are compiled once per rule with -DLJ_COMB_RULE=<rule> (kernel_variant.h), all
+// other code reads the rule at runtime and must not use LJ_COMB_RULE.
 #define LJ_COMB_SINGLE 0 // Single atom type: broadcast global epsilon/sigma
 #define LJ_COMB_GEOM   1 // Geometric: sqrt(eps_i*eps_j), sigma3_i*sigma3_j
 #define LJ_COMB_FULL   2 // Full type-pair matrix lookup (no combination formula)
+#define LJ_COMB_AUTO   3 // Inferred from the atom types (resolveLJCombRule())
 
-// Default to geometric combination rule if not specified
-#ifndef LJ_COMB_RULE
-#define LJ_COMB_RULE LJ_COMB_GEOM
+// Coulomb treatment compile-time macros
+// Use -DCOULOMB_RULE=<value> at compile time
+#define COULOMB_NONE        0 // No electrostatics (LJ only)
+#define COULOMB_RF          1 // Reaction-field with infinite dielectric, shifted at the cut-off
+#define COULOMB_EWALD       2 // Real-space Ewald with analytical force correction
+#define COULOMB_EWALD_TABLE 3 // Real-space Ewald with tabulated (cubic spline) correction
+
+#ifndef COULOMB_RULE
+#define COULOMB_RULE COULOMB_NONE
 #endif
 
-// String names for printing
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-#define LJ_COMB_RULE_NAME "single"
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-#define LJ_COMB_RULE_NAME "geometric"
+// Both Ewald variants share the splitting coefficient and the energy terms
+#define COULOMB_IS_EWALD                                                                 \
+    (COULOMB_RULE == COULOMB_EWALD || COULOMB_RULE == COULOMB_EWALD_TABLE)
+
+// Lower limit of the squared distance in the force kernels, as GROMACS'
+// c_nbnxmMinDistanceSquared: below it 1/r^12 overflows. The padding atoms of two clusters
+// are at the same point, the limit keeps their (zero) force finite.
+#if PRECISION == 1
+#define MIN_DISTANCE_SQ ((MD_FLOAT)3.82e-07)
 #else
-#define LJ_COMB_RULE_NAME "full"
+#define MIN_DISTANCE_SQ ((MD_FLOAT)1.0e-36)
+#endif
+
+#if COULOMB_RULE == COULOMB_NONE
+#define COULOMB_RULE_NAME "none"
+#elif COULOMB_RULE == COULOMB_RF
+#define COULOMB_RULE_NAME "reaction-field"
+#elif COULOMB_RULE == COULOMB_EWALD
+#define COULOMB_RULE_NAME "ewald"
+#else
+#define COULOMB_RULE_NAME "ewald (tabulated correction)"
 #endif
 
 typedef struct {
@@ -120,12 +131,49 @@ typedef struct {
     int balance_every;
     int setup;
     int verbose;
+    int size;
+    bool gmxbenchmark;
+    // Electrostatics (only used when COULOMB_RULE != COULOMB_NONE)
+    MD_FLOAT epsfac;     // Coulomb prefactor (1/(4 pi eps0) in the unit system used)
+    MD_FLOAT ewald_rtol; // Relative tolerance at the cut-off used to derive ewald_beta
+    MD_FLOAT ewald_beta; // Ewald splitting coefficient
+    // Ewald correction table of COULOMB_EWALD_TABLE (see ewald_table.h)
+    MD_FLOAT ewald_table_scale; // points per length unit
+    int ewald_table_size;
+    MD_FLOAT* ewald_table_f;    // force correction F
+    MD_FLOAT* ewald_table_v;    // potential correction V
+    MD_FLOAT* ewald_table_fdv0; // F, F[i+1] - F[i], V, 0 per point
+    // Kernel-only benchmark: run the force kernel this many times on a fixed list
+    int kernel_bench;
+    char* dump_forces_file;
+    // Energy kernels (-energy): LJ and Coulomb energy of the last force call
+    bool compute_energy;
+    double energy_lj;
+    double energy_coul;
+    // Half-LJ i-clusters (-halflj), as GROMACS' half-LJ kernels
+    bool half_lj;
+    // Atoms per molecule of the system, > 1 turns on the molecular exclusions: atoms of
+    // the same molecule only interact through the Coulomb exclusion correction
+    int molsize;
+    // LJ combination rule (LJ_COMB_*), LJ_COMB_AUTO until resolveLJCombRule()
+    int lj_comb_rule;
+    // Newton-Raphson refined 1/r^2 and 1/r in the SIMD kernels (--accurate-recip)
+    int accurate_reciprocal;
+    // j-cluster prefetch of the CPU cluster-pair SIMD kernels (--no-prefetch disables)
+    int kernel_prefetch;
 } Parameter;
 
 void initParameter(Parameter*);
 void readParameter(Parameter*, const char*);
 void readTypesFile(Parameter*);
 void printParameter(Parameter*);
+int str2ljcomb(const char*);
+const char* ljcomb2str(int);
+void resolveLJCombRule(Parameter*,
+    int ntypes,
+    const MD_FLOAT* sqrt_epsilon_per_type,
+    const MD_FLOAT* sigma3_per_type);
+double computeEwaldCoefficient(double cutoff, double rtol);
 void computePerTypeLJParameters(int, Parameter*, MD_FLOAT*, MD_FLOAT*);
 void computeTypePairLJParameters(int, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*);
 

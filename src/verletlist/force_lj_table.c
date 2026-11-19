@@ -7,6 +7,7 @@
 #include <math.h>
 
 #include <atom.h>
+#include <kernel_variant.h>
 #include <likwid-marker.h>
 #include <ljtable.h>
 #include <neighbor.h>
@@ -21,7 +22,7 @@
 // the per-pair prefactors (epsilon*sigma^12) and (epsilon*sigma^6). See
 // src/common/ljtable.{h,c} for the table layout.
 
-double computeForceLJTableFullNeigh(
+double RULE_VARIANT_NAME(computeForceLJTableFullNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTableFullNeigh begin\n");
@@ -69,8 +70,8 @@ double computeForceLJTableFullNeigh(
         MD_FLOAT* restrict sqrt_epsilon_ptr = atom->sqrt_epsilon;
         MD_FLOAT* restrict sigma3_ptr       = atom->sigma3;
 #endif
-        int* restrict neighbors_ptr         = neighbor->neighbors;
-        int* restrict numneigh_inner_ptr    = neighbor->numneigh_inner;
+        int* restrict neighbors_ptr      = neighbor->neighbors;
+        int* restrict numneigh_inner_ptr = neighbor->numneigh_inner;
 
         LIKWID_MARKER_START("force");
 
@@ -142,7 +143,7 @@ double computeForceLJTableFullNeigh(
     return timeStop - timeStart;
 }
 
-double computeForceLJTableHalfNeigh(
+double RULE_VARIANT_NAME(computeForceLJTableHalfNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTableHalfNeigh begin\n");

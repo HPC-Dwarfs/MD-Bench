@@ -27,8 +27,10 @@
 #include <stats.h>
 #include <timing.h>
 
+#include <kernel_variant.h>
 #ifdef __SIMD_KERNEL__
 #include <simd.h>
+#include <simd_math.h>
 #endif
 
 // NBLIST_AOS/NBLIST_CSR are both contiguous per-atom (neighbors[i*maxneighs+j]
@@ -42,7 +44,7 @@
 // safe for a full-width masked load/gather past an atom's actual neighbor
 // count -- see neighbor.c.
 
-double computeForceLJFullNeigh_simd(
+double VARIANT_NAME(computeForceLJFullNeigh_simd)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -163,7 +165,7 @@ double computeForceLJFullNeigh_simd(
                     delx,
                     simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
                 MD_SIMD_MASK cutoff_mask = simd_mask_cond_lt(rsq, cutforcesq_vec);
-                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr2        = SIMD_RECIPROCAL(rsq);
                 MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
                     simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
                 MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
@@ -236,7 +238,7 @@ double computeForceLJFullNeigh_simd(
                     simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
                 MD_SIMD_MASK cutoff_mask = simd_mask_and(mask_numneighs,
                     simd_mask_cond_lt(rsq, cutforcesq_vec));
-                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr2        = SIMD_RECIPROCAL(rsq);
                 MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
                     simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
                 MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
@@ -262,7 +264,7 @@ double computeForceLJFullNeigh_simd(
     return E - S;
 }
 
-double computeForceLJHalfNeigh_simd(
+double VARIANT_NAME(computeForceLJHalfNeigh_simd)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -385,7 +387,7 @@ double computeForceLJHalfNeigh_simd(
                     delx,
                     simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
                 MD_SIMD_MASK cutoff_mask = simd_mask_cond_lt(rsq, cutforcesq_vec);
-                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr2        = SIMD_RECIPROCAL(rsq);
                 MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
                     simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
                 MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
@@ -477,7 +479,7 @@ double computeForceLJHalfNeigh_simd(
                     simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
                 MD_SIMD_MASK cutoff_mask = simd_mask_and(mask_numneighs,
                     simd_mask_cond_lt(rsq, cutforcesq_vec));
-                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr2        = SIMD_RECIPROCAL(rsq);
                 MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
                     simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
                 MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
@@ -522,8 +524,9 @@ double computeForceLJHalfNeigh_simd(
 
 #ifdef __SIMD_VLA__
 
-// VLA (vector-length-agnostic, SVE/SVE2): one masked loop instead of a full-width main loop plus a separate masked tail block.
-double computeForceLJFullNeigh_simd_vla(
+// VLA (vector-length-agnostic, SVE/SVE2): one masked loop instead of a full-width main
+// loop plus a separate masked tail block.
+double VARIANT_NAME(computeForceLJFullNeigh_simd_vla)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -562,7 +565,7 @@ double computeForceLJFullNeigh_simd_vla(
 #elif !defined(NBLIST_SOA)
             int* neighs = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
-            int numneighs             = neighbor->numneigh_inner[i];
+            int numneighs = neighbor->numneigh_inner[i];
 #ifdef NBLIST_SOA
             MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
             MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
@@ -638,7 +641,7 @@ double computeForceLJFullNeigh_simd_vla(
                     simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
                 MD_SIMD_MASK cutoff_mask = simd_mask_and(bound_mask,
                     simd_mask_cond_lt(rsq, cutforcesq_vec));
-                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr2        = SIMD_RECIPROCAL(rsq);
                 MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
                     simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
                 MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
@@ -663,7 +666,7 @@ double computeForceLJFullNeigh_simd_vla(
     return E - S;
 }
 
-double computeForceLJHalfNeigh_simd_vla(
+double VARIANT_NAME(computeForceLJHalfNeigh_simd_vla)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -704,7 +707,7 @@ double computeForceLJHalfNeigh_simd_vla(
 #elif !defined(NBLIST_SOA)
             int* neighs = &neighbor->neighbors[i * neighbor->maxneighs];
 #endif
-            int numneighs             = neighbor->numneigh_inner[i];
+            int numneighs = neighbor->numneigh_inner[i];
 #ifdef NBLIST_SOA
             MD_SIMD_INT nlocal_vec_soa   = simd_i32_broadcast(Nlocal);
             MD_SIMD_INT i_vec_soa        = simd_i32_broadcast(i);
@@ -780,7 +783,7 @@ double computeForceLJHalfNeigh_simd_vla(
                     simd_real_fma(dely, dely, simd_real_mul(delz, delz)));
                 MD_SIMD_MASK cutoff_mask = simd_mask_and(bound_mask,
                     simd_mask_cond_lt(rsq, cutforcesq_vec));
-                MD_SIMD_FLOAT sr2        = simd_real_reciprocal(rsq);
+                MD_SIMD_FLOAT sr2        = SIMD_RECIPROCAL(rsq);
                 MD_SIMD_FLOAT sr6        = simd_real_mul(sr2,
                     simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
                 MD_SIMD_FLOAT force      = simd_real_mul(c48_vec,
@@ -867,7 +870,7 @@ static inline MD_SIMD_FLOAT ljforce_compressed(Atom* atom,
     MD_SIMD_FLOAT eps_vec    = simd_real_gather(tij, atom->epsilon, sizeof(MD_FLOAT));
 #endif
 
-    MD_SIMD_FLOAT sr2 = simd_real_reciprocal(rsq);
+    MD_SIMD_FLOAT sr2 = SIMD_RECIPROCAL(rsq);
     MD_SIMD_FLOAT sr6 = simd_real_mul(sr2,
         simd_real_mul(sr2, simd_real_mul(sr2, sigma6_vec)));
     return simd_real_mul(c48_vec,
@@ -883,7 +886,7 @@ static inline MD_SIMD_FLOAT ljforce_compressed(Atom* atom,
 // only runs once that buffer holds a full, unmasked vector's worth of valid
 // pairs, or once as a masked "epilogue" for whatever is left over after atom
 // i's neighbor list is exhausted. See TODO.md and the design plan for details.
-double computeForceLJFullNeigh_simd_compress(
+double VARIANT_NAME(computeForceLJFullNeigh_simd_compress)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -1089,7 +1092,7 @@ double computeForceLJFullNeigh_simd_compress(
     return E - S;
 }
 
-double computeForceLJHalfNeigh_simd_compress(
+double VARIANT_NAME(computeForceLJHalfNeigh_simd_compress)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;

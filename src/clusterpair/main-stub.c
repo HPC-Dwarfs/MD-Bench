@@ -201,7 +201,8 @@ int main(int argc, const char* argv[])
             masked = 1;
             continue;
         }
-        if ((strcmp(argv[i], "-sc") == 0) || (strcmp(argv[i], "--super-clustering") == 0)) {
+        if ((strcmp(argv[i], "-sc") == 0) ||
+            (strcmp(argv[i], "--super-clustering") == 0)) {
             param.super_clustering = atoi(argv[++i]);
             continue;
         }
@@ -294,13 +295,15 @@ int main(int argc, const char* argv[])
     }
 
     for (int ci = 0; ci < niclusters; ++ci) {
-        int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
-        int ci_vec_base       = CI_VECTOR3_BASE_INDEX(ci);
-        MD_FLOAT* ci_x        = &atom->cl_x[ci_vec_base];
-        MD_FLOAT* ci_v        = &atom->cl_v[ci_vec_base];
-        int* ci_t             = &atom->cl_t[ci_sca_base];
-        MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[ci_sca_base];
-        MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[ci_sca_base];
+        int ci_sca_base        = CI_SCALAR_BASE_INDEX(ci);
+        int ci_vec_base        = CI_VECTOR3_BASE_INDEX(ci);
+        MD_FLOAT* ci_x         = &atom->cl_x[ci_vec_base];
+        MD_FLOAT* ci_v         = &atom->cl_v[ci_vec_base];
+        int* ci_t              = &atom->cl_t[ci_sca_base];
+        MD_FLOAT* ci_sqrt_eps  = &atom->cl_sqrt_epsilon[ci_sca_base];
+        MD_FLOAT* ci_sigma3    = &atom->cl_sigma3[ci_sca_base];
+        MD_FLOAT* ci_sqrt6c6   = &atom->cl_sqrt6c6[ci_sca_base];
+        MD_FLOAT* ci_sqrt12c12 = &atom->cl_sqrt12c12[ci_sca_base];
 
         for (int cii = 0; cii < iclusters_natoms; ++cii) {
             ci_x[CL_X_INDEX_3D(cii)] = (MD_FLOAT)(ci * iclusters_natoms + cii) * 0.00001;
@@ -312,15 +315,19 @@ int main(int argc, const char* argv[])
             ci_t[cii]                = rand() % atom->ntypes;
             // All types share the same LJ parameters here, so the geometric
             // combination rule's per-atom sqrt(epsilon)/sigma^3 are uniform too.
-            ci_sqrt_eps[cii] = sqrt(param.epsilon);
-            ci_sigma3[cii]   = sqrt(param.sigma6);
+            ci_sqrt_eps[cii]  = sqrt(param.epsilon);
+            ci_sigma3[cii]    = sqrt(param.sigma6);
+            ci_sqrt6c6[cii]   = LJ_SQRT_6C6_COEF * ci_sqrt_eps[cii] * ci_sigma3[cii];
+            ci_sqrt12c12[cii] = LJ_SQRT_12C12_COEF * ci_sqrt_eps[cii] * ci_sigma3[cii] *
+                                ci_sigma3[cii];
             atom->Nlocal++;
         }
 
         for (int cii = iclusters_natoms; cii < CLUSTER_M; cii++) {
-            ci_x[CL_X_INDEX_3D(cii)] = INF;
-            ci_x[CL_Y_INDEX_3D(cii)] = INF;
-            ci_x[CL_Z_INDEX_3D(cii)] = INF;
+            ci_x[CL_X_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
+            ci_x[CL_Y_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
+            ci_x[CL_Z_INDEX_3D(cii)] = CLUSTER_PAD_COORD;
+            clearClusterAtom(atom, ci_sca_base + cii);
         }
 
         atom->iclusters[ci].natoms = iclusters_natoms;

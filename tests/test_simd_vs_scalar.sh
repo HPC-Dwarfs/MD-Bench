@@ -11,10 +11,10 @@ DATA_DIR="${ROOT_DIR}/data/argon"
 
 # Build configuration
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 DATA_TYPE="${DATA_TYPE:-DP}"
-LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
+# LJ combination rule of the runs (--lj-comb)
+LJ_COMB="${LJ_COMB:-geometric}"
 
 cd "${ROOT_DIR}"
 
@@ -22,23 +22,18 @@ cd "${ROOT_DIR}"
 echo "Building SIMD kernel binary..."
 rm -rf build/ >/dev/null 2>&1 || true  # Force clean build directory
 make clean >/dev/null 2>&1 || true
-if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
+if ! make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
+     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
      USE_SIMD_KERNEL=true >/dev/null 2>&1; then
   echo "ERROR: Failed to build SIMD binary" >&2
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
+  make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
+       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
        USE_SIMD_KERNEL=true
   exit 1
 fi
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-
-SIMD_BIN="./MDBench-VL-SIMD-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
+SIMD_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
+    OPT_SCHEME=verletlist USE_SIMD_KERNEL=true print-target)"
 
 # Rename SIMD binary to preserve it before building SCALAR variant
 if [[ ! -x "${SIMD_BIN}" ]]; then
@@ -52,17 +47,18 @@ SIMD_BIN="${SIMD_BIN}-simd"
 echo "Building SCALAR kernel binary..."
 rm -rf build/ >/dev/null 2>&1 || true  # Force clean build directory
 make clean >/dev/null 2>&1 || true
-if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
+if ! make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
+     DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
      USE_SIMD_KERNEL=false >/dev/null 2>&1; then
   echo "ERROR: Failed to build SCALAR binary" >&2
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" \
-       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist LJ_COMB_RULE="${LJ_COMB_RULE}" \
+  make TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" \
+       DATA_TYPE="${DATA_TYPE}" OPT_SCHEME=verletlist \
        USE_SIMD_KERNEL=false
   exit 1
 fi
 
-SCALAR_BIN="./MDBench-VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
+SCALAR_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" \
+    OPT_SCHEME=verletlist USE_SIMD_KERNEL=false print-target)"
 # Rename to avoid confusion with SIMD binary
 if [[ ! -x "${SCALAR_BIN}" ]]; then
   echo "Binary '${SCALAR_BIN}' is not executable after SCALAR build" >&2
@@ -85,11 +81,11 @@ SCALAR_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_scalar.XXXXXX")"
 
 # Run SIMD variant
 echo "Running SIMD kernel..."
-"${SIMD_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 500 >"${SIMD_LOG}"
+"${SIMD_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 500 >"${SIMD_LOG}"
 
 # Run SCALAR variant
 echo "Running SCALAR kernel..."
-"${SCALAR_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 500 >"${SCALAR_LOG}"
+"${SCALAR_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 500 >"${SCALAR_LOG}"
 
 # Verify kernel selection
 simd_kernel=$(grep "Kernel:" "${SIMD_LOG}" | grep -v "Computational" | awk '{print $2}')

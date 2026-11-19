@@ -6,6 +6,7 @@
  */
 #include <atom.h>
 #include <eam.h>
+#include <kernel_variant.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <stats.h>
@@ -14,7 +15,7 @@
 #define __FORCE_H_
 
 #define STRINGIFY(x) #x
-#define TOSTRING(x) STRINGIFY(x)
+#define TOSTRING(x)  STRINGIFY(x)
 
 typedef double (*ComputeForceFunction)(Parameter*, Atom*, Neighbor*, Stats*);
 extern ComputeForceFunction computeForce;
@@ -22,9 +23,10 @@ extern ComputeForceFunction computeForce;
 enum forcetype { FF_LJ = 0, FF_EAM, FF_LJ_TABLE };
 
 extern void initForce(Parameter*);
-extern double computeForceLJRef(Parameter*, Atom*, Neighbor*, Stats*);
+// One copy per LJ combination rule (computeForceLJRefGeom, ...), see kernel_variant.h
+DECLARE_RULE_VARIANTS(computeForceLJRef)
 #ifdef USE_REFERENCE_KERNEL
-extern double computeForceLJTableRef(Parameter*, Atom*, Neighbor*, Stats*);
+DECLARE_RULE_VARIANTS(computeForceLJTableRef)
 #endif
 #ifdef CLUSTERPAIR_KERNEL_4XN
 extern double computeForceLJTable4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
@@ -38,12 +40,14 @@ extern double computeForceLJTable2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Sta
 extern double computeForceLJTableCuda(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableCudaSup(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
-extern double computeForceLJ4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ4xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+// Copies of each kernel for the LJ combination rules, --accurate-recip, --no-prefetch and
+// exclusions, see kernel_variant.h
+DECLARE_SIMD_VARIANTS(computeForceLJ4xnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ4xnFullNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnFullNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnnFullNeigh)
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
 #ifdef CUDA_TARGET
@@ -100,25 +104,30 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #ifdef USE_REFERENCE_KERNEL
 #define CLUSTERPAIR_KERNEL_REF
 #define KERNEL_NAME "Reference"
-#define CLUSTER_M   1
-#define CLUSTER_N   VECTOR_WIDTH
+// Plain C, so the cluster size does not depend on the SIMD width (4x4 like the GROMACS
+// reference kernel)
+#define CLUSTER_M   4
+#define CLUSTER_N   4
 #else
 // Cluster pair kernels
 #ifdef CLUSTERPAIR_KERNEL_AUTO
-    #if defined(__ISA_NEON__) || defined(__ISA_SVE__) || defined(__ISA_SVE2__)
-        #define CLUSTERPAIR_KERNEL_2XN
-    #else
-        #define CLUSTER_M 4
-        #if VECTOR_WIDTH > (CLUSTER_M * 2)
-            #define CLUSTERPAIR_KERNEL_2XNN
-        #else
-            #define CLUSTERPAIR_KERNEL_4XN
-        #endif
-    #endif
+#if defined(__ISA_NEON__) || defined(__ISA_SVE__) || defined(__ISA_SVE2__)
+#define CLUSTERPAIR_KERNEL_2XN
+#else
+#define CLUSTER_M 4
+#if VECTOR_WIDTH > (CLUSTER_M * 2)
+#define CLUSTERPAIR_KERNEL_2XNN
+#else
+#define CLUSTERPAIR_KERNEL_4XN
+#endif
+#endif
 #endif
 
 // Define the kernel-specific macros based on which kernel is selected
 #ifdef CLUSTERPAIR_KERNEL_4XN
+#if VECTOR_WIDTH != 2 && VECTOR_WIDTH != 4 && VECTOR_WIDTH != 8
+#error "4xN needs a SIMD width of 2, 4 or 8 reals, use 2xNN for AVX512 single precision"
+#endif
 #define KERNEL_NAME "Simd4xN"
 #define CLUSTER_N   VECTOR_WIDTH
 #define CLUSTER_M   4
@@ -127,6 +136,9 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
 
 #ifdef CLUSTERPAIR_KERNEL_2XNN
+#if VECTOR_WIDTH != 8 && VECTOR_WIDTH != 16
+#error "2xNN needs a SIMD width of 8 or 16 reals, use 4xN or 2xN for narrower SIMD"
+#endif
 #define KERNEL_NAME "Simd2xNN"
 #define CLUSTER_N   (VECTOR_WIDTH / 2)
 #define CLUSTER_M   4
@@ -135,6 +147,9 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
 
 #ifdef CLUSTERPAIR_KERNEL_2XN
+#if VECTOR_WIDTH != 2 && VECTOR_WIDTH != 4
+#error "2xN needs a SIMD width of 2 or 4 reals, use 4xN or 2xNN for wider SIMD"
+#endif
 #define KERNEL_NAME "Simd2xN"
 #define CLUSTER_N   VECTOR_WIDTH
 #define CLUSTER_M   2
@@ -143,12 +158,15 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
 
 // Verify that one of the kernel variants is selected
-#if !defined(CLUSTERPAIR_KERNEL_4XN) && !defined(CLUSTERPAIR_KERNEL_2XNN) && !defined(CLUSTERPAIR_KERNEL_2XN)
-    #error "No cluster pair kernel variant selected"
+#if !defined(CLUSTERPAIR_KERNEL_4XN) && !defined(CLUSTERPAIR_KERNEL_2XNN) &&             \
+    !defined(CLUSTERPAIR_KERNEL_2XN)
+#error "No cluster pair kernel variant selected"
 #endif
 
-#if defined(CLUSTERPAIR_KERNEL_2XNN) + defined(CLUSTERPAIR_KERNEL_2XN) + defined(CLUSTERPAIR_KERNEL_4XN) > 1
-    #error "Multiple CLUSTERPAIR_KERNEL_ macros defined!"
+#if defined(CLUSTERPAIR_KERNEL_2XNN) + defined(CLUSTERPAIR_KERNEL_2XN) +                 \
+        defined(CLUSTERPAIR_KERNEL_4XN) >                                                \
+    1
+#error "Multiple CLUSTERPAIR_KERNEL_ macros defined!"
 #endif
 
 #endif

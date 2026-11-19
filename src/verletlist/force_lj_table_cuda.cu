@@ -24,12 +24,16 @@ extern "C" {
 #include <util.h>
 }
 
+#include <kernel_select_gpu.h>
+
 // Tabulated/spline-interpolated Lennard-Jones forces on the GPU (GROMACS-style).
 // Mirrors computeForceLJCUDA in forceCuda.cu but replaces the analytic force
 // arithmetic with a cubic-spline lookup of two universal force-shape functions
 // (see src/common/ljtable.{h,c}). The coefficient table is uploaded to the
 // device once and kept resident in ljtable.d_coeff.
+// RULE: LJ combination rule (cutforcesq, sigma6 and epsilon are only used by single)
 
+template <int RULE>
 __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -59,12 +63,15 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-    const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
-    const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
-    const int type_i = atom->type[i];
-#endif
+    MD_FLOAT sqrt_eps_i = (MD_FLOAT)0.0;
+    MD_FLOAT sigma3_i   = (MD_FLOAT)0.0;
+    int type_i          = 0;
+    if constexpr (RULE == LJ_COMB_GEOM) {
+        sqrt_eps_i = atom->sqrt_epsilon[i];
+        sigma3_i   = atom->sigma3[i];
+    } else if constexpr (RULE == LJ_COMB_FULL) {
+        type_i = atom->type[i];
+    }
 
     for (int k = 0; k < numneighs; k++) {
         int j         = neighs(neigh_neighbors, i, k, Nlocal, neighbor);
@@ -73,18 +80,21 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
         MD_FLOAT delz = ztmp - atom_z(j);
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-        const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
-        const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
-        const int type_j          = atom->type[j];
-        const int type_ij         = type_i * ntypes + type_j;
-        const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
-        const MD_FLOAT sigma6     = atom->sigma6[type_ij];
-        const MD_FLOAT epsilon    = atom->epsilon[type_ij];
-#endif
+        MD_FLOAT cutforcesq_ij = cutforcesq;
+        MD_FLOAT sigma6_ij     = sigma6;
+        MD_FLOAT epsilon_ij    = epsilon;
+        if constexpr (RULE == LJ_COMB_GEOM) {
+            sigma6_ij  = sigma3_i * atom->sigma3[j];
+            epsilon_ij = sqrt_eps_i * atom->sqrt_epsilon[j];
+        } else if constexpr (RULE == LJ_COMB_FULL) {
+            const int type_j  = atom->type[j];
+            const int type_ij = type_i * ntypes + type_j;
+            cutforcesq_ij     = atom->cutforcesq[type_ij];
+            sigma6_ij         = atom->sigma6[type_ij];
+            epsilon_ij        = atom->epsilon[type_ij];
+        }
 
-        if (rsq < cutforcesq) {
+        if (rsq < cutforcesq_ij) {
             MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
             int m      = (int)u;
             if (m > nm1) m = nm1;
@@ -92,7 +102,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
             const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
             MD_FLOAT hrep      = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
             MD_FLOAT gdisp     = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
-            MD_FLOAT force     = epsilon * sigma6 * (sigma6 * hrep + gdisp);
+            MD_FLOAT force     = epsilon_ij * sigma6_ij * (sigma6_ij * hrep + gdisp);
             fix += delx * force;
             fiy += dely * force;
             fiz += delz * force;
@@ -104,6 +114,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     atom_fz(i) = fiz;
 }
 
+template <int RULE>
 __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -133,12 +144,15 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT fiy = 0;
     MD_FLOAT fiz = 0;
 
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-    const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[i];
-    const MD_FLOAT sigma3_i   = atom->sigma3[i];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
-    const int type_i = atom->type[i];
-#endif
+    MD_FLOAT sqrt_eps_i = (MD_FLOAT)0.0;
+    MD_FLOAT sigma3_i   = (MD_FLOAT)0.0;
+    int type_i          = 0;
+    if constexpr (RULE == LJ_COMB_GEOM) {
+        sqrt_eps_i = atom->sqrt_epsilon[i];
+        sigma3_i   = atom->sigma3[i];
+    } else if constexpr (RULE == LJ_COMB_FULL) {
+        type_i = atom->type[i];
+    }
 
     for (int k = 0; k < numneighs; k++) {
         int j         = neighs(neigh_neighbors, i, k, Nlocal, neighbor);
@@ -147,18 +161,21 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
         MD_FLOAT delz = ztmp - atom_z(j);
         MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-        const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[j];
-        const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
-        const int type_j          = atom->type[j];
-        const int type_ij         = type_i * ntypes + type_j;
-        const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
-        const MD_FLOAT sigma6     = atom->sigma6[type_ij];
-        const MD_FLOAT epsilon    = atom->epsilon[type_ij];
-#endif
+        MD_FLOAT cutforcesq_ij = cutforcesq;
+        MD_FLOAT sigma6_ij     = sigma6;
+        MD_FLOAT epsilon_ij    = epsilon;
+        if constexpr (RULE == LJ_COMB_GEOM) {
+            sigma6_ij  = sigma3_i * atom->sigma3[j];
+            epsilon_ij = sqrt_eps_i * atom->sqrt_epsilon[j];
+        } else if constexpr (RULE == LJ_COMB_FULL) {
+            const int type_j  = atom->type[j];
+            const int type_ij = type_i * ntypes + type_j;
+            cutforcesq_ij     = atom->cutforcesq[type_ij];
+            sigma6_ij         = atom->sigma6[type_ij];
+            epsilon_ij        = atom->epsilon[type_ij];
+        }
 
-        if (rsq < cutforcesq) {
+        if (rsq < cutforcesq_ij) {
             MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
             int m      = (int)u;
             if (m > nm1) m = nm1;
@@ -166,7 +183,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
             const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
             MD_FLOAT hrep      = cc[0] + eps * (cc[1] + eps * (cc[2] + eps * cc[3]));
             MD_FLOAT gdisp     = cc[4] + eps * (cc[5] + eps * (cc[6] + eps * cc[7]));
-            MD_FLOAT force     = epsilon * sigma6 * (sigma6 * hrep + gdisp);
+            MD_FLOAT force     = epsilon_ij * sigma6_ij * (sigma6_ij * hrep + gdisp);
             MD_FLOAT partial_force_x = delx * force;
             MD_FLOAT partial_force_y = dely * force;
             MD_FLOAT partial_force_z = delz * force;
@@ -238,8 +255,9 @@ double computeForceLJTableCUDA(
         memsetGPU(atom->d_atom.fy, 0, sizeof(MD_FLOAT) * Nmax);
         memsetGPU(atom->d_atom.fz, 0, sizeof(MD_FLOAT) * Nmax);
 #endif
-        computeForceLJTableCudaHalfNeigh<<<num_blocks, num_threads_per_block>>>(
-            atom->d_atom,
+        auto kernel = SELECT_GPU_KERNEL_RULE(computeForceLJTableCudaHalfNeigh,
+            param->lj_comb_rule);
+        kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,
@@ -252,8 +270,9 @@ double computeForceLJTableCUDA(
             inv_h,
             coeff);
     } else {
-        computeForceLJTableCudaFullNeigh<<<num_blocks, num_threads_per_block>>>(
-            atom->d_atom,
+        auto kernel = SELECT_GPU_KERNEL_RULE(computeForceLJTableCudaFullNeigh,
+            param->lj_comb_rule);
+        kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
             epsilon,

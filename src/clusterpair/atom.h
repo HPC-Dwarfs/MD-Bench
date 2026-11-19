@@ -5,6 +5,7 @@
  * license that can be found in the LICENSE file.
  */
 #include <stdbool.h>
+#include <stddef.h>
 
 #include <box.h>
 #include <parameter.h>
@@ -36,10 +37,24 @@
 #define INF INFINITY
 #endif
 
+// Coordinates of the padding atoms that fill up a cluster. They are far from everything
+// but finite (unlike INF), so a kernel can multiply the exactly zero force of a masked
+// pair with its distance without producing NaN.
+#define CLUSTER_PAD_COORD ((MD_FLOAT)1.0e10)
+
+// LJ force prefactors: 6 C6 = 24 eps sigma^6 and 12 C12 = 48 eps sigma^12, and the
+// coefficients of sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3 and
+// sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6 used by the geometric combination rule.
+#define LJ_C6_FACTOR       ((MD_FLOAT)24.0)
+#define LJ_C12_FACTOR      ((MD_FLOAT)48.0)
+#define LJ_SQRT_6C6_COEF   ((MD_FLOAT)4.898979485566356) // 2 * sqrt(6)
+#define LJ_SQRT_12C12_COEF ((MD_FLOAT)6.928203230275509) // 2 * sqrt(12)
+
 #define DELTA 100000
 
 typedef struct {
     int natoms;
+    int half_lj; // i-cluster with LJ atoms in its first half only (-halflj)
     MD_FLOAT bbminx, bbmaxx;
     MD_FLOAT bbminy, bbmaxy;
     MD_FLOAT bbminz, bbmaxz;
@@ -92,13 +107,36 @@ typedef struct {
     unsigned int masks_4xn_fn[16];
     // Info Subdomain
     Box mybox;
+    // Electrostatics and exclusions
+    int molsize;          // atoms per molecule, consecutive atom ids (0: no exclusions)
+    int ids_valid;        // atom->id has been initialised
+    int* id;              // original atom index, follows the atom through the clusters
+    MD_FLOAT* q_per_type; // charge per atom type (NULL: all atoms neutral)
+    MD_FLOAT* cl_q;       // charge per atom in cluster layout
+    int* cl_id;           // original atom index per atom in cluster layout
+    int* cl_mol;          // molecule index per atom in cluster layout (exclusions)
+    // Per-atom LJ parameters of the geometric combination rule in the form the 4xN
+    // kernels multiply: sqrt(6 C6_i) and sqrt(12 C12_i) with C6 = 4 eps sigma^6, C12 = 4
+    // eps sigma^12
+    MD_FLOAT* cl_sqrt6c6;
+    MD_FLOAT* cl_sqrt12c12;
+    // Type-pair tables of 6 C6 and 12 C12 for the full combination rule (built on demand)
+    MD_FLOAT* ljc6x6;
+    MD_FLOAT* ljc12x12;
+    // Force arrays of threads 1..n-1 for the half-list kernels (see thread_forces.h)
+    MD_FLOAT* cl_f_threads;
+    size_t cl_f_threads_size;
 } Atom;
 
 extern int get_ncj_from_nci(int nci);
 extern void initAtom(Atom*);
 extern void initMasks(Atom*);
+extern void initAtomIds(Atom*);
+extern void setClusterAtom(Atom*, int sca, int type, int id);
+extern void clearClusterAtom(Atom*, int sca);
 extern void createAtom(Atom*, Parameter*);
 extern int readAtom(Atom*, Parameter*);
+extern int readAtomGmx(Atom*, Parameter*);
 extern int readAtomPdb(Atom*, Parameter*);
 extern int readAtomGro(Atom*, Parameter*);
 extern int readAtomDmp(Atom*, Parameter*);

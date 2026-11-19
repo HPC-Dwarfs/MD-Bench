@@ -15,10 +15,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 DATA_TYPE="${DATA_TYPE:-DP}"
-LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
+# LJ combination rule of the runs (--lj-comb)
+LJ_COMB="${LJ_COMB:-geometric}"
 
 cd "${ROOT_DIR}"
 
@@ -44,21 +44,16 @@ if "${MPI_RUN}" --help 2>&1 | grep -q "\-\-oversubscribe"; then
   MPI_EXTRA_FLAGS="--oversubscribe"
 fi
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-VL_TAG="VL-${TOOL_TAG}-${DATA_TYPE}-${LJ_COMB_RULE}"
 
 # Step 1: Build serial (non-MPI) binary
 echo "Building serial (non-MPI) Verlet-list binary..."
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=false >/dev/null
 
-SERIAL_BIN="./MDBench-${VL_TAG}"
+SERIAL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+    DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=false print-target)"
 if [[ ! -x "${SERIAL_BIN}" ]]; then
   echo "Serial binary '${SERIAL_BIN}' not found" >&2
   exit 1
@@ -70,14 +65,15 @@ SERIAL_BIN="${SERIAL_BIN}-serial"
 echo "Building MPI Verlet-list binary..."
 make clean >/dev/null 2>&1 || true
 rm -rf build/ >/dev/null 2>&1 || true
-if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+if ! make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
      DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=true >/dev/null 2>&1; then
   echo "SKIP: MPI build failed (ENABLE_MPI=true not supported with this toolchain)."
   rm -f "${SERIAL_BIN}"
   exit 0
 fi
 
-MPI_BIN="./MDBench-${VL_TAG}"
+MPI_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" \
+    DATA_TYPE="${DATA_TYPE}" ENABLE_MPI=true print-target)"
 if [[ ! -x "${MPI_BIN}" ]]; then
   echo "MPI binary '${MPI_BIN}' not found" >&2
   rm -f "${SERIAL_BIN}"
@@ -87,7 +83,7 @@ fi
 # Helper to extract last thermo line
 get_last_tp() {
   local file="$1"
-  grep -E '^[[:space:]]*[0-9]+[[:space:]]+[0-9.eE+-]+' "${file}" | tail -n 1 || true
+  grep -aE '^[[:space:]]*[0-9]+[[:space:]]+[0-9.eE+-]+' "${file}" | tail -n 1 || true
 }
 
 SERIAL_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_serial.XXXXXX")"
@@ -95,7 +91,7 @@ MPI1_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_mpi1.XXXXXX")"
 MPI2_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_mpi2.XXXXXX")"
 
 echo "Running serial binary..."
-"${SERIAL_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
+"${SERIAL_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
     -n 200 >"${SERIAL_LOG}"
 
 echo "Running MPI binary with 1 rank..."

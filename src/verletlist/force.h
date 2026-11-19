@@ -6,6 +6,7 @@
  */
 #include <atom.h>
 #include <eam.h>
+#include <kernel_variant.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <stats.h>
@@ -19,22 +20,24 @@ extern ComputeForceFunction computeForce;
 enum forcetype { FF_LJ = 0, FF_EAM, FF_LJ_TABLE };
 
 extern void initForce(Parameter*);
-extern double computeForceLJHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJTableHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJTableFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
+// Copies per LJ combination rule (and exclusions / --accurate-recip), see
+// kernel_variant.h
+DECLARE_RULE_EXCL_VARIANTS(computeForceLJHalfNeigh)
+DECLARE_RULE_EXCL_VARIANTS(computeForceLJFullNeigh)
+DECLARE_RULE_VARIANTS(computeForceLJTableHalfNeigh)
+DECLARE_RULE_VARIANTS(computeForceLJTableFullNeigh)
+DECLARE_RULE_VARIANTS(computeForceEam)
 
 #ifdef __SIMD_KERNEL__
-extern double computeForceLJHalfNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJFullNeigh_simd(Parameter*, Atom*, Neighbor*, Stats*);
-#ifdef __SIMD_COMPRESS__
-extern double computeForceLJHalfNeigh_simd_compress(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJFullNeigh_simd_compress(Parameter*, Atom*, Neighbor*, Stats*);
-#endif
-#ifdef __SIMD_VLA__
-extern double computeForceLJHalfNeigh_simd_vla(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJFullNeigh_simd_vla(Parameter*, Atom*, Neighbor*, Stats*);
+#if defined(__SIMD_COMPRESS__)
+DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJHalfNeigh_simd_compress)
+DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJFullNeigh_simd_compress)
+#elif defined(__SIMD_VLA__)
+DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJHalfNeigh_simd_vla)
+DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJFullNeigh_simd_vla)
+#else
+DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJHalfNeigh_simd)
+DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJFullNeigh_simd)
 #endif
 #endif
 

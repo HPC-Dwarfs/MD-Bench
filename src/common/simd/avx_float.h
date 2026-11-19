@@ -26,6 +26,11 @@ static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm256_sub_ps(a, b);
 }
+
+static inline MD_SIMD_FLOAT simd_real_max(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
+{
+    return _mm256_max_ps(a, b);
+}
 static inline MD_SIMD_FLOAT simd_real_mul(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm256_mul_ps(a, b);
@@ -70,6 +75,20 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b)
 {
     return _mm256_and_ps(a, b);
+}
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return _mm256_xor_ps(a, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
+}
+// AVX has no 256-bit integer compare: compare the two 128-bit halves
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    const __m128i lo = _mm_cmpeq_epi32(_mm256_castsi256_si128(a),
+        _mm256_castsi256_si128(b));
+    const __m128i hi = _mm_cmpeq_epi32(_mm256_extractf128_si256(a, 1),
+        _mm256_extractf128_si256(b, 1));
+    return _mm256_castsi256_ps(
+        _mm256_insertf128_si256(_mm256_castsi128_si256(lo), hi, 1));
 }
 
 static inline MD_SIMD_MASK simd_mask_from_u32(unsigned int a)
@@ -276,4 +295,33 @@ static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
     __m128i hi = _mm_min_epi32(_mm256_extractf128_si256(a, 1),
         _mm256_extractf128_si256(b, 1));
     return _mm256_set_m128i(hi, lo);
+}
+// AVX has no integer gather: the scalar loads of the eight lanes
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    _mm256_store_si256((MD_SIMD_INT*)m, a);
+}
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    int idx[8] __attribute__((aligned(32)));
+    int result[8] __attribute__((aligned(32)));
+    simd_i32_store(idx, vidx);
+    for (int i = 0; i < 8; i++) {
+        result[i] = *(const int*)((const char*)base + (long)idx[i] * scale);
+    }
+    return _mm256_load_si256((const MD_SIMD_INT*)result);
+}
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    unsigned int m = simd_mask_to_u32(mask);
+    MD_FLOAT vals[8] __attribute__((aligned(32)));
+    int idx[8] __attribute__((aligned(32)));
+    simd_real_store(vals, v);
+    simd_i32_store(idx, vidx);
+    for (int i = 0; i < 8; i++) {
+        if ((m >> i) & 1) {
+            _Pragma("omp atomic") base[idx[i]] -= vals[i];
+        }
+    }
 }

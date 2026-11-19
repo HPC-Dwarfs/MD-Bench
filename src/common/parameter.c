@@ -14,7 +14,8 @@
 #include <force.h>
 #include <parameter.h>
 #include <util.h>
-#if defined(CLUSTERPAIR) || !defined(USE_REFERENCE_KERNEL)
+// simd.h needs a SIMD instruction set (VECTOR_WIDTH is 1 without SIMD and on GPUs)
+#if VECTOR_WIDTH > 1
 #include <simd.h>
 #endif
 // Fallback for SIMD_INTRINSICS when simd.h not included
@@ -54,12 +55,7 @@ void computeTypePairLJParameters(int ntypes,
     MD_FLOAT* epsilon,
     MD_FLOAT* sigma6)
 {
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-    // For single type, we only need one value (will be broadcast anyway)
-    epsilon[0] = sqrt_epsilon_per_type[0] * sqrt_epsilon_per_type[0];
-    sigma6[0]  = sigma3_per_type[0] * sigma3_per_type[0];
-#else
-    // Geometric combination: compute all pairs
+    // Geometric combination of all pairs, the matrix of every combination rule
     for (int i = 0; i < ntypes; i++) {
         for (int j = 0; j < ntypes; j++) {
             int idx      = i * ntypes + j;
@@ -67,27 +63,78 @@ void computeTypePairLJParameters(int ntypes,
             sigma6[idx]  = sigma3_per_type[i] * sigma3_per_type[j];
         }
     }
-#endif
+}
+
+int str2ljcomb(const char* name)
+{
+    if (strcmp(name, "single") == 0) return LJ_COMB_SINGLE;
+    if (strcmp(name, "geometric") == 0) return LJ_COMB_GEOM;
+    if (strcmp(name, "full") == 0) return LJ_COMB_FULL;
+    if (strcmp(name, "auto") == 0) return LJ_COMB_AUTO;
+    return -1;
+}
+
+const char* ljcomb2str(int rule)
+{
+    switch (rule) {
+    case LJ_COMB_SINGLE:
+        return "single";
+    case LJ_COMB_GEOM:
+        return "geometric";
+    case LJ_COMB_FULL:
+        return "full";
+    case LJ_COMB_AUTO:
+        return "auto";
+    default:
+        return "invalid";
+    }
+}
+
+/* Resolves --lj-comb auto and checks the rule against the atom types. The type-pair
+ * matrix is always the geometric combination of the per-type parameters, so geometric and
+ * full give the same forces; single needs every type to have the global epsilon and
+ * sigma. */
+void resolveLJCombRule(Parameter* param,
+    int ntypes,
+    const MD_FLOAT* sqrt_epsilon_per_type,
+    const MD_FLOAT* sigma3_per_type)
+{
+    const MD_FLOAT sqrt_eps = sqrt(param->epsilon);
+    const MD_FLOAT sigma3   = param->sigma * param->sigma * param->sigma;
+    // EAM has per-type tables besides epsilon and sigma
+    int uniform = param->force_field != FF_EAM || ntypes == 1;
+    for (int t = 0; t < ntypes; t++) {
+        if (sqrt_epsilon_per_type[t] != sqrt_eps || sigma3_per_type[t] != sigma3) {
+            uniform = 0;
+        }
+    }
+
+    if (param->lj_comb_rule == LJ_COMB_AUTO) {
+        param->lj_comb_rule = uniform ? LJ_COMB_SINGLE : LJ_COMB_GEOM;
+    } else if (param->lj_comb_rule == LJ_COMB_SINGLE && !uniform) {
+        fprintf(stderr,
+            "Error: --lj-comb single needs atom types with the same epsilon and sigma, "
+            "use "
+            "geometric, full or auto\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 void initParameter(Parameter* param)
 {
-    param->input_file      = NULL;
-    param->vtk_file        = NULL;
-    param->xtc_file        = NULL;
-    param->eam_file        = NULL;
-    param->write_atom_file = NULL;
-    param->types_file      = NULL;
-    param->force_field     = FF_LJ;
-    param->epsilon         = 1.0;
-    param->sigma           = 1.0;
-    param->sigma6          = 1.0;
-    param->rho             = 0.8442;
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-    param->ntypes = 1;
-#else
-    param->ntypes = 4;
-#endif
+    param->input_file           = NULL;
+    param->vtk_file             = NULL;
+    param->xtc_file             = NULL;
+    param->eam_file             = NULL;
+    param->write_atom_file      = NULL;
+    param->types_file           = NULL;
+    param->force_field          = FF_LJ;
+    param->epsilon              = 1.0;
+    param->sigma                = 1.0;
+    param->sigma6               = 1.0;
+    param->rho                  = 0.8442;
+    param->ntypes               = 4;
+    param->lj_comb_rule         = LJ_COMB_FULL;
     param->epsilon_per_type     = NULL;
     param->sigma_per_type       = NULL;
     param->ntimes               = 200;
@@ -108,7 +155,7 @@ void initParameter(Parameter* param)
     param->dtforce              = 0.5 * param->dt;
     param->reneigh_every        = 20;
     param->displacement_reneigh = 0;
-    param->resort_every         = 400;
+    param->resort_every         = 0;
     param->prune_every          = 5;
     param->x_out_every          = 20;
     param->v_out_every          = 5;
@@ -126,7 +173,27 @@ void initParameter(Parameter* param)
     param->balance_every = param->reneigh_every;
     param->setup         = 1;
     param->verbose       = 0;
-
+    // gmx benchmark
+    param->gmxbenchmark = false;
+    param->size         = 1;
+    // electrostatics
+    param->epsfac              = 1.0;
+    param->ewald_rtol          = 1e-5;
+    param->ewald_beta          = 0.0;
+    param->ewald_table_scale   = 0.0;
+    param->ewald_table_size    = 0;
+    param->ewald_table_f       = NULL;
+    param->ewald_table_v       = NULL;
+    param->ewald_table_fdv0    = NULL;
+    param->kernel_bench        = 0;
+    param->dump_forces_file    = NULL;
+    param->compute_energy      = false;
+    param->energy_lj           = 0.0;
+    param->energy_coul         = 0.0;
+    param->half_lj             = false;
+    param->molsize             = 0;
+    param->accurate_reciprocal = 1;
+    param->kernel_prefetch     = 1;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
@@ -266,7 +333,16 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(balance);
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
+            PARSE_PARAM(lj_comb_rule, str2ljcomb);
+            PARSE_INT(accurate_reciprocal);
+            PARSE_INT(kernel_prefetch);
         }
+    }
+
+    if (param->lj_comb_rule < 0) {
+        fprintf(stderr,
+            "Error: lj_comb_rule must be one of single, geometric, full or auto\n");
+        exit(-1);
     }
 
     if (param->types_file != NULL &&
@@ -296,6 +372,32 @@ void readParameter(Parameter* param, const char* filename)
 
     param->cutneigh = param->cutforce + param->skin + param->outer_skin;
     fclose(fp);
+}
+
+// Ewald splitting coefficient such that erfc(beta * cutoff) == rtol
+// (same bisection as GROMACS' calc_ewaldcoeff_q)
+double computeEwaldCoefficient(double cutoff, double rtol)
+{
+    double beta = 5.0, low, high;
+    int n, i = 0;
+
+    do {
+        i++;
+        beta *= 2.0;
+    } while (erfc(beta * cutoff) > rtol);
+
+    n    = i + 60;
+    low  = 0.0;
+    high = beta;
+    for (i = 0; i < n; i++) {
+        beta = (low + high) / 2.0;
+        if (erfc(beta * cutoff) > rtol) {
+            low = beta;
+        } else {
+            high = beta;
+        }
+    }
+    return beta;
 }
 
 void printParameter(Parameter* param)
@@ -328,6 +430,18 @@ void printParameter(Parameter* param)
         (param->super_clustering) ? "yes" : "no");
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
+#endif
+#if defined(CLUSTER_PAIR) && !defined(USE_REFERENCE_KERNEL) && !defined(CUDA_TARGET)
+    fprintf(stdout,
+        "    Accurate 1/r and 1/r^2:            %s\n",
+        param->accurate_reciprocal ? "yes" : "no (hardware estimate)");
+    fprintf(stdout,
+        "    j-cluster prefetch:                %s\n",
+        param->kernel_prefetch ? "yes" : "no");
+#elif defined(__SIMD_KERNEL__)
+    fprintf(stdout,
+        "    Accurate 1/r^2:                    %s\n",
+        param->accurate_reciprocal ? "yes" : "no (hardware estimate)");
 #endif
     fprintf(stdout, "    Atom data layout:                  %s\n", POS_DATA_LAYOUT);
     fprintf(stdout, "    Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
@@ -380,23 +494,44 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Epsilon:                           %.6e\n", param->epsilon);
     fprintf(stdout, "    Sigma:                             %.6e\n", param->sigma);
     fprintf(stdout, "    Number of types:                   %d\n", param->ntypes);
-    fprintf(stdout, "    LJ combination rule:               %s\n", LJ_COMB_RULE_NAME);
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-    if (param->epsilon_per_type != NULL) {
+    fprintf(stdout,
+        "    LJ combination rule:               %s\n",
+        ljcomb2str(param->lj_comb_rule));
+    fprintf(stdout, "    Coulomb:                           %s\n", COULOMB_RULE_NAME);
+#if COULOMB_IS_EWALD
+    fprintf(stdout, "    Ewald coefficient:                 %.6e\n", param->ewald_beta);
+#endif
+#if COULOMB_RULE == COULOMB_EWALD_TABLE
+    fprintf(stdout,
+        "    Ewald table:                       %d points, spacing %.4e\n",
+        param->ewald_table_size,
+        1.0 / param->ewald_table_scale);
+#endif
+    fprintf(stdout,
+        "    Energies:                          %s\n",
+        param->compute_energy ? "yes" : "no");
+    fprintf(stdout,
+        "    Half-LJ i-clusters:                %s\n",
+        param->half_lj ? "yes" : "no");
+    if (param->molsize > 1) {
+        fprintf(stdout,
+            "    Molecular exclusions:              yes (%d atoms per molecule)\n",
+            param->molsize);
+    }
+    if (param->lj_comb_rule != LJ_COMB_SINGLE && param->epsilon_per_type != NULL) {
         fprintf(stdout, "    Per-type epsilon:                  ");
         for (int i = 0; i < param->ntypes; i++) {
             fprintf(stdout, "[%d]=%.4e ", i, param->epsilon_per_type[i]);
         }
         fprintf(stdout, "\n");
     }
-    if (param->sigma_per_type != NULL) {
+    if (param->lj_comb_rule != LJ_COMB_SINGLE && param->sigma_per_type != NULL) {
         fprintf(stdout, "    Per-type sigma:                    ");
         for (int i = 0; i < param->ntypes; i++) {
             fprintf(stdout, "[%d]=%.4e ", i, param->sigma_per_type[i]);
         }
         fprintf(stdout, "\n");
     }
-#endif
 
     // Simulation parameters
     fprintf(stdout, "\n  Simulation Control:\n");
@@ -413,18 +548,11 @@ void printParameter(Parameter* param)
         "    Displacement reneighbor:           %s\n",
         param->displacement_reneigh ? "enabled" : "disabled");
     fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
-#ifdef SORT_ATOMS
-    fprintf(stdout,
-        "    Resort atoms every:                %d steps\n",
-        param->resort_every);
-#endif
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-    fprintf(stdout, "    LJ combination rule:               single\n");
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-    fprintf(stdout, "    LJ combination rule:               geometric\n");
-#else
-    fprintf(stdout, "    LJ combination rule:               full\n");
-#endif
+    if (param->resort_every > 0) {
+        fprintf(stdout,
+            "    Resort atoms every:                %d steps\n",
+            param->resort_every);
+    }
     fprintf(stdout,
         "    Prune every:                       %d steps\n",
         param->prune_every);
