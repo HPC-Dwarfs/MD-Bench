@@ -442,7 +442,8 @@ options are an error. Common command line arguments:
 - `-p <file>`: Parameter file; `outer_skin` can be set here to enable double-cutoff pruning
 - `-gmxbench [-size N]`, `--kernel-bench N`, `--dump-forces <file>`: the water system of the GROMACS non-bonded benchmark, a kernel-only timing loop and a per-atom force dump (both schemes, see below)
 - `-energy`, `-halflj`: energy kernels and half-LJ i-clusters, as `gmx nonbonded-benchmark -energy`/`-halflj` (see below)
-- `--accurate-recip`, `--no-prefetch`: Newton-refined reciprocals of the SIMD kernels and no j-cluster prefetch (CPU cluster-pair), both needed for a like-for-like GROMACS comparison
+- `--no-accurate-recip`: hardware reciprocal estimates of the SIMD kernels without the Newton-Raphson refinement (refined by default, as GROMACS; `--accurate-recip` selects the default explicitly)
+- `--no-prefetch`: no j-cluster prefetch (CPU cluster-pair), needed for a like-for-like GROMACS comparison
 - `--sort-every <n>`: spatial atom sort every n steps with a list rebuild (verlet-list; 0 = off, default)
 
 ### Test Cases
@@ -453,7 +454,7 @@ Several built-in test cases are available:
 3. Lennard-Jones for melted copper with input file
 4. Argon gas simulation with parameter files
 5. Water box of the GROMACS non-bonded benchmark: `./MDBench-<TAG> -gmxbench -size 1 -half 1 --kernel-bench 500`
-   (build with `COULOMB_RULE=ewald`, run with `--accurate-recip`; `OMP_NUM_THREADS=1` like GROMACS' default)
+   (build with `COULOMB_RULE=ewald`; `OMP_NUM_THREADS=1` like GROMACS' default)
 
 ### Performance Measurement
 

@@ -192,7 +192,7 @@ void initParameter(Parameter* param)
     param->energy_coul       = 0.0;
     param->half_lj           = false;
     param->molsize             = 0;
-    param->accurate_reciprocal = 0;
+    param->accurate_reciprocal = 1;
     param->kernel_prefetch     = 1;
 #ifdef _OPENMP
     // Use static scheduling as default

@@ -237,8 +237,7 @@ it
 atoms with charges and intramolecular exclusions, cut-off 1.0 and no skin unless
 `-r`/`-s` are given. `-size <int>` replicates the box (power of two) as `gmx
 nonbonded-benchmark -size` does. Available in both schemes. Build with `COULOMB_RULE=ewald`
-(or `rf`) and `CLUSTER_PAIR_KERNEL=4xN`, and run with `--accurate-recip` to compare with
-GROMACS. It is a force kernel benchmark like GROMACS', so it needs `--kernel-bench` or `-n
+(or `rf`) and `CLUSTER_PAIR_KERNEL=4xN` to compare with GROMACS. It is a force kernel benchmark like GROMACS', so it needs `--kernel-bench` or `-n
 0`.
 - `-w <file>`:  write input atoms to file (verletlist)
 
@@ -281,11 +280,12 @@ energy kernels, `gmx nonbonded-benchmark -energy`), reported by `--kernel-bench`
 - `-halflj`:  LJ only for the first half of the i-clusters that have at most half of
 their atoms with LJ, whose LJ atoms are sorted to the front (`gmx nonbonded-benchmark
 -halflj`). CPU cluster-pair kernels only.
-- `--accurate-recip`: refine the hardware reciprocal and reciprocal square root estimates
-(12-14 bits) of the SIMD kernels (cluster-pair and verletlist with `USE_SIMD_KERNEL`) with
-Newton-Raphson steps. Needed when forces have to agree with a code that evaluates 1/r^2 to
-full precision, e.g. to compare against GROMACS. Parameter file key
-`accurate_reciprocal`.
+- `--no-accurate-recip`: use the hardware reciprocal and reciprocal square root estimates
+(12-14 bits) of the SIMD kernels (cluster-pair and verletlist with `USE_SIMD_KERNEL`)
+without refining them. By default they are refined with Newton-Raphson steps, as GROMACS
+does, so the forces agree with a code that evaluates 1/r^2 to full precision and between
+the SIMD widths (`--accurate-recip` selects the default explicitly). Parameter file key
+`accurate_reciprocal` (0 or 1).
 - `--no-prefetch`: no software prefetch of the j-cluster data in the CPU cluster-pair
 SIMD kernels. GROMACS does not prefetch, use it for a like-for-like comparison.
 Parameter file key `kernel_prefetch`.
@@ -421,10 +421,10 @@ Other kernels: `CLUSTER_PAIR_KERNEL=2xNN` (compare with `-simd 2xmm`; `run_compa
 does with `SIMD=AVX512` and a `gmx` built with `GMX_SIMD=AVX_512`), `COULOMB_RULE=rf`
 (compare with `-coulomb reaction-field`), `COULOMB_RULE=ewald_table` (compare with
 `-table`). The options `-energy` and `-halflj` are the same in both programs.
-`--accurate-recip` is needed for the forces to agree with GROMACS (rms error about
-1e-6 in single precision, energies about 1e-6 relative), without it the kernels use the
-12-bit hardware estimates and are a bit faster. `--no-prefetch` turns off the j-cluster
-prefetch, which GROMACS does not have. `--lj-comb geometric` is GROMACS' `-combrule geometric`
+The refined reciprocals (default) are needed for the forces to agree with GROMACS (rms
+error about 1e-6 in single precision, energies about 1e-6 relative), with
+`--no-accurate-recip` the kernels use the 12-bit hardware estimates and are a bit faster.
+`--no-prefetch` turns off the j-cluster prefetch, which GROMACS does not have. `--lj-comb geometric` is GROMACS' `-combrule geometric`
 (the default `full` reads type-pair tables and is slower). `-gmxbench` is a kernel benchmark: the
 molecules have no bonded terms or constraints, so MD-Bench refuses to integrate them
 (use `--kernel-bench` or `-n 0`).

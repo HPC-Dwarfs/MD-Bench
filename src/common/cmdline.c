@@ -87,8 +87,9 @@ static void printHelp(void)
            "(reported by --kernel-bench and --dump-forces)\n");
     printf("  -halflj                   LJ only for the first half of the i-clusters "
            "with at most half of their atoms having LJ (CPU cluster-pair)\n");
-    printf("  --accurate-recip          refine the 1/r and 1/r^2 hardware estimates of "
-           "the SIMD kernels with Newton-Raphson steps (as GROMACS)\n");
+    printf("  --no-accurate-recip       use the 1/r and 1/r^2 hardware estimates of the "
+           "SIMD kernels without the Newton-Raphson refinement (default: refined, as "
+           "GROMACS; --accurate-recip selects it explicitly)\n");
     printf("  --no-prefetch             no j-cluster software prefetch (CPU "
            "cluster-pair SIMD kernels, GROMACS does not prefetch)\n");
     printf("  --kernel-bench <int>      after the setup, only run the force kernel this "
@@ -186,6 +187,8 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
             param->half_lj = true;
         } else if (IS("--accurate-recip")) {
             param->accurate_reciprocal = 1;
+        } else if (IS("--no-accurate-recip")) {
+            param->accurate_reciprocal = 0;
         } else if (IS("--no-prefetch")) {
             param->kernel_prefetch = 0;
         } else if (IS("--kernel-bench")) {
