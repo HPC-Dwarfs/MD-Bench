@@ -76,10 +76,6 @@ double setup(Parameter* param,
 
     if (param->input_file == NULL) {
         if (param->gmxbenchmark) {
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-            fprintf(stderr, "-gmxbench needs LJ_COMB_RULE=geometric or full\n");
-            exit(EXIT_FAILURE);
-#endif
             readAtomGmx(atom, param);
         } else {
             createAtom(atom, param);
@@ -89,6 +85,12 @@ double setup(Parameter* param,
     }
     // Before the atoms are distributed over the MPI ranks, so the ids are global
     initAtomIds(atom);
+    // --lj-comb auto and the check of the rule need the atom types
+    resolveLJCombRule(param,
+        atom->ntypes,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type);
+    neighbor->lj_comb_rule = param->lj_comb_rule;
 #if COULOMB_IS_EWALD
     param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
 #endif

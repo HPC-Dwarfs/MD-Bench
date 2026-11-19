@@ -61,10 +61,11 @@ for rule in rf ewald ewald_table none; do
     esac
     make "${cfg[@]}" >/dev/null
     bin="$(make -s "${cfg[@]}" print-target)"
-    OPTIONS=("" "-energy")
+    # Each kernel option set with the geometric rule, the plain forces also with full
+    OPTIONS=("--lj-comb geometric" "--lj-comb full" "--lj-comb geometric -energy")
     case "${kernel}" in
       VL*) ;;
-      *) OPTIONS+=("-halflj -energy") ;;
+      *) OPTIONS+=("--lj-comb geometric -halflj -energy") ;;
     esac
     for size in 1 2; do
       for half in 0 1; do

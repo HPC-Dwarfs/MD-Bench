@@ -60,7 +60,8 @@ for kernel in "${SIMD_KERNEL}" REF VL; do
   for np in 1 2 4; do
     for half in 0 1; do
       OMP_NUM_THREADS=1 mpirun "${MPI_EXTRA_FLAGS[@]}" -np "${np}" "${bin}" -gmxbench \
-          -size "${SIZE}" -half "${half}" --kernel-bench 1 -energy "${kernel_opts[@]}" \
+          -size "${SIZE}" -half "${half}" --kernel-bench 1 -energy --lj-comb geometric \
+          "${kernel_opts[@]}" \
           --dump-forces "${WORK}/f.txt" >"${WORK}/run.log" 2>&1 || {
         echo "FAILED: ${kernel} np=${np} half=${half}"
         tail -n 5 "${WORK}/run.log"

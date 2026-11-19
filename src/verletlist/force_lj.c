@@ -16,7 +16,7 @@
 #include <timing.h>
 #include <util.h>
 
-void computeForceGhostShell(Parameter*, Atom*, Neighbor*);
+void RULE_VARIANT_NAME(computeForceGhostShell)(Parameter*, Atom*, Neighbor*);
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VL_ALWAYS_INLINE static inline __attribute__((always_inline))
@@ -220,7 +220,7 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
     (void)sigma3_ptr;
 }
 
-double KERNEL_FN(computeForceLJFullNeigh)(
+double VARIANT_NAME(computeForceLJFullNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJFullNeigh begin\n");
@@ -299,7 +299,7 @@ double KERNEL_FN(computeForceLJFullNeigh)(
     return timeStop - timeStart;
 }
 
-double KERNEL_FN(computeForceLJHalfNeigh)(
+double VARIANT_NAME(computeForceLJHalfNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJHalfNeigh begin\n");
@@ -387,7 +387,7 @@ double KERNEL_FN(computeForceLJHalfNeigh)(
             // The ghost-ghost pairs of the eight-shell method, by one thread into the
             // atom forces (the implicit barrier of the loop above precedes it)
 #pragma omp single
-            computeForceGhostShell(param, atom, neighbor);
+            RULE_VARIANT_NAME(computeForceGhostShell)(param, atom, neighbor);
         }
 
         threadForcesReduce(atom, nf);
@@ -411,7 +411,8 @@ double KERNEL_FN(computeForceLJHalfNeigh)(
 }
 
 #ifndef KERNEL_EXCLUSIONS
-void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
+void RULE_VARIANT_NAME(
+    computeForceGhostShell)(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("computeForceGhostShell begin\n");
     int Nshell = neighbor->Nshell;

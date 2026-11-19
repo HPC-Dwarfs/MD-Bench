@@ -145,7 +145,7 @@ __global__ void binatoms_kernel(DeviceAtom a,
     }
 }
 
-#ifndef NBLIST_CSR
+template <bool TYPE_CUTOFF>
 __global__ void compute_neighborhood(DeviceAtom a,
     DeviceNeighbor neigh,
     Neighbor_params np,
@@ -174,9 +174,7 @@ __global__ void compute_neighborhood(DeviceAtom a,
     MD_FLOAT ytmp = atom_y(i);
     MD_FLOAT ztmp = atom_z(i);
     int ibin      = coord2bin_device(xtmp, ytmp, ztmp, np);
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-    int type_i = atom->type[i];
-#endif
+    int type_i    = TYPE_CUTOFF ? atom->type[i] : 0;
     for (int k = 0; k < nstencil; k++) {
         // __ldg: stencil/bins/x/type are read-only here, but the compiler cannot
         // prove they don't alias the neighbor-list writes, so it won't use the
@@ -196,12 +194,11 @@ __global__ void compute_neighborhood(DeviceAtom a,
             MD_FLOAT delz = ztmp - __ldg(&atom_z(j));
             MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_j            = __ldg(&atom->type[j]);
-            const MD_FLOAT cutoff = __ldg(&atom->cutneighsq[type_i * ntypes + type_j]);
-#else
-            const MD_FLOAT cutoff = cutneighsq;
-#endif
+            MD_FLOAT cutoff = cutneighsq;
+            if constexpr (TYPE_CUTOFF) {
+                int type_j = __ldg(&atom->type[j]);
+                cutoff     = __ldg(&atom->cutneighsq[type_i * ntypes + type_j]);
+            }
 
             if (rsq <= cutoff) {
                 if (n < neighbor->maxneighs) {
@@ -217,121 +214,6 @@ __global__ void compute_neighborhood(DeviceAtom a,
         atomicMax(new_maxneighs, n);
     }
 }
-#else /* NBLIST_CSR */
-/* Pass 1: count neighbors per atom into numneigh[], no writes to neighbors[]. */
-__global__ void count_neighborhood(DeviceAtom a,
-    DeviceNeighbor neigh,
-    Neighbor_params np,
-    int nlocal,
-    int halfneigh,
-    int nstencil,
-    int* stencil,
-    int* bins,
-    int atoms_per_bin,
-    int* bincount,
-    MD_FLOAT cutneighsq,
-    int ntypes)
-{
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= nlocal) {
-        return;
-    }
-
-    DeviceAtom* atom         = &a;
-    DeviceNeighbor* neighbor = &neigh;
-
-    int n         = 0;
-    MD_FLOAT xtmp = atom_x(i);
-    MD_FLOAT ytmp = atom_y(i);
-    MD_FLOAT ztmp = atom_z(i);
-    int ibin      = coord2bin_device(xtmp, ytmp, ztmp, np);
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-    int type_i = atom->type[i];
-#endif
-    for (int k = 0; k < nstencil; k++) {
-        int jbin     = ibin + stencil[k];
-        int* loc_bin = &bins[jbin * atoms_per_bin];
-        for (int m = 0; m < bincount[jbin]; m++) {
-            int j = loc_bin[m];
-            if (j == i || (halfneigh && (j < i))) {
-                continue;
-            }
-            MD_FLOAT delx = xtmp - atom_x(j);
-            MD_FLOAT dely = ytmp - atom_y(j);
-            MD_FLOAT delz = ztmp - atom_z(j);
-            MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_j            = atom->type[j];
-            const MD_FLOAT cutoff = atom->cutneighsq[type_i * ntypes + type_j];
-#else
-            const MD_FLOAT cutoff = cutneighsq;
-#endif
-            if (rsq <= cutoff) {
-                n++;
-            }
-        }
-    }
-
-    neighbor->numneigh[i] = n;
-}
-
-/* Pass 2: fill neighbors[] compactly using the pre-computed neigh_start[] offsets. */
-__global__ void fill_neighborhood_csr(DeviceAtom a,
-    DeviceNeighbor neigh,
-    Neighbor_params np,
-    int nlocal,
-    int halfneigh,
-    int nstencil,
-    int* stencil,
-    int* bins,
-    int atoms_per_bin,
-    int* bincount,
-    MD_FLOAT cutneighsq,
-    int ntypes)
-{
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= nlocal) {
-        return;
-    }
-
-    DeviceAtom* atom         = &a;
-    DeviceNeighbor* neighbor = &neigh;
-
-    int n         = 0;
-    int base      = neighbor->neigh_start[i];
-    MD_FLOAT xtmp = atom_x(i);
-    MD_FLOAT ytmp = atom_y(i);
-    MD_FLOAT ztmp = atom_z(i);
-    int ibin      = coord2bin_device(xtmp, ytmp, ztmp, np);
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-    int type_i = atom->type[i];
-#endif
-    for (int k = 0; k < nstencil; k++) {
-        int jbin     = ibin + stencil[k];
-        int* loc_bin = &bins[jbin * atoms_per_bin];
-        for (int m = 0; m < bincount[jbin]; m++) {
-            int j = loc_bin[m];
-            if (j == i || (halfneigh && (j < i))) {
-                continue;
-            }
-            MD_FLOAT delx = xtmp - atom_x(j);
-            MD_FLOAT dely = ytmp - atom_y(j);
-            MD_FLOAT delz = ztmp - atom_z(j);
-            MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-            int type_j            = atom->type[j];
-            const MD_FLOAT cutoff = atom->cutneighsq[type_i * ntypes + type_j];
-#else
-            const MD_FLOAT cutoff = cutneighsq;
-#endif
-            if (rsq <= cutoff) {
-                neighbor->neighbors[base + n] = j;
-                n++;
-            }
-        }
-    }
-}
-#endif /* NBLIST_CSR */
 
 /* Double-cutoff prune: partition each atom's neighbor list in place so the inner
  * neighbors (within the force cutoff + skin) come first, and record their count in
@@ -460,14 +342,9 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     int nall = atom->Nlocal + atom->Nghost;
     if (nall > nmax) {
         nmax = nall;
-#ifdef NBLIST_CSR
-        d_neighbor->neigh_start = (int*)reallocateGPU(d_neighbor->neigh_start,
-            (nmax + 1) * sizeof(int));
-#else
         d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
             nmax * neighbor->maxneighs * sizeof(int*));
-#endif
-        d_neighbor->numneigh       = (int*)reallocateGPU(d_neighbor->numneigh,
+        d_neighbor->numneigh      = (int*)reallocateGPU(d_neighbor->numneigh,
             nmax * sizeof(int));
         d_neighbor->numneigh_inner = (int*)reallocateGPU(d_neighbor->numneigh_inner,
             nmax * sizeof(int));
@@ -518,62 +395,6 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     binatoms_cuda(atom, &c_binning, c_resize_needed, &np, num_threads_per_block);
     const int num_blocks = ceil((float)atom->Nlocal / (float)num_threads_per_block);
 
-#ifdef NBLIST_CSR
-    /* CSR two-pass build: count, prefix-sum on CPU, fill. */
-    count_neighborhood<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
-        *d_neighbor,
-        np,
-        atom->Nlocal,
-        neighbor->half_neigh,
-        nstencil,
-        c_stencil,
-        c_binning.bins,
-        c_binning.atoms_per_bin,
-        c_binning.bincount,
-        cutneighsq,
-        atom->ntypes);
-    cuda_assert("count_neighborhood", cudaPeekAtLastError());
-    cuda_assert("count_neighborhood", cudaDeviceSynchronize());
-
-    /* Prefix sum on the host. */
-    int Nlocal         = atom->Nlocal;
-    int* h_numneigh    = (int*)malloc(Nlocal * sizeof(int));
-    int* h_neigh_start = (int*)malloc((Nlocal + 1) * sizeof(int));
-    memcpyFromGPU(h_numneigh, d_neighbor->numneigh, Nlocal * sizeof(int));
-    h_neigh_start[0]    = 0;
-    neighbor->maxneighs = 0;
-    for (int ii = 0; ii < Nlocal; ii++) {
-        h_neigh_start[ii + 1] = h_neigh_start[ii] + h_numneigh[ii];
-        if (h_numneigh[ii] > neighbor->maxneighs) {
-            neighbor->maxneighs = h_numneigh[ii];
-        }
-    }
-    free(h_numneigh);
-    int total = h_neigh_start[Nlocal];
-    memcpyToGPU(d_neighbor->neigh_start, h_neigh_start, (Nlocal + 1) * sizeof(int));
-    free(h_neigh_start);
-
-    /* Allocate compact neighbors buffer for this build. */
-    d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
-        MAX(1, total) * sizeof(int));
-    d_neighbor->maxneighs = neighbor->maxneighs;
-
-    /* Pass 2: fill neighbors[] using the uploaded neigh_start[]. */
-    fill_neighborhood_csr<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
-        *d_neighbor,
-        np,
-        Nlocal,
-        neighbor->half_neigh,
-        nstencil,
-        c_stencil,
-        c_binning.bins,
-        c_binning.atoms_per_bin,
-        c_binning.bincount,
-        cutneighsq,
-        atom->ntypes);
-    cuda_assert("fill_neighborhood_csr", cudaPeekAtLastError());
-    cuda_assert("fill_neighborhood_csr", cudaDeviceSynchronize());
-#else
     if (c_new_maxneighs == NULL) {
         c_new_maxneighs = (int*)allocateGPU(sizeof(int));
     }
@@ -584,7 +405,10 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     while (resize) {
         resize = 0;
         memsetGPU(c_new_maxneighs, 0, sizeof(int));
-        compute_neighborhood<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
+        auto kernel = neighbor->lj_comb_rule != LJ_COMB_SINGLE
+                          ? compute_neighborhood<true>
+                          : compute_neighborhood<false>;
+        kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             *d_neighbor,
             np,
             atom->Nlocal,
@@ -617,7 +441,6 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
             neighbor->neighbors = d_neighbor->neighbors;
         }
     }
-#endif /* NBLIST_CSR */
 
     // Initialize the inner-section counts (mirrors the outer list when the
     // double-cutoff scheme is disabled) after a full rebuild.

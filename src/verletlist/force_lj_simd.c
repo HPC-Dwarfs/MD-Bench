@@ -44,7 +44,7 @@
 // safe for a full-width masked load/gather past an atom's actual neighbor
 // count -- see neighbor.c.
 
-double KERNEL_FN(computeForceLJFullNeigh_simd)(
+double VARIANT_NAME(computeForceLJFullNeigh_simd)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -264,7 +264,7 @@ double KERNEL_FN(computeForceLJFullNeigh_simd)(
     return E - S;
 }
 
-double KERNEL_FN(computeForceLJHalfNeigh_simd)(
+double VARIANT_NAME(computeForceLJHalfNeigh_simd)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -526,7 +526,7 @@ double KERNEL_FN(computeForceLJHalfNeigh_simd)(
 
 // VLA (vector-length-agnostic, SVE/SVE2): one masked loop instead of a full-width main
 // loop plus a separate masked tail block.
-double KERNEL_FN(computeForceLJFullNeigh_simd_vla)(
+double VARIANT_NAME(computeForceLJFullNeigh_simd_vla)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -666,7 +666,7 @@ double KERNEL_FN(computeForceLJFullNeigh_simd_vla)(
     return E - S;
 }
 
-double KERNEL_FN(computeForceLJHalfNeigh_simd_vla)(
+double VARIANT_NAME(computeForceLJHalfNeigh_simd_vla)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -886,7 +886,7 @@ static inline MD_SIMD_FLOAT ljforce_compressed(Atom* atom,
 // only runs once that buffer holds a full, unmasked vector's worth of valid
 // pairs, or once as a masked "epilogue" for whatever is left over after atom
 // i's neighbor list is exhausted. See TODO.md and the design plan for details.
-double KERNEL_FN(computeForceLJFullNeigh_simd_compress)(
+double VARIANT_NAME(computeForceLJFullNeigh_simd_compress)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;
@@ -1092,7 +1092,7 @@ double KERNEL_FN(computeForceLJFullNeigh_simd_compress)(
     return E - S;
 }
 
-double KERNEL_FN(computeForceLJHalfNeigh_simd_compress)(
+double VARIANT_NAME(computeForceLJHalfNeigh_simd_compress)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     int Nlocal = atom->Nlocal;

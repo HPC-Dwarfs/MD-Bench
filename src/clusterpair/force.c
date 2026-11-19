@@ -32,24 +32,24 @@ void initForce(Parameter* param)
         break;
     case FF_LJ:
 #if defined(CLUSTERPAIR_KERNEL_REF)
-        computeForce = computeForceLJRef;
+        computeForce = SELECT_RULE_VARIANT(param, computeForceLJRef);
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         if (param->half_neigh || param->method) {
-            computeForce = SELECT_KERNEL(param, computeForceLJ4xnHalfNeigh);
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ4xnHalfNeigh);
         } else {
-            computeForce = SELECT_KERNEL(param, computeForceLJ4xnFullNeigh);
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ4xnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XNN)
         if (param->half_neigh || param->method) {
-            computeForce = SELECT_KERNEL(param, computeForceLJ2xnnHalfNeigh);
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnnHalfNeigh);
         } else {
-            computeForce = SELECT_KERNEL(param, computeForceLJ2xnnFullNeigh);
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XN)
         if (param->half_neigh) {
-            computeForce = SELECT_KERNEL(param, computeForceLJ2xnHalfNeigh);
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnHalfNeigh);
         } else {
-            computeForce = SELECT_KERNEL(param, computeForceLJ2xnFullNeigh);
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_GPU)
         if (param->super_clustering) {
@@ -62,7 +62,7 @@ void initForce(Parameter* param)
     case FF_LJ_TABLE:
 // #if defined(CLUSTERPAIR_KERNEL_REF)
 #if defined(CLUSTERPAIR_KERNEL_REF)
-        computeForce = computeForceLJTableRef;
+        computeForce = SELECT_RULE_VARIANT(param, computeForceLJTableRef);
 #else
         fprintf(stderr,
             "Error: Tabulated force fields for SIMD/GPU cases not yet implemented!\n");

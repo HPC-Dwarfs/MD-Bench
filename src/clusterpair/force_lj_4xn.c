@@ -24,9 +24,10 @@
 #include <timing.h>
 #include <util.h>
 
-#ifndef USE_REFERENCE_KERNEL
+// Only the copies of the selected kernel have code
+#if !defined(USE_REFERENCE_KERNEL) && defined(CLUSTERPAIR_KERNEL_4XN)
 
-void computeForceGhostShell(Parameter*, Atom*, Neighbor*);
+void RULE_VARIANT_NAME(computeForceGhostShell)(Parameter*, Atom*, Neighbor*);
 
 static inline IRows load4xnIRows(const Atom* atom, const int ci, const PairConstants* pc)
 {
@@ -239,7 +240,7 @@ MD_ALWAYS_INLINE void iClusterHalf4xn(Parameter* param,
         (long long int)((double)numneighs * CLUSTER_M / CLUSTER_N));
 }
 
-double KERNEL_FN(computeForceLJ4xnHalfNeigh)(
+double VARIANT_NAME(computeForceLJ4xnHalfNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJ_4xn begin\n");
@@ -330,7 +331,7 @@ double KERNEL_FN(computeForceLJ4xnHalfNeigh)(
 
     // Single threaded: it writes cl_f of the shell clusters without a thread buffer
     if (param->method == eightShell) {
-        computeForceGhostShell(param, atom, neighbor);
+        RULE_VARIANT_NAME(computeForceGhostShell)(param, atom, neighbor);
     }
 
     double E = getTimeStamp();
@@ -411,7 +412,7 @@ MD_ALWAYS_INLINE void iClusterFull4xn(Atom* atom,
     addStat(stats->force_iters, (long long int)((double)numneighs));
 }
 
-double KERNEL_FN(computeForceLJ4xnFullNeigh)(
+double VARIANT_NAME(computeForceLJ4xnFullNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJ_4xn begin\n");

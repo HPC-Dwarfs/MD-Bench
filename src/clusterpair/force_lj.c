@@ -21,10 +21,11 @@
 #include <timing.h>
 #include <util.h>
 
-void computeForceGhostShell(Parameter*, Atom*, Neighbor*);
+void RULE_VARIANT_NAME(computeForceGhostShell)(Parameter*, Atom*, Neighbor*);
 
 #ifdef USE_REFERENCE_KERNEL
-double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+double RULE_VARIANT_NAME(
+    computeForceLJRef)(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJ begin\n");
     const int nbM = atom->Nclusters_local;
@@ -243,7 +244,7 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
 
     // Single threaded: it writes cl_f of the shell clusters without a thread buffer
     if (param->method == eightShell) {
-        computeForceGhostShell(param, atom, neighbor);
+        RULE_VARIANT_NAME(computeForceGhostShell)(param, atom, neighbor);
     }
 
     double E = getTimeStamp();
@@ -253,7 +254,8 @@ double computeForceLJRef(Parameter* param, Atom* atom, Neighbor* neighbor, Stats
 #endif
 
 // Routine for eight shell method + MPI
-void computeForceGhostShell(Parameter* param, Atom* atom, Neighbor* neighbor)
+void RULE_VARIANT_NAME(
+    computeForceGhostShell)(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("computeForceLJ begin\n");
 

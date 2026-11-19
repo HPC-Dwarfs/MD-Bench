@@ -23,9 +23,10 @@ extern ComputeForceFunction computeForce;
 enum forcetype { FF_LJ = 0, FF_EAM, FF_LJ_TABLE };
 
 extern void initForce(Parameter*);
-extern double computeForceLJRef(Parameter*, Atom*, Neighbor*, Stats*);
+// One copy per LJ combination rule (computeForceLJRefGeom, ...), see kernel_variant.h
+DECLARE_RULE_VARIANTS(computeForceLJRef)
 #ifdef USE_REFERENCE_KERNEL
-extern double computeForceLJTableRef(Parameter*, Atom*, Neighbor*, Stats*);
+DECLARE_RULE_VARIANTS(computeForceLJTableRef)
 #endif
 #ifdef CLUSTERPAIR_KERNEL_4XN
 extern double computeForceLJTable4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
@@ -39,13 +40,14 @@ extern double computeForceLJTable2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Sta
 extern double computeForceLJTableCuda(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableCudaSup(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
-// Copies of each kernel for --accurate-recip and --no-prefetch, see kernel_variant.h
-DECLARE_KERNEL_VARIANTS(computeForceLJ4xnHalfNeigh);
-DECLARE_KERNEL_VARIANTS(computeForceLJ4xnFullNeigh);
-DECLARE_KERNEL_VARIANTS(computeForceLJ2xnHalfNeigh);
-DECLARE_KERNEL_VARIANTS(computeForceLJ2xnFullNeigh);
-DECLARE_KERNEL_VARIANTS(computeForceLJ2xnnHalfNeigh);
-DECLARE_KERNEL_VARIANTS(computeForceLJ2xnnFullNeigh);
+// Copies of each kernel for the LJ combination rules, --accurate-recip, --no-prefetch and
+// exclusions, see kernel_variant.h
+DECLARE_SIMD_VARIANTS(computeForceLJ4xnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ4xnFullNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnFullNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnnFullNeigh)
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
 #ifdef CUDA_TARGET

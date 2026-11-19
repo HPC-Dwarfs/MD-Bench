@@ -33,9 +33,11 @@ static inline MD_SIMD_FLOAT simd_real_reciprocal_accurate(MD_SIMD_FLOAT a)
     return x;
 }
 
-/* Estimate of 1/sqrt(a). Targets without a hardware estimate use the exact sqrt and
- * reciprocal. */
-#if defined(__ISA_AVX512__) && PRECISION == 1
+/* Estimate of 1/sqrt(a). Targets without a hardware estimate (and the scalar SIMD
+ * emulation of USE_SCALAR_KERNEL) use the exact sqrt and reciprocal. */
+#if defined(USE_SCALAR_KERNEL)
+#define SIMD_RSQRT_ESTIMATE_BITS 0
+#elif defined(__ISA_AVX512__) && PRECISION == 1
 #define SIMD_RSQRT_ESTIMATE_BITS 14
 static inline MD_SIMD_FLOAT simd_real_rsqrt_estimate(MD_SIMD_FLOAT a)
 {

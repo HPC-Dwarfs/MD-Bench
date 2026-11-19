@@ -10,13 +10,15 @@
 #include <allocate.h>
 #include <atom.h>
 #include <eam.h>
+#include <kernel_variant.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <stats.h>
 #include <timing.h>
 #include <util.h>
 
-double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+double RULE_VARIANT_NAME(
+    computeForceEam)(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     if (eam.nmax < atom->Nmax) {
         eam.nmax = atom->Nmax;

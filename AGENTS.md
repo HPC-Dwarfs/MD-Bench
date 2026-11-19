@@ -73,15 +73,15 @@ make -s OPT_SCHEME=clusterpair COULOMB_RULE=ewald print-target
 
 ### Binary Naming
 
-Binary names follow `MDBench-<OPT_TAG>-<TOOL_TAG>-<DATA_TYPE><TAG_SUFFIX>` (`config.mk`):
+Binary names follow `MDBench-<OPT_TAG>-<TOOL_TAG>-<DATA_TYPE><TAG_SUFFIX>` (`make/options.mk`):
 - `OPT_TAG`: `VL` (+ `-SIMD`, `-NBSIMD`) or `CP-<CLUSTER_PAIR_KERNEL>`, `CP-ref` for the
   CPU reference kernel (`USE_REFERENCE_KERNEL`, forced by scalar `SIMD`)
 - `TOOL_TAG`: `<TOOLCHAIN>-<SIMD>[-CMP]` (`SIMD` resolved, e.g. `X86_SCALAR` for `NONE`),
   only `<TOOLCHAIN>` for GPU builds
-- `TAG_SUFFIX`: `-<LJ_COMB_RULE>[-<COULOMB_RULE>][-omp][-mpi]` (`-omp`/`-mpi` for
+- `TAG_SUFFIX`: `[-<COULOMB_RULE>][-omp][-mpi]` (`-omp`/`-mpi` for
   `ENABLE_OPENMP`/`ENABLE_MPI`)
 
-e.g. `MDBench-CP-auto-GCC-AVX512-DP-geometric-omp`. Options outside the name (data
+e.g. `MDBench-CP-auto-GCC-AVX512-DP-omp`. Options outside the name (data
 layouts, tracers, `COMPUTE_STATS`, GPU options, ...) share the binary and build directory;
 `$(BUILD_DIR)/config.stamp` records the compiler and all flags and every object depends
 on it, so changing any option recompiles (no stale objects, the binary always matches its
@@ -90,17 +90,20 @@ print-target` in scripts instead of assembling names by hand.
 
 ### Configuration Options
 
-Key configuration options in `config.mk`:
+Key configuration options in `config.mk`. `config.mk` holds only the options;
+`make/options.mk` (included by the `Makefile` right after it) checks them and turns them
+into `DEFINES` and the binary tag:
 
 - `TOOLCHAIN`: Compiler toolchain (GCC/CLANG/ICC/ICX/NVCC/HIPCC)
 - `OPT_SCHEME`: Algorithmic variant (verletlist/clusterpair)
 - `SIMD`: instruction set, also selects the architecture (`ISA` is derived and may not be
   given): X86 `X86_SCALAR`/SSE/AVX/AVX_FMA/AVX2/AVX512, ARM `ARM_SCALAR`/NEON/SVE/SVE2;
-  `NONE` = scalar for the build machine (`uname -m`); internally scalar is `SIMD=NONE`
+  `NONE` = scalar for the build machine (`uname -m`); internally scalar is `SIMD=NONE`.
+  `AVX` builds with `-march=x86-64-v2 -mavx` (no FMA), `AVX_FMA` adds `-mfma`; the
+  cluster-pair and verlet-list SIMD kernels have no SSE version (make stops)
 - `DATA_TYPE`: Precision (SP for single, DP for double)
 - `ATOM_DATA_LAYOUT`: Data layout (AOS for array-of-structures, SOA for structure-of-arrays)
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU and SOA for GPU
-- `LJ_COMB_RULE`: LJ combination rule (`single` for global broadcast, `geometric` for per-type, `full` for full pair matrix)
 - `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`/`ewald_table`), the plain LJ kernels of both schemes (CPU and GPU; `ewald_table` CPU only, `config.mk` rejects it for NVCC/HIPCC); adds `-<rule>` to the binary tag
 - `ENABLE_MPI`: Enable MPI parallelization (`-mpi` in the binary name)
 - `ENABLE_OPENMP`: Enable OpenMP parallelization (`-omp` in the binary name)
@@ -108,10 +111,11 @@ Key configuration options in `config.mk`:
   scheme does not use it
 - `COMPUTE_STATS`: kernel statistics; the C kernels also count the pairs inside/outside of
   the cut-off
-- Former build options that are runtime options now: `ACCURATE_RECIPROCAL` ->
-  `--accurate-recip`, `KERNEL_PREFETCH=false` -> `--no-prefetch`, `SORT_ATOMS` ->
-  `--sort-every <n>`; `EXCLUSIONS` is inferred from the system (`molsize > 1`) and `ISA`
-  from `SIMD`; `config.mk` stops with a hint when any of them is set
+- Former build options that are runtime options now: `LJ_COMB_RULE` -> `--lj-comb`,
+  `ACCURATE_RECIPROCAL` -> `--accurate-recip`, `KERNEL_PREFETCH=false` -> `--no-prefetch`,
+  `SORT_ATOMS` -> `--sort-every <n>`; `EXCLUSIONS` is inferred from the system
+  (`molsize > 1`) and `ISA` from `SIMD`; make stops with a hint when any of them is set on
+  the command line or in `config.mk`
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds; **required, no default**. Common values: `gfx90a` (MI250X), `gfx940` (MI300A), `gfx942` (MI300X), `gfx1030` (RX 6800 XT)
 - `LJ_TABLE_INDEX`: Indexing mode for tabulated LJ kernels (`r` or `rsq`); `rsq` avoids a sqrt and is load-bound
 - `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme (auto/4xN/2xNN/2xN/gpusimple/supercluster)
@@ -184,8 +188,16 @@ MD_FLOAT force = 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
 Half neighbor-lists apply Newton's third law (each pair's force is added to
 both atoms from a single computation).
 
-Combination rules, selected at compile time via `-DLJ_COMB_RULE`
-(`src/common/parameter.h`):
+Combination rules, a runtime option (`--lj-comb`, `param->lj_comb_rule`, default `full`;
+`auto` is resolved by `resolveLJCombRule()` in `parameter.c` right after the atoms are
+created: `single` when every type has the global epsilon/sigma, else `geometric`; an
+explicit `single` with differing types is an error). Only the kernel variants (force
+kernels and neighbor-list builds, see below) are compiled with `-DLJ_COMB_RULE`, all other
+code reads the rule at runtime and must not use the macro. The type-pair tables
+`atom->epsilon`/`sigma6` are the geometric combination of the per-type parameters for
+every rule. The neighbor-list builds keep the per-type cut-off of the real codes
+(`atom->cutneighsq[type_i * ntypes + type_j]` per pair, like LAMMPS) for geometric/full
+and the global one for single (`src/common/parameter.h`):
 - `LJ_COMB_SINGLE` (0): single atom type, broadcasts global epsilon/sigma — fastest, no per-type lookup
 - `LJ_COMB_GEOM` (1): per-type geometric combination — `epsilon_ij = sqrt(eps_i*eps_j)`, `sigma6_ij = sigma3_i*sigma3_j`
 - `LJ_COMB_FULL` (2): full type-pair matrix lookup (gathers; the SIMD kernels read the `ljc6x6`/`ljc12x12` tables)
@@ -205,16 +217,33 @@ once in `pair_rows.h` (`pairForces()`): a kernel keeps the i-cluster in "rows"
 (`IRows`: broadcast atoms for 4xN/2xN, atom pairs in the register halves for 2xNN), loads
 the j-cluster (`JData`) and only differs in how it loads, in the diagonal mask table and
 in how it reduces forces. `kernel_math.h` pulls in the reciprocal/rsqrt helpers of `src/common/simd_math.h`
-(`ACCURATE_RECIPROCAL` selects Newton-Raphson refinement). Each kernel file is compiled
-eight times: the `Makefile` (`KERNEL_COPIES`, objects `<file>.<options>.o`) adds
-`-DACCURATE_RECIPROCAL`/`-DKERNEL_NO_PREFETCH`/`-DKERNEL_EXCLUSIONS` per combination,
-`KERNEL_FN()` names the entry points of each copy and `SELECT_KERNEL()` in `initForce()`
-picks one by `--accurate-recip`, `--no-prefetch` and `param->molsize > 1`
-(`src/common/kernel_variant.h`). The verlet-list SIMD kernels have an `accurate` copy, the
-verlet-list C kernels (`force_lj.c`) an `excl` copy. Runtime flags inside the kernels cost
-1.5-3% (measured on Genoa: GCC lays out the inlined copies differently), the compiled
-copies are within run-to-run noise of a build without the option. So new kernel options
-should become copies, not branches. The math is GROMACS': one rsqrt
+(`ACCURATE_RECIPROCAL` selects Newton-Raphson refinement).
+
+Kernel variants (`src/common/kernel_variant.h`): a kernel file is a template on the macros
+`LJ_COMB_RULE`, `ACCURATE_RECIPROCAL`, `KERNEL_NO_PREFETCH` and `KERNEL_EXCLUSIONS`; the
+`Makefile` never compiles it on its own but once per variant (`TEMPLATE_FILES`,
+`VARIANTS_<file>`, objects `<file>.<variant>.o` such as `force_lj_4xn.geom-accurate-excl.o`,
+one static pattern rule adds the `VARIANT_FLAGS_<option>` of the variant).
+`RULE_VARIANT_NAME()`/`VARIANT_NAME()` give the functions of each variant their own names
+(e.g. `computeForceLJ4xnHalfNeighGeomAccurateExcl`), the `SELECT_*_VARIANT` macros in
+`initForce()` and `CALL_RULE_VARIANT` pick one. Variants per template file:
+- cluster-pair SIMD kernels (`force_lj_4xn/2xnn/2xn.c`; only the selected shape has code):
+  rule x `--accurate-recip` x `--no-prefetch` x exclusions (24)
+- cluster-pair `force_lj.c` (reference kernel, eight-shell ghost routine
+  `computeForceGhostShell<Rule>`), `force_lj_table.c`, `neighbor_build.c` (the list build
+  `buildNeighborCPU<Rule>`): per rule
+- verlet-list `force_lj.c`: rule x exclusions; `force_lj_simd.c` (only with
+  `USE_SIMD_KERNEL`): rule x `--accurate-recip`; `force_lj_table.c`, `force_eam.c`,
+  `neighbor_build.c` (`buildNeighborLists<Rule>`, `neighborGhost<Rule>`): per rule
+The neighbor templates hold the original code with its `#if LJ_COMB_RULE` blocks; the
+state they share with `neighbor.c` is declared in `neighbor_internal.h` of each scheme.
+The prune kernels have no rule dependence and are compiled once. The GPU kernels use C++
+templates instead (`template <int RULE, bool ENERGY, bool EXCL>`, `if constexpr` on RULE,
+the launch picks the instantiation with `SELECT_GPU_KERNEL` of
+`src/common/kernel_select_gpu.h`; the verlet-list GPU neighbor kernels are templates on the
+per-type cut-off). Runtime flags inside the kernels cost 1.5-3% (measured on Genoa: GCC lays
+out the inlined code differently), the variants are within run-to-run noise of a build
+without the option. So new kernel options should become variants, not branches. The math is GROMACS': one rsqrt
 for 1/r and 1/r^2 (a plain reciprocal without electrostatics), the cut-off/diagonal mask
 applied to 1/r only, LJ from per-atom `cl_sqrt6c6`/`cl_sqrt12c12` products or the
 `ljc6x6`/`ljc12x12` type-pair tables, all phase by phase over the rows.
@@ -356,7 +385,7 @@ interaction masks used by super-clustering and SIMD exclusion handling).
 timestep (`dt`/`dtforce`), system size (`nx`/`ny`/`nz`), cutoffs
 (`cutforce`/`skin`/`outer_skin`/`cutneigh`), LJ parameters
 (`epsilon`/`sigma`/`sigma6`, or `epsilon_per_type`/`sigma_per_type` plus
-`ntypes` for multi-type systems), `LJ_COMB_RULE`, `half_neigh`,
+`ntypes` for multi-type systems), `lj_comb_rule`, `half_neigh`,
 `reneigh_every`, and GPU-specific flags like `super_clustering`. Loaded from
 a `key value` text file (`readParameter`/`readTypesFile` in
 `src/common/parameter.c`); the types file is two columns (epsilon, sigma).
@@ -385,8 +414,11 @@ a `key value` text file (`readParameter`/`readTypesFile` in
 | `src/common/device.c`, `device.h`, `deviceGPU.cu` | CUDA/HIP allocation, memcpy, and pinned-memory helpers |
 | `src/clusterpair/main.c`, `src/verletlist/main.c` | Main program entry (setup, simulation loop) |
 | `src/common/cmdline.c` | Command-line options and `-h` of both schemes (one parser, scheme-only options rejected by the other) |
-| `src/common/kernel_variant.h` | Compiled copies of the SIMD kernels for `--accurate-recip`/`--no-prefetch` |
-| `config.mk` | Build configuration variables |
+| `src/common/kernel_variant.h` | Kernel variants (force kernels, neighbor-list builds) for `--lj-comb`, `--accurate-recip`, `--no-prefetch` and exclusions |
+| `src/common/kernel_select_gpu.h` | Launch selection of the GPU kernel template instantiations |
+| `src/*/neighbor_build.c`, `src/*/neighbor_internal.h` | Neighbor-list build templates (one variant per LJ rule) and the state they share with `neighbor.c` |
+| `config.mk` | Build options only |
+| `make/options.mk` | Turns the options into defines and the binary tag (included after `config.mk`) |
 | `Makefile` | Build rules (pattern rules, dependency generation, test targets) |
 | `.clang-format` | Code formatting rules (90-char limit, WebKit style) |
 
@@ -439,7 +471,7 @@ kernels, neighbor list construction, integration, box geometry, and thermodynami
 single precision `ASSERT_NEAR` uses a relative tolerance of at least 1e-5:
 ```bash
 make OPT_SCHEME=clusterpair mdbench-tests
-./MDBench-CP-auto-GCC-AVX512-SP-geometric-omp-tests
+./MDBench-CP-auto-GCC-AVX512-SP-omp-tests
 ```
 
 Regression tests are shell scripts under `tests/` (e.g.
@@ -461,7 +493,7 @@ print-target`. Run everything with:
 ```bash
 make test                                  # unit tests + all regression scripts
 make SIMD=NONE test                        # test a specific configuration
-bash tests/sim_argon_regression.sh ./MDBench-VL-GCC-AVX512-DP-geometric-omp
+bash tests/sim_argon_regression.sh ./MDBench-VL-GCC-AVX512-DP-omp
 ```
 Apart from `test_gpu_coulomb.sh`, which has to be run by hand on a GPU node, there is no
 automated coverage for the cluster-pair GPU/super-clustering path
@@ -506,7 +538,7 @@ Simulation test data lives in `data/`: `data/argon/input.gro` +
 
 12. **Multiple Kernels Per Change**: Don't assume a single force kernel; a correctness or feature change in cluster-pair may need to be applied across reference, 4xN, 2xNN, 2xN, CUDA, and super-clustering GPU variants to stay consistent.
 
-13. **Per-Type Parameters**: `LJ_COMB_GEOM` requires per-type `sqrt(epsilon)` and `sigma^3` (both flat, per-type, and cluster-layout copies); `LJ_COMB_FULL` additionally needs full type-pair epsilon/sigma6 matrices, which are not SIMD-optimized.
+13. **Per-Type Parameters**: every rule's data is always set up: per-type `sqrt(epsilon)` and `sigma^3` (flat, per-type and cluster-layout copies) for `geometric` and the full type-pair epsilon/sigma6 matrices for `full`, so `--lj-comb` needs no rebuild.
 
 ## Development Process
 

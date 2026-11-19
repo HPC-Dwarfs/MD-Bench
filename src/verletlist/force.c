@@ -49,16 +49,16 @@ void initForce(Parameter* param)
 #endif
     switch (param->force_field) {
     case FF_EAM:
-        computeForce = computeForceEam;
+        computeForce = SELECT_RULE_VARIANT(param, computeForceEam);
         break;
     case FF_LJ_TABLE:
 #ifdef CUDA_TARGET
         computeForce = computeForceLJTableCUDA;
 #else
         if (param->half_neigh || param->method) {
-            computeForce = computeForceLJTableHalfNeigh;
+            computeForce = SELECT_RULE_VARIANT(param, computeForceLJTableHalfNeigh);
         } else {
-            computeForce = computeForceLJTableFullNeigh;
+            computeForce = SELECT_RULE_VARIANT(param, computeForceLJTableFullNeigh);
         }
 #endif
         break;
@@ -69,44 +69,35 @@ void initForce(Parameter* param)
 #ifdef __SIMD_KERNEL__
 #ifdef __SIMD_COMPRESS__
         if (param->half_neigh || param->method) {
-            computeForce = param->accurate_reciprocal
-                               ? computeForceLJHalfNeigh_simd_compressAccurate
-                               : computeForceLJHalfNeigh_simd_compress;
+            computeForce = SELECT_RULE_ACCURATE_VARIANT(param,
+                computeForceLJHalfNeigh_simd_compress);
         } else {
-            computeForce = param->accurate_reciprocal
-                               ? computeForceLJFullNeigh_simd_compressAccurate
-                               : computeForceLJFullNeigh_simd_compress;
+            computeForce = SELECT_RULE_ACCURATE_VARIANT(param,
+                computeForceLJFullNeigh_simd_compress);
         }
 #elif defined(__SIMD_VLA__)
         if (param->half_neigh || param->method) {
-            computeForce = param->accurate_reciprocal
-                               ? computeForceLJHalfNeigh_simd_vlaAccurate
-                               : computeForceLJHalfNeigh_simd_vla;
+            computeForce = SELECT_RULE_ACCURATE_VARIANT(param,
+                computeForceLJHalfNeigh_simd_vla);
         } else {
-            computeForce = param->accurate_reciprocal
-                               ? computeForceLJFullNeigh_simd_vlaAccurate
-                               : computeForceLJFullNeigh_simd_vla;
+            computeForce = SELECT_RULE_ACCURATE_VARIANT(param,
+                computeForceLJFullNeigh_simd_vla);
         }
 #else
         if (param->half_neigh || param->method) {
-            computeForce = param->accurate_reciprocal
-                               ? computeForceLJHalfNeigh_simdAccurate
-                               : computeForceLJHalfNeigh_simd;
+            computeForce = SELECT_RULE_ACCURATE_VARIANT(param,
+                computeForceLJHalfNeigh_simd);
         } else {
-            computeForce = param->accurate_reciprocal
-                               ? computeForceLJFullNeigh_simdAccurate
-                               : computeForceLJFullNeigh_simd;
+            computeForce = SELECT_RULE_ACCURATE_VARIANT(param,
+                computeForceLJFullNeigh_simd);
         }
 #endif
 #else
-        // The copy with molecular exclusions for systems with molecules
-        // (kernel_variant.h)
+        // The copy for the rule and for systems with molecules (kernel_variant.h)
         if (param->half_neigh || param->method) {
-            computeForce = param->molsize > 1 ? computeForceLJHalfNeighExcl
-                                              : computeForceLJHalfNeigh;
+            computeForce = SELECT_RULE_EXCL_VARIANT(param, computeForceLJHalfNeigh);
         } else {
-            computeForce = param->molsize > 1 ? computeForceLJFullNeighExcl
-                                              : computeForceLJFullNeigh;
+            computeForce = SELECT_RULE_EXCL_VARIANT(param, computeForceLJFullNeigh);
         }
 #endif
 #endif

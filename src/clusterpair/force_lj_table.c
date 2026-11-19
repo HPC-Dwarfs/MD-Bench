@@ -19,10 +19,10 @@
 #include <timing.h>
 #include <util.h>
 
-void computeForceGhostShell(Parameter*, Atom*, Neighbor*);
+void RULE_VARIANT_NAME(computeForceGhostShell)(Parameter*, Atom*, Neighbor*);
 
 #ifdef USE_REFERENCE_KERNEL
-double computeForceLJTableRef(
+double RULE_VARIANT_NAME(computeForceLJTableRef)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTable begin\n");
@@ -201,7 +201,7 @@ double computeForceLJTableRef(
 
     // Single threaded: it writes cl_f of the shell clusters without a thread buffer
     if (param->method == eightShell) {
-        computeForceGhostShell(param, atom, neighbor);
+        RULE_VARIANT_NAME(computeForceGhostShell)(param, atom, neighbor);
     }
 
     double E = getTimeStamp();

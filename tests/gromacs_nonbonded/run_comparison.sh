@@ -97,7 +97,7 @@ for size in "${SIZES[@]}"; do
         # The full list only for the plain force kernel
         [ "${half}" = "0" ] && [ -n "${variant}" ] && continue
         OMP_NUM_THREADS=1 "${PIN[@]}" "${bin}" -gmxbench -size "${size}" -half "${half}" \
-            --kernel-bench "${ITER}" --accurate-recip "${opts[@]}" \
+            --kernel-bench "${ITER}" --lj-comb geometric --accurate-recip "${opts[@]}" \
             --dump-forces "${WORK}/mdb_forces.txt" \
             >"${WORK}/mdb.log"
         # GROMACS sums energies in single precision (2e-4 off the exact RF energy at size 8)
@@ -115,7 +115,7 @@ for size in "${SIZES[@]}"; do
       done
 
       OMP_NUM_THREADS=1 "${PIN[@]}" "${bin}" -gmxbench -size "${size}" -half 1 \
-          --kernel-bench "${ITER}" "${opts[@]}" >"${WORK}/mdb_fast.log"
+          --kernel-bench "${ITER}" --lj-comb geometric "${opts[@]}" >"${WORK}/mdb_fast.log"
       rows+=("$(row "MD-Bench ${KERNEL} half ${name}, 1/r^2 estimate" \
           "$(mdb_value "${WORK}/mdb_fast.log" 'Time per iteration')" \
           "$(mdb_value "${WORK}/mdb_fast.log" 'Computed pairs/us')" \

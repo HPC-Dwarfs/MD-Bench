@@ -62,12 +62,12 @@ void displayStatistics(Atom* atom, Parameter* param, Stats* stats, double* timer
     double avg_simd            = stats->total_force_iters /
                                  (double)(atom->Natoms * (param->ntimes + 1));
 
-#if LJ_COMB_RULE != LJ_COMB_SINGLE
-    force_useful_volume += 1e-9 *
-                           (double)((atom->Natoms * (param->ntimes + 1)) +
-                                    stats->total_force_neighs) *
-                           sizeof(int);
-#endif
+    if (param->lj_comb_rule != LJ_COMB_SINGLE) {
+        force_useful_volume += 1e-9 *
+                               (double)((atom->Natoms * (param->ntimes + 1)) +
+                                        stats->total_force_neighs) *
+                               sizeof(int);
+    }
     if (me == 0) {
         printf("Statistics:\n");
         printf("\tVector width: %d, Processor frequency: %.4f GHz\n",

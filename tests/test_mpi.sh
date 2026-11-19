@@ -17,7 +17,8 @@ DATA_DIR="${ROOT_DIR}/data/argon"
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
 SIMD="${SIMD:-NONE}"
 DATA_TYPE="${DATA_TYPE:-DP}"
-LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
+# LJ combination rule of the runs (--lj-comb)
+LJ_COMB="${LJ_COMB:-geometric}"
 
 cd "${ROOT_DIR}"
 
@@ -82,7 +83,7 @@ fi
 # Helper to extract last thermo line
 get_last_tp() {
   local file="$1"
-  grep -E '^[[:space:]]*[0-9]+[[:space:]]+[0-9.eE+-]+' "${file}" | tail -n 1 || true
+  grep -aE '^[[:space:]]*[0-9]+[[:space:]]+[0-9.eE+-]+' "${file}" | tail -n 1 || true
 }
 
 SERIAL_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_serial.XXXXXX")"
@@ -90,7 +91,7 @@ MPI1_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_mpi1.XXXXXX")"
 MPI2_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_mpi2.XXXXXX")"
 
 echo "Running serial binary..."
-"${SERIAL_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
+"${SERIAL_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" \
     -n 200 >"${SERIAL_LOG}"
 
 echo "Running MPI binary with 1 rank..."

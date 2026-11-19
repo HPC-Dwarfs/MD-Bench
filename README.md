@@ -29,7 +29,9 @@ enable HIP GPU kernels (AMD).
 
 The toolchain settings are located in the `./make` directory. Review the
 settings for the configured toolchain. You can configure different settings in
-`config.mk`, for starters on a X86 based system the defaults are fine.
+`config.mk`, for starters on a X86 based system the defaults are fine. `config.mk` only
+holds the options; `make/options.mk` turns them into compiler defines and the binary
+name.
 
 To build the binary call, don't forget to load the compiler module on the
 NHR@FAU clusters (e.g. `module load intel`):
@@ -44,7 +46,7 @@ make > v4.
 You can run MD-Bench without any arguments:
 
 ```shell=
-./MDBench-VL-ICX-AVX2-DP-geometric-omp
+./MDBench-VL-ICX-AVX2-DP-omp
 ```
 
 ## Build system
@@ -68,7 +70,7 @@ Multiple configurations can be build at the same time. The binary is named
 different benchmark:
 
 ```
-MDBench-<scheme>-<toolchain>[-<SIMD>][-CMP]-<SP|DP>-<LJ rule>[-<Coulomb>][-omp][-mpi]
+MDBench-<scheme>-<toolchain>[-<SIMD>][-CMP]-<SP|DP>[-<Coulomb>][-omp][-mpi]
 ```
 
 `<scheme>` is `VL` (with `-SIMD` and `-NBSIMD` for `USE_SIMD_KERNEL` and
@@ -107,7 +109,10 @@ specification in `.clang-format`.
 `ISA` option anymore). X86: `X86_SCALAR`/`SSE`/`AVX`/`AVX_FMA`/`AVX2`/`AVX512`; ARM:
 `ARM_SCALAR`/`NEON`/`SVE`/`SVE2`. `X86_SCALAR`/`ARM_SCALAR` is plain scalar code without
 SIMD extensions (the C reference kernels), `NONE` the scalar code of the build machine.
-GPU builds (`NVCC`/`HIPCC`) run no CPU SIMD code and have no SIMD part in the binary name.
+`AVX` builds without FMA, `AVX_FMA` with it (both without AVX2 instructions). The
+cluster-pair kernels and the verletlist SIMD kernels have no SSE version, make stops for
+them with `SIMD=SSE`. GPU builds (`NVCC`/`HIPCC`) run no CPU SIMD code and have no SIMD
+part in the binary name.
 - `OPT_SCHEME`: Algorithmic variant (`verletlist` or `clusterpair`), different
 source directories and main routines are used
 - `ENABLE_LIKWID`: Turn on LIKWID instrumentation, the LIKWID library has to be available
@@ -122,10 +127,6 @@ point. This is controlled by defines.
 utilisation and easier SIMD vectorization.
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (`auto`/`AOS`/`SOA`). `auto` defaults
 to `AOS` for CPU builds and `SOA` for GPU builds.
-- `LJ_COMB_RULE`: Lennard-Jones combination rule. `single` uses a single atom type
-with broadcast global parameters (fastest, no type lookup). `geometric` uses
-per-type parameters with geometric combination (default). `full` uses a full
-type-pair matrix lookup (not supported in SIMD kernels).
 - `COULOMB_RULE`: Electrostatics (`none` (default)/`rf`/`ewald`/`ewald_table`) for all
 cluster-pair kernels (SIMD, reference and GPU) and for the verletlist plain C and GPU
 kernels. `rf` is a reaction-field with infinite dielectric, `ewald` the real-space Ewald
@@ -168,15 +169,15 @@ atomicAdd (more atomic contention). Tune based on system size and occupancy.
 verletlist kernel without `USE_SIMD_KERNEL` and the cluster-pair reference kernel) also
 count the pairs inside and outside of the cut-off.
 
-The former build options `ACCURATE_RECIPROCAL`, `KERNEL_PREFETCH` and `SORT_ATOMS` are
-the runtime options `--accurate-recip`, `--no-prefetch` and `--sort-every` now, `ISA`
-follows from `SIMD` and `EXCLUSIONS` from the system (see below); make stops with a hint
-when they are given.
+The former build options `LJ_COMB_RULE`, `ACCURATE_RECIPROCAL`, `KERNEL_PREFETCH` and
+`SORT_ATOMS` are the runtime options `--lj-comb`, `--accurate-recip`, `--no-prefetch` and
+`--sort-every` now, `ISA` follows from `SIMD` and `EXCLUSIONS` from the system (see
+below); make stops with a hint when they are given on the command line or in `config.mk`.
 
 Molecular exclusions are on when the system has molecules (`atom->molsize > 1`, the
 water of `-gmxbench`): atoms of the same molecule (consecutive atom ids) do not interact
 via LJ or the direct Coulomb term, but get the exclusion correction of the selected
-`COULOMB_RULE`. The kernels have a compiled copy for systems with molecules, so systems
+`COULOMB_RULE`. The kernels have a compiled variant for systems with molecules, so systems
 without them pay nothing.
 
 ### Build for GPU targets
@@ -265,6 +266,15 @@ shell, 3 half stencil (verletlist)
 
 Force kernel:
 
+- `--lj-comb <string>`: Lennard-Jones combination rule. `full` (default) reads the
+type-pair tables (gathers), `geometric` combines per-type parameters (sqrt(eps_i eps_j),
+sigma3_i sigma3_j), `single` uses one set of global parameters (fastest, no type lookup;
+all atom types must have the global epsilon and sigma), `auto` picks `single` when all
+types are alike and `geometric` otherwise. The type-pair tables are the geometric
+combination of the per-type parameters, so the rules differ in speed, not in the forces.
+The neighbor-list builds check the per-type cut-off for `geometric`/`full` and the global
+one for `single`.
+Parameter file key `lj_comb_rule`.
 - `-energy`:  also compute the LJ and Coulomb energies in the force kernels (GROMACS'
 energy kernels, `gmx nonbonded-benchmark -energy`), reported by `--kernel-bench` and
 `--dump-forces`. All LJ kernels except the verletlist explicit SIMD kernels.
@@ -285,10 +295,11 @@ GROMACS benchmark does
 - `--dump-forces <file>`:  write the forces of a single kernel pass (`atom id fx fy
 fz`, original atom order) to a text file, with `-energy` also the energies
 
-The SIMD kernels are compiled once per combination of `--accurate-recip`, `--no-prefetch`
-and molecular exclusions (`src/common/kernel_variant.h`, the copies are the
-`<kernel>.<options>.o` objects in the build directory), so these options select a kernel
-copy and add no work to the kernel.
+The force kernels and the neighbor-list builds of both schemes are templates compiled
+once per variant, i.e. per combination of `--lj-comb`, `--accurate-recip`, `--no-prefetch`
+and molecular exclusions as far as a kernel has them (`src/common/kernel_variant.h`; the
+variants are the `<file>.<variant>.o` objects in the build directory, the GPU kernels are
+C++ templates), so these options select a variant and add no work to the kernel.
 
 Output:
 
@@ -365,8 +376,8 @@ Run the benchmark with MD-Bench (one thread, the default of GROMACS' benchmark):
 # 4xN kernel (SIMD=AVX2 and single precision give the 4x8 kernel of GROMACS' 4xM)
 make OPT_SCHEME=clusterpair SIMD=AVX2 DATA_TYPE=SP CLUSTER_PAIR_KERNEL=4xN \
      COULOMB_RULE=ewald
-OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-AVX2-SP-geometric-ewald-omp \
-     -gmxbench -size 1 -half 1 --kernel-bench 500 --accurate-recip
+OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-AVX2-SP-ewald-omp \
+     -gmxbench -size 1 -half 1 --kernel-bench 500 --accurate-recip --lj-comb geometric
 ```
 
 `-size` replicates the box (a power of two, 3000 atoms times this value), `-half 1` uses
@@ -394,8 +405,8 @@ adds the `-forces` option used to compare results):
 ```shell=bash
 gmx nonbonded-benchmark -size 1 -nt 1 -simd 4xm -coulomb ewald -combrule geometric \
     -cutoff 1.0 -iter 500 -time -forces gmx_forces.txt
-OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-AVX2-SP-geometric-ewald-omp \
-    -gmxbench -size 1 -half 1 --kernel-bench 500 --accurate-recip \
+OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-AVX2-SP-ewald-omp \
+    -gmxbench -size 1 -half 1 --kernel-bench 500 --accurate-recip --lj-comb geometric \
     --dump-forces mdbench_forces.txt
 python3 tests/gromacs_nonbonded/compare_forces.py gmx_forces.txt mdbench_forces.txt
 ```
@@ -413,7 +424,8 @@ does with `SIMD=AVX512` and a `gmx` built with `GMX_SIMD=AVX_512`), `COULOMB_RUL
 `--accurate-recip` is needed for the forces to agree with GROMACS (rms error about
 1e-6 in single precision, energies about 1e-6 relative), without it the kernels use the
 12-bit hardware estimates and are a bit faster. `--no-prefetch` turns off the j-cluster
-prefetch, which GROMACS does not have. `-gmxbench` is a kernel benchmark: the
+prefetch, which GROMACS does not have. `--lj-comb geometric` is GROMACS' `-combrule geometric`
+(the default `full` reads type-pair tables and is slower). `-gmxbench` is a kernel benchmark: the
 molecules have no bonded terms or constraints, so MD-Bench refuses to integrate them
 (use `--kernel-bench` or `-n 0`).
 

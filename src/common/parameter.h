@@ -42,25 +42,13 @@ typedef struct {
 #define MD_UINT   unsigned long long int
 #endif
 
-// LJ combination rule compile-time macros (Gromacs terminology)
-// Use -DLJ_COMB_RULE=<value> at compile time
+// LJ combination rules (GROMACS terminology), param->lj_comb_rule (--lj-comb). The force
+// kernels are compiled once per rule with -DLJ_COMB_RULE=<rule> (kernel_variant.h), all
+// other code reads the rule at runtime and must not use LJ_COMB_RULE.
 #define LJ_COMB_SINGLE 0 // Single atom type: broadcast global epsilon/sigma
 #define LJ_COMB_GEOM   1 // Geometric: sqrt(eps_i*eps_j), sigma3_i*sigma3_j
 #define LJ_COMB_FULL   2 // Full type-pair matrix lookup (no combination formula)
-
-// Default to geometric combination rule if not specified
-#ifndef LJ_COMB_RULE
-#define LJ_COMB_RULE LJ_COMB_GEOM
-#endif
-
-// String names for printing
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-#define LJ_COMB_RULE_NAME "single"
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-#define LJ_COMB_RULE_NAME "geometric"
-#else
-#define LJ_COMB_RULE_NAME "full"
-#endif
+#define LJ_COMB_AUTO   3 // Inferred from the atom types (resolveLJCombRule())
 
 // Coulomb treatment compile-time macros
 // Use -DCOULOMB_RULE=<value> at compile time
@@ -168,6 +156,8 @@ typedef struct {
     // Atoms per molecule of the system, > 1 turns on the molecular exclusions: atoms of
     // the same molecule only interact through the Coulomb exclusion correction
     int molsize;
+    // LJ combination rule (LJ_COMB_*), LJ_COMB_AUTO until resolveLJCombRule()
+    int lj_comb_rule;
     // Newton-Raphson refined 1/r^2 and 1/r in the SIMD kernels (--accurate-recip)
     int accurate_reciprocal;
     // j-cluster prefetch of the CPU cluster-pair SIMD kernels (--no-prefetch disables)
@@ -178,6 +168,12 @@ void initParameter(Parameter*);
 void readParameter(Parameter*, const char*);
 void readTypesFile(Parameter*);
 void printParameter(Parameter*);
+int str2ljcomb(const char*);
+const char* ljcomb2str(int);
+void resolveLJCombRule(Parameter*,
+    int ntypes,
+    const MD_FLOAT* sqrt_epsilon_per_type,
+    const MD_FLOAT* sigma3_per_type);
 double computeEwaldCoefficient(double cutoff, double rtol);
 void computePerTypeLJParameters(int, Parameter*, MD_FLOAT*, MD_FLOAT*);
 void computeTypePairLJParameters(int, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*);

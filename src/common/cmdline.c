@@ -79,6 +79,10 @@ static void printHelp(void)
     printf("  -bal <int>                load balancing with MPI: 0 none, 1 RCB, 2 mean "
            "time RCB, 3 staggered\n");
     printf("Force kernel:\n");
+    printf(
+        "  --lj-comb <string>        LJ combination rule: full (default, type-pair "
+        "tables), geometric (per-type parameters), single (one set of parameters, "
+        "all types alike) or auto (single when all types are alike, else geometric)\n");
     printf("  -energy                   also compute the LJ and Coulomb energies "
            "(reported by --kernel-bench and --dump-forces)\n");
     printf("  -halflj                   LJ only for the first half of the i-clusters "
@@ -169,6 +173,13 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
             param->method = atoi(NEXT_ARG());
         } else if (IS("-bal")) {
             param->balance = atoi(NEXT_ARG());
+        } else if (IS("--lj-comb")) {
+            const char* rule = NEXT_ARG();
+            if ((param->lj_comb_rule = str2ljcomb(rule)) < 0) {
+                cmdError(comm,
+                    "invalid --lj-comb %s, use single, geometric, full or auto",
+                    rule);
+            }
         } else if (IS("-energy")) {
             param->compute_energy = true;
         } else if (IS("-halflj")) {

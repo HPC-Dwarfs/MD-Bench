@@ -14,19 +14,20 @@ TOOLCHAIN="${TOOLCHAIN:-GCC}"
 SIMD="${SIMD:-AVX512}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL:-auto}"
-LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
+# LJ combination rule of the runs (--lj-comb)
+LJ_COMB="${LJ_COMB:-geometric}"
 
 cd "${ROOT_DIR}"
 
-echo "Building Verlet-list binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."
+echo "Building Verlet-list binary (LJ_COMB=${LJ_COMB})..."
 make clean >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
-VL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${LJ_COMB_RULE}" print-target)"
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" >/dev/null
+VL_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=verletlist SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" print-target)"
 
-echo "Building Cluster-pair binary (LJ_COMB_RULE=${LJ_COMB_RULE})..."
+echo "Building Cluster-pair binary (LJ_COMB=${LJ_COMB})..."
 make clean >/dev/null 2>&1 || true
-make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
-CP_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" LJ_COMB_RULE="${LJ_COMB_RULE}" print-target)"
+make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" >/dev/null
+CP_BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME=clusterpair SIMD="${SIMD}" DATA_TYPE="${DATA_TYPE}" CLUSTER_PAIR_KERNEL="${CLUSTER_PAIR_KERNEL}" print-target)"
 
 for bin in "${VL_BIN}" "${CP_BIN}"; do
   if [[ ! -x "${bin}" ]]; then
@@ -39,10 +40,10 @@ VL_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_vl.XXXXXX")"
 CP_LOG="$(mktemp "${TMPDIR:-/tmp}/mdbench_cp.XXXXXX")"
 
 echo "Running Verlet-list argon testcase with ${VL_BIN}"
-"${VL_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 200 >"${VL_LOG}"
+"${VL_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 200 >"${VL_LOG}"
 
 echo "Running Cluster-pair argon testcase with ${CP_BIN}"
-"${CP_BIN}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 200 >"${CP_LOG}"
+"${CP_BIN}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 200 >"${CP_LOG}"
 
 get_last_tp() {
   local file="$1"
@@ -82,5 +83,5 @@ if drift_T > tol_T or drift_P > tol_P:
     sys.exit(1)
 PY
 
-echo "Verlet-list vs Cluster-pair scheme equivalence regression PASSED (LJ_COMB_RULE=${LJ_COMB_RULE})."
+echo "Verlet-list vs Cluster-pair scheme equivalence regression PASSED (LJ_COMB=${LJ_COMB})."
 
