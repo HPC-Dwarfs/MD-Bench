@@ -49,8 +49,12 @@ endif
 ifeq ($(strip $(SIMD)),AVX2)
 OPTS += -march=x86-64-v3 -mavx2
 endif
+# AVX without FMA (x86-64-v3 would also allow FMA and AVX2-era instructions)
 ifeq ($(strip $(SIMD)),AVX)
-OPTS += -march=x86-64-v3 -mno-avx2 -mno-bmi1 -mno-bmi2 -mno-fma4
+OPTS += -march=x86-64-v2 -mavx
+endif
+ifeq ($(strip $(SIMD)),AVX_FMA)
+OPTS += -march=x86-64-v2 -mavx -mfma
 endif
 ifeq ($(strip $(SIMD)),SSE)
 OPTS += -march=x86-64-v2

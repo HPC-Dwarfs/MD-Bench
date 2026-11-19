@@ -25,6 +25,9 @@ endif
 ifeq ($(strip $(SIMD)),AVX)
 OPTS       += -xAVX
 endif
+ifeq ($(strip $(SIMD)),AVX_FMA)
+OPTS       += -xAVX -mfma
+endif
 ifeq ($(strip $(SIMD)),SSE)
 OPTS       += -xSSE4.2
 endif
