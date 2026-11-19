@@ -151,7 +151,7 @@ double RULE_VARIANT_NAME(computeForceLJTableRef)(
                                 if (m > nm1) m = nm1;
                                 MD_FLOAT frac      = u - (MD_FLOAT)m;
                                 const MD_FLOAT* cc = &coeff[m * LJ_TABLE_STRIDE];
-                                MD_FLOAT hrep = cc[0] +
+                                MD_FLOAT hrep      = cc[0] +
                                                 frac * (cc[1] +
                                                            frac * (cc[2] + frac * cc[3]));
                                 MD_FLOAT gdisp = cc[4] +

@@ -135,7 +135,7 @@ static int buildGmxBenchAtoms(Atom* atom, Parameter* param)
     atom->sigma3_per_type       = allocate(ALIGNMENT, ntypes * sizeof(MD_FLOAT));
     atom->q_per_type            = allocate(ALIGNMENT, ntypes * sizeof(MD_FLOAT));
     atom->sqrt_epsilon_per_type[typeOxygen]   = (MD_FLOAT)(c6Oxygen /
-                                                           (2.0 * sqrt(c12Oxygen)));
+                                                         (2.0 * sqrt(c12Oxygen)));
     atom->sigma3_per_type[typeOxygen]         = (MD_FLOAT)sqrt(c12Oxygen / c6Oxygen);
     atom->sqrt_epsilon_per_type[typeHydrogen] = (MD_FLOAT)0.0;
     atom->sigma3_per_type[typeHydrogen]       = (MD_FLOAT)0.0;

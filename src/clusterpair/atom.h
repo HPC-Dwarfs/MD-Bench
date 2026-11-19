@@ -161,7 +161,8 @@ void copy(Atom*, int, int);
 #ifdef __cplusplus
 extern "C"
 #endif
-    extern void growClustersCUDA(Atom*);
+    extern void
+    growClustersCUDA(Atom*);
 #endif
 
 #ifdef ATOM_POSITION_AOS

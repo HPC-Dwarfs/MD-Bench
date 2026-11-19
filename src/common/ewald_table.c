@@ -32,10 +32,10 @@ static double splineTableScale(double third_deriv_max, double x_scale, double fu
 {
     const double deriv_tol = FLT_EPSILON;
     const double sc_deriv  = sqrt(third_deriv_max / (6 * 4 * deriv_tol * x_scale)) *
-                             x_scale;
-    func_tol               = func_tol > TABLE_REAL_EPS ? func_tol : TABLE_REAL_EPS;
-    const double sc_func   = cbrt(third_deriv_max / (6 * 12 * sqrt(3.0) * func_tol)) *
-                             x_scale;
+                            x_scale;
+    func_tol             = func_tol > TABLE_REAL_EPS ? func_tol : TABLE_REAL_EPS;
+    const double sc_func = cbrt(third_deriv_max / (6 * 12 * sqrt(3.0) * func_tol)) *
+                           x_scale;
     return sc_deriv > sc_func ? sc_deriv : sc_func;
 }
 
@@ -85,7 +85,7 @@ void initEwaldTable(Parameter* param)
             const double a2dx = (v_r0 + v_r1 -
                                     2 * ewaldLongRange(beta, x_r0 - 0.5 * dx)) /
                                 (0.25 * dx);
-            dc                = (v_r0 - v_r1) / dx + 0.5 * a2dx;
+            dc = (v_r0 - v_r1) / dx + 0.5 * a2dx;
         }
         if (i == n - 1) {
             tf[i] = -dc;

@@ -122,17 +122,17 @@ void resolveLJCombRule(Parameter* param,
 
 void initParameter(Parameter* param)
 {
-    param->input_file      = NULL;
-    param->vtk_file        = NULL;
-    param->xtc_file        = NULL;
-    param->eam_file        = NULL;
-    param->write_atom_file = NULL;
-    param->types_file      = NULL;
-    param->force_field     = FF_LJ;
-    param->epsilon         = 1.0;
-    param->sigma           = 1.0;
-    param->sigma6          = 1.0;
-    param->rho             = 0.8442;
+    param->input_file           = NULL;
+    param->vtk_file             = NULL;
+    param->xtc_file             = NULL;
+    param->eam_file             = NULL;
+    param->write_atom_file      = NULL;
+    param->types_file           = NULL;
+    param->force_field          = FF_LJ;
+    param->epsilon              = 1.0;
+    param->sigma                = 1.0;
+    param->sigma6               = 1.0;
+    param->rho                  = 0.8442;
     param->ntypes               = 4;
     param->lj_comb_rule         = LJ_COMB_FULL;
     param->epsilon_per_type     = NULL;
@@ -177,20 +177,20 @@ void initParameter(Parameter* param)
     param->gmxbenchmark = false;
     param->size         = 1;
     // electrostatics
-    param->epsfac           = 1.0;
-    param->ewald_rtol       = 1e-5;
-    param->ewald_beta       = 0.0;
-    param->ewald_table_scale = 0.0;
-    param->ewald_table_size  = 0;
-    param->ewald_table_f     = NULL;
-    param->ewald_table_v     = NULL;
-    param->ewald_table_fdv0  = NULL;
-    param->kernel_bench      = 0;
-    param->dump_forces_file  = NULL;
-    param->compute_energy    = false;
-    param->energy_lj         = 0.0;
-    param->energy_coul       = 0.0;
-    param->half_lj           = false;
+    param->epsfac              = 1.0;
+    param->ewald_rtol          = 1e-5;
+    param->ewald_beta          = 0.0;
+    param->ewald_table_scale   = 0.0;
+    param->ewald_table_size    = 0;
+    param->ewald_table_f       = NULL;
+    param->ewald_table_v       = NULL;
+    param->ewald_table_fdv0    = NULL;
+    param->kernel_bench        = 0;
+    param->dump_forces_file    = NULL;
+    param->compute_energy      = false;
+    param->energy_lj           = 0.0;
+    param->energy_coul         = 0.0;
+    param->half_lj             = false;
     param->molsize             = 0;
     param->accurate_reciprocal = 1;
     param->kernel_prefetch     = 1;

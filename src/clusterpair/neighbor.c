@@ -39,9 +39,9 @@ static int* bincount;
 static int* bins;
 int* bin_nclusters;
 int* bin_clusters;
-static int mbins;            // total number of bins
-static int atoms_per_bin;    // max atoms per bin
-int clusters_per_bin;        // max clusters per bin
+static int mbins;         // total number of bins
+static int atoms_per_bin; // max atoms per bin
+int clusters_per_bin;     // max clusters per bin
 MD_FLOAT cutneigh;
 MD_FLOAT cutneighsq;
 static MD_FLOAT cutneigh_inner_sq;
@@ -50,9 +50,9 @@ int nmax;
 int nstencil; // # of bins in stencil
 int* stencil; // stencil list of bin offsets
 MD_FLOAT binsizex, binsizey;
-static int half_lj;       // sort i-clusters for the half-LJ kernels (-halflj)
-int* is_inner_buf;        // reusable scratch for pruneNeighbor*, one maxneighs-sized
-                          // slice per thread (indexed by omp_get_thread_num())
+static int half_lj; // sort i-clusters for the half-LJ kernels (-halflj)
+int* is_inner_buf;  // reusable scratch for pruneNeighbor*, one maxneighs-sized
+                    // slice per thread (indexed by omp_get_thread_num())
 
 static int coord2bin(MD_FLOAT, MD_FLOAT);
 static MD_FLOAT bindist(int, int);
@@ -70,20 +70,20 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
 {
     // The list build variant (setup() resolves --lj-comb auto before)
     neighbor->lj_comb_rule = param->lj_comb_rule;
-    half_lj             = param->half_lj;
-    MD_FLOAT neighscale = 5.0 / 6.0;
-    xprd                = param->nx * param->lattice;
-    yprd                = param->ny * param->lattice;
-    zprd                = param->nz * param->lattice;
-    cutneigh            = param->cutneigh;
-    nmax                = 0;
-    atoms_per_bin       = 8;
-    clusters_per_bin    = (atoms_per_bin / CLUSTER_M) + 10;
-    stencil             = NULL;
-    bins                = NULL;
-    bincount            = NULL;
-    bin_clusters        = NULL;
-    bin_nclusters       = NULL;
+    half_lj                = param->half_lj;
+    MD_FLOAT neighscale    = 5.0 / 6.0;
+    xprd                   = param->nx * param->lattice;
+    yprd                   = param->ny * param->lattice;
+    zprd                   = param->nz * param->lattice;
+    cutneigh               = param->cutneigh;
+    nmax                   = 0;
+    atoms_per_bin          = 8;
+    clusters_per_bin       = (atoms_per_bin / CLUSTER_M) + 10;
+    stencil                = NULL;
+    bins                   = NULL;
+    bincount               = NULL;
+    bin_clusters           = NULL;
+    bin_nclusters          = NULL;
     // neighbor->half_neigh      = param->half_neigh;
     if (param->super_clustering) {
         neighbor->maxneighs = 800;
@@ -145,8 +145,8 @@ void setupNeighbor(Parameter* param, Atom* atom)
     MD_FLOAT zlo = 0.0;
     MD_FLOAT zhi = zprd;
 
-    MD_FLOAT atom_density  = ((MD_FLOAT)(atom->Natoms)) /
-                             ((xhi - xlo) * (yhi - ylo) * (zhi - zlo));
+    MD_FLOAT atom_density = ((MD_FLOAT)(atom->Natoms)) /
+                            ((xhi - xlo) * (yhi - ylo) * (zhi - zlo));
     MD_FLOAT atoms_in_cell = MAX(CLUSTER_M, CLUSTER_N);
     MD_FLOAT targetsizex   = cbrt(atoms_in_cell / atom_density);
     MD_FLOAT targetsizey   = cbrt(atoms_in_cell / atom_density);
@@ -1287,9 +1287,9 @@ void buildSuperclusters(Atom* atom)
                 sortAtomsByCoord(atom, 1, bin, atom_CL_Z_OFFSET, atom_scl_z_end_idx);
 
                 for (int scl_y = 0; scl_y < SCLUSTER_SIZE_Y; scl_y++) {
-                    const int scl_y_size         = SCLUSTER_SIZE_X * CLUSTER_M;
-                    const int atom_CL_Y_OFFSET   = scl_bin_offset + scl_z * scl_z_size +
-                                                   scl_y * scl_y_size;
+                    const int scl_y_size       = SCLUSTER_SIZE_X * CLUSTER_M;
+                    const int atom_CL_Y_OFFSET = scl_bin_offset + scl_z * scl_z_size +
+                                                 scl_y * scl_y_size;
                     const int atom_scl_y_end_idx = MIN(atom_CL_Y_OFFSET + scl_y_size - 1,
                         c - 1);
 
@@ -1297,12 +1297,12 @@ void buildSuperclusters(Atom* atom)
                     sortAtomsByCoord(atom, 0, bin, atom_CL_Y_OFFSET, atom_scl_y_end_idx);
 
                     for (int scl_x = 0; scl_x < SCLUSTER_SIZE_X; scl_x++) {
-                        const int sci_ci       = atom->siclusters[sci].nclusters;
-                        const int ci           = sci * SCLUSTER_SIZE + sci_ci;
-                        int sci_vec_base       = SCI_VECTOR3_BASE_INDEX(sci);
-                        int sci_sca_base       = SCI_SCALAR_BASE_INDEX(sci);
-                        MD_FLOAT* sci_x        = &atom->cl_x[SCI_VECTOR_BASE_INDEX(sci)];
-                        MD_FLOAT* sci_v        = &atom->cl_v[sci_vec_base];
+                        const int sci_ci = atom->siclusters[sci].nclusters;
+                        const int ci     = sci * SCLUSTER_SIZE + sci_ci;
+                        int sci_vec_base = SCI_VECTOR3_BASE_INDEX(sci);
+                        int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
+                        MD_FLOAT* sci_x  = &atom->cl_x[SCI_VECTOR_BASE_INDEX(sci)];
+                        MD_FLOAT* sci_v  = &atom->cl_v[sci_vec_base];
 
                         MD_FLOAT bbminx = INF, bbmaxx = -INF;
                         MD_FLOAT bbminy = INF, bbmaxy = -INF;

@@ -64,7 +64,7 @@ double RULE_VARIANT_NAME(
     const int half_list    = neighbor->half_neigh || param->method;
     const int nlocal_cj    = CJ1_FROM_CI(atom->Nclusters_local);
     double elj = 0.0, ecoul = 0.0;
-    double S               = getTimeStamp();
+    double S = getTimeStamp();
 
 #pragma omp parallel
     {
@@ -120,12 +120,12 @@ double RULE_VARIANT_NAME(
 #endif
                     const MD_FLOAT qi = cs.epsfac * atom->cl_q[ci_sca];
                     const int mol_i   = atom->cl_mol[ci_sca];
-                    MD_FLOAT xtmp = ci_x[CL_X_INDEX_3D(cii)];
-                    MD_FLOAT ytmp = ci_x[CL_Y_INDEX_3D(cii)];
-                    MD_FLOAT ztmp = ci_x[CL_Z_INDEX_3D(cii)];
-                    MD_FLOAT fix  = 0;
-                    MD_FLOAT fiy  = 0;
-                    MD_FLOAT fiz  = 0;
+                    MD_FLOAT xtmp     = ci_x[CL_X_INDEX_3D(cii)];
+                    MD_FLOAT ytmp     = ci_x[CL_Y_INDEX_3D(cii)];
+                    MD_FLOAT ztmp     = ci_x[CL_Z_INDEX_3D(cii)];
+                    MD_FLOAT fix      = 0;
+                    MD_FLOAT fiy      = 0;
+                    MD_FLOAT fiz      = 0;
 
                     for (int cjj = 0; cjj < CLUSTER_N; cjj++) {
                         const int cj_sca = CJ_SCALAR_BASE_INDEX(cj) + cjj;
@@ -171,7 +171,7 @@ double RULE_VARIANT_NAME(
                                                           : epsilon;
 
                             if (rsq < cutforcesq) {
-                                MD_FLOAT force   = pairForceScalar(rsq,
+                                MD_FLOAT force = pairForceScalar(rsq,
                                     sigma6,
                                     eps_pair,
                                     qi,
@@ -309,7 +309,8 @@ void RULE_VARIANT_NAME(
                     MD_FLOAT epsilon = atom->cl_sqrt_epsilon[cs_sca] *
                                        atom->cl_sqrt_epsilon[cj_sca];
 #elif LJ_COMB_RULE == LJ_COMB_FULL
-                    int type_index = atom->cl_t[cs_sca] * atom->ntypes + atom->cl_t[cj_sca];
+                    int type_index = atom->cl_t[cs_sca] * atom->ntypes +
+                                     atom->cl_t[cj_sca];
                     MD_FLOAT cutforcesq = atom->cutforcesq[type_index];
                     MD_FLOAT sigma6     = atom->sigma6[type_index];
                     MD_FLOAT epsilon    = atom->epsilon[type_index];

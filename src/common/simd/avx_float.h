@@ -83,10 +83,12 @@ static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
 // AVX has no 256-bit integer compare: compare the two 128-bit halves
 static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
 {
-    const __m128i lo = _mm_cmpeq_epi32(_mm256_castsi256_si128(a), _mm256_castsi256_si128(b));
+    const __m128i lo = _mm_cmpeq_epi32(_mm256_castsi256_si128(a),
+        _mm256_castsi256_si128(b));
     const __m128i hi = _mm_cmpeq_epi32(_mm256_extractf128_si256(a, 1),
         _mm256_extractf128_si256(b, 1));
-    return _mm256_castsi256_ps(_mm256_insertf128_si256(_mm256_castsi128_si256(lo), hi, 1));
+    return _mm256_castsi256_ps(
+        _mm256_insertf128_si256(_mm256_castsi128_si256(lo), hi, 1));
 }
 
 static inline MD_SIMD_MASK simd_mask_from_u32(unsigned int a)

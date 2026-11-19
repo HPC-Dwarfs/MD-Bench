@@ -52,9 +52,9 @@ typedef struct {
 
 // Coulomb treatment compile-time macros
 // Use -DCOULOMB_RULE=<value> at compile time
-#define COULOMB_NONE  0 // No electrostatics (LJ only)
-#define COULOMB_RF    1 // Reaction-field with infinite dielectric, shifted at the cut-off
-#define COULOMB_EWALD 2 // Real-space Ewald with analytical force correction
+#define COULOMB_NONE        0 // No electrostatics (LJ only)
+#define COULOMB_RF          1 // Reaction-field with infinite dielectric, shifted at the cut-off
+#define COULOMB_EWALD       2 // Real-space Ewald with analytical force correction
 #define COULOMB_EWALD_TABLE 3 // Real-space Ewald with tabulated (cubic spline) correction
 
 #ifndef COULOMB_RULE
@@ -64,7 +64,6 @@ typedef struct {
 // Both Ewald variants share the splitting coefficient and the energy terms
 #define COULOMB_IS_EWALD                                                                 \
     (COULOMB_RULE == COULOMB_EWALD || COULOMB_RULE == COULOMB_EWALD_TABLE)
-
 
 // Lower limit of the squared distance in the force kernels, as GROMACS'
 // c_nbnxmMinDistanceSquared: below it 1/r^12 overflows. The padding atoms of two clusters

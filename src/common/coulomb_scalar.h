@@ -95,17 +95,17 @@ static inline MD_HOST_DEVICE MD_FLOAT pmeForceCorrectionScalar(MD_FLOAT z2)
                        (MD_FLOAT)0.11583842382862377919;
     MD_FLOAT polyFD1 = (MD_FLOAT)0.014866955030185295499 * z4 +
                        (MD_FLOAT)0.50736591960530292870;
-    polyFD0          = polyFD0 * z4 + (MD_FLOAT)1.0;
-    polyFD0          = polyFD1 * z2 + polyFD0;
+    polyFD0 = polyFD0 * z4 + (MD_FLOAT)1.0;
+    polyFD0 = polyFD1 * z2 + polyFD0;
 
     MD_FLOAT polyFN0 = (MD_FLOAT)-1.7357322914161492954e-8 * z4 +
                        (MD_FLOAT)-0.000053401640219807709149;
     MD_FLOAT polyFN1 = (MD_FLOAT)1.4703624142580877519e-6 * z4 +
                        (MD_FLOAT)0.0010054721316683106153;
-    polyFN0          = polyFN0 * z4 + (MD_FLOAT)-0.019278317264888380590;
-    polyFN1          = polyFN1 * z4 + (MD_FLOAT)0.069670166153766424023;
-    polyFN0          = polyFN0 * z4 + (MD_FLOAT)-0.75225204789749321333;
-    polyFN0          = polyFN1 * z2 + polyFN0;
+    polyFN0 = polyFN0 * z4 + (MD_FLOAT)-0.019278317264888380590;
+    polyFN1 = polyFN1 * z4 + (MD_FLOAT)0.069670166153766424023;
+    polyFN0 = polyFN0 * z4 + (MD_FLOAT)-0.75225204789749321333;
+    polyFN0 = polyFN1 * z2 + polyFN0;
 #else
     MD_FLOAT polyFD1 = (MD_FLOAT)0.000016009278224355026701 * z4 +
                        (MD_FLOAT)0.0081803507497974289008;
@@ -113,8 +113,8 @@ static inline MD_HOST_DEVICE MD_FLOAT pmeForceCorrectionScalar(MD_FLOAT z2)
     polyFD1          = polyFD1 * z2;
     MD_FLOAT polyFD0 = (MD_FLOAT)0.00051055686934806966046 * z4 +
                        (MD_FLOAT)0.077181146026670287235;
-    polyFD0          = polyFD0 * z4 + (MD_FLOAT)1.0;
-    polyFD0          = polyFD0 + polyFD1;
+    polyFD0 = polyFD0 * z4 + (MD_FLOAT)1.0;
+    polyFD0 = polyFD0 + polyFD1;
 
     MD_FLOAT polyFN0 = (MD_FLOAT)-8.0072854618360083154e-14 * z4 +
                        (MD_FLOAT)-8.1490406329798423616e-10;
@@ -124,10 +124,10 @@ static inline MD_HOST_DEVICE MD_FLOAT pmeForceCorrectionScalar(MD_FLOAT z2)
     polyFN0          = polyFN0 * z4 + (MD_FLOAT)-0.75225277815249618847;
     MD_FLOAT polyFN1 = (MD_FLOAT)1.1859116242260148027e-11 * z4 +
                        (MD_FLOAT)3.4404793543907847655e-8;
-    polyFN1          = polyFN1 * z4 + (MD_FLOAT)0.000020740315999115847456;
-    polyFN1          = polyFN1 * z4 + (MD_FLOAT)0.0035074449373659008203;
-    polyFN1          = polyFN1 * z4 + (MD_FLOAT)0.13884101728898463426;
-    polyFN0          = polyFN1 * z2 + polyFN0;
+    polyFN1 = polyFN1 * z4 + (MD_FLOAT)0.000020740315999115847456;
+    polyFN1 = polyFN1 * z4 + (MD_FLOAT)0.0035074449373659008203;
+    polyFN1 = polyFN1 * z4 + (MD_FLOAT)0.13884101728898463426;
+    polyFN0 = polyFN1 * z2 + polyFN0;
 #endif
     return polyFN0 / polyFD0;
 }
@@ -146,30 +146,30 @@ static inline MD_HOST_DEVICE MD_FLOAT pmePotentialCorrectionScalar(MD_FLOAT z2)
                        (MD_FLOAT)0.000041603292906656984871;
     MD_FLOAT polyVN1 = (MD_FLOAT)-1.4213390571557850962e-6 * z4 +
                        (MD_FLOAT)-0.00013134036773265025626;
-    polyVN0          = polyVN0 * z4 + (MD_FLOAT)0.038657983986041781264;
-    polyVN1          = polyVN1 * z4 + (MD_FLOAT)0.11285044772717598220;
-    polyVN0          = polyVN0 * z4 + (MD_FLOAT)1.1283802385263030286;
-    polyVN0          = polyVN1 * z2 + polyVN0;
+    polyVN0 = polyVN0 * z4 + (MD_FLOAT)0.038657983986041781264;
+    polyVN1 = polyVN1 * z4 + (MD_FLOAT)0.11285044772717598220;
+    polyVN0 = polyVN0 * z4 + (MD_FLOAT)1.1283802385263030286;
+    polyVN0 = polyVN1 * z2 + polyVN0;
 #else
     MD_FLOAT polyVD1 = (MD_FLOAT)0.000021784709867336150342 * z4 +
                        (MD_FLOAT)0.0096311444822588683504;
     MD_FLOAT polyVD0 = (MD_FLOAT)0.00064293662010911388448 * z4 +
                        (MD_FLOAT)0.085608012351550627051;
-    polyVD1          = polyVD1 * z4 + (MD_FLOAT)0.43652499166614811084;
-    polyVD0          = polyVD0 * z4 + (MD_FLOAT)1.0;
-    polyVD0          = polyVD1 * z2 + polyVD0;
+    polyVD1 = polyVD1 * z4 + (MD_FLOAT)0.43652499166614811084;
+    polyVD0 = polyVD0 * z4 + (MD_FLOAT)1.0;
+    polyVD0 = polyVD1 * z2 + polyVD0;
 
     MD_FLOAT polyVN1 = (MD_FLOAT)-9.3723776169321855475e-13 * z4 +
                        (MD_FLOAT)-7.3562157912251309487e-9;
     MD_FLOAT polyVN0 = (MD_FLOAT)1.2280156762674215741e-10 * z4 +
                        (MD_FLOAT)2.6215886208032517509e-7;
-    polyVN1          = polyVN1 * z4 + (MD_FLOAT)-4.9532491651265819499e-6;
-    polyVN0          = polyVN0 * z4 + (MD_FLOAT)0.00025907400778966060389;
-    polyVN1          = polyVN1 * z4 + (MD_FLOAT)0.0010585044856156469792;
-    polyVN0          = polyVN0 * z4 + (MD_FLOAT)0.045247661136833092885;
-    polyVN1          = polyVN1 * z4 + (MD_FLOAT)0.11643931522926034421;
-    polyVN0          = polyVN0 * z4 + (MD_FLOAT)1.1283791671726767970;
-    polyVN0          = polyVN1 * z2 + polyVN0;
+    polyVN1 = polyVN1 * z4 + (MD_FLOAT)-4.9532491651265819499e-6;
+    polyVN0 = polyVN0 * z4 + (MD_FLOAT)0.00025907400778966060389;
+    polyVN1 = polyVN1 * z4 + (MD_FLOAT)0.0010585044856156469792;
+    polyVN0 = polyVN0 * z4 + (MD_FLOAT)0.045247661136833092885;
+    polyVN1 = polyVN1 * z4 + (MD_FLOAT)0.11643931522926034421;
+    polyVN0 = polyVN0 * z4 + (MD_FLOAT)1.1283791671726767970;
+    polyVN0 = polyVN1 * z2 + polyVN0;
 #endif
     return polyVN0 / polyVD0;
 }

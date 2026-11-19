@@ -351,7 +351,9 @@ static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Sta
     fprintf(stdout, "\nKERNEL BENCHMARK\n");
     fprintf(stdout, "  Atoms:                 %d\n", atom->Natoms);
     fprintf(stdout, "  Cut-off:               %g\n", rc);
-    fprintf(stdout, "  Neighbor lists:        %s\n", neighbor->half_neigh ? "half" : "full");
+    fprintf(stdout,
+        "  Neighbor lists:        %s\n",
+        neighbor->half_neigh ? "half" : "full");
     fprintf(stdout, "  Atom pairs in list:    %lld\n", pairs);
     fprintf(stdout, "  Iterations:            %d\n", param->kernel_bench);
     fprintf(stdout, "  Time per iteration:    %.3f us\n", perIter * 1e6);
@@ -387,7 +389,7 @@ int main(int argc, char** argv)
     initComm(&argc, &argv, &comm);
     initParameter(&param);
     parseCommandLine(argc, argv, &param, &comm);
-    timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
+    timer[SETUP] = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
     if (param.displacement_reneigh) {
         storeReferencePositions(&atom);
     }

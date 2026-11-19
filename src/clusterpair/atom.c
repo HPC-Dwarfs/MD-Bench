@@ -21,7 +21,6 @@
 // Random numbers skipped between two velocity components
 #define RANDOM_SKIP 5
 
-
 inline int get_ncj_from_nci(int nci)
 {
 #ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
@@ -147,13 +146,13 @@ void setClusterAtom(Atom* atom, const int sca, const int type, const int id)
     atom->cl_sigma3[sca]       = atom->sigma3_per_type[type];
     // sqrt(6 C6) = 2 sqrt(6) sqrt(eps) sigma^3,
     // sqrt(12 C12) = 2 sqrt(12) sqrt(eps) sigma^6
-    atom->cl_sqrt6c6[sca]   = LJ_SQRT_6C6_COEF * atom->cl_sqrt_epsilon[sca] *
-                              atom->cl_sigma3[sca];
+    atom->cl_sqrt6c6[sca] = LJ_SQRT_6C6_COEF * atom->cl_sqrt_epsilon[sca] *
+                            atom->cl_sigma3[sca];
     atom->cl_sqrt12c12[sca] = LJ_SQRT_12C12_COEF * atom->cl_sqrt_epsilon[sca] *
                               atom->cl_sigma3[sca] * atom->cl_sigma3[sca];
-    atom->cl_q[sca]         = atom->q_per_type ? atom->q_per_type[type] : 0.0;
-    atom->cl_id[sca]        = id;
-    atom->cl_mol[sca]       = atom->molsize > 0 ? id / atom->molsize : id;
+    atom->cl_q[sca]   = atom->q_per_type ? atom->q_per_type[type] : 0.0;
+    atom->cl_id[sca]  = id;
+    atom->cl_mol[sca] = atom->molsize > 0 ? id / atom->molsize : id;
 }
 
 /* A padding slot: no interactions, no exclusions */
@@ -1412,7 +1411,7 @@ bool needsReneigh(Atom* atom, Parameter* param)
                           atom->cl_x_ref[base + CL_Y_INDEX_3D(cii)];
             MD_FLOAT dz = atom->cl_x[base + CL_Z_INDEX_3D(cii)] -
                           atom->cl_x_ref[base + CL_Z_INDEX_3D(cii)];
-            MD_FLOAT d  = dx * dx + dy * dy + dz * dz;
+            MD_FLOAT d = dx * dx + dy * dy + dz * dz;
 
             if (d > max_sq) {
                 max_sq = d;

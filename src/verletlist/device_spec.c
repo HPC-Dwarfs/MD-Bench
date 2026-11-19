@@ -25,8 +25,8 @@ void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
     d_atom->cutforcesq = (MD_FLOAT*)allocateGPU(
         sizeof(MD_FLOAT) * atom->ntypes * atom->ntypes);
     // Per-atom parameters of the geometric rule (--lj-comb is a runtime option)
-    d_atom->sqrt_epsilon = (MD_FLOAT*)allocateGPU(sizeof(MD_FLOAT) * atom->Nmax);
-    d_atom->sigma3       = (MD_FLOAT*)allocateGPU(sizeof(MD_FLOAT) * atom->Nmax);
+    d_atom->sqrt_epsilon  = (MD_FLOAT*)allocateGPU(sizeof(MD_FLOAT) * atom->Nmax);
+    d_atom->sigma3        = (MD_FLOAT*)allocateGPU(sizeof(MD_FLOAT) * atom->Nmax);
     d_neighbor->neighbors = (int*)allocateGPU(
         sizeof(int) * atom->Nmax * neighbor->maxneighs);
     d_neighbor->numneigh       = (int*)allocateGPU(sizeof(int) * atom->Nmax);

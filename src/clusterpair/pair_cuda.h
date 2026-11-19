@@ -13,7 +13,8 @@
 #include <pair_scalar.h>
 #include <parameter.h>
 
-/* Charge of the cluster slot sca, 0 without electrostatics (cl_q is then not on the GPU) */
+/* Charge of the cluster slot sca, 0 without electrostatics (cl_q is then not on the GPU)
+ */
 static __device__ __forceinline__ MD_FLOAT chargeCuda(const MD_FLOAT* cl_q, int sca)
 {
 #if COULOMB_RULE != COULOMB_NONE

@@ -86,8 +86,8 @@ typedef struct {
 /* Values that stay the same for the whole kernel call */
 typedef struct {
     MD_SIMD_FLOAT cutsq;
-    MD_SIMD_FLOAT minrsq;  // MIN_DISTANCE_SQ
-    MD_SIMD_FLOAT c6, c12; // 6 C6 and 12 C12 of the single atom type rule
+    MD_SIMD_FLOAT minrsq;         // MIN_DISTANCE_SQ
+    MD_SIMD_FLOAT c6, c12;        // 6 C6 and 12 C12 of the single atom type rule
     MD_SIMD_FLOAT sixth, twelfth; // LJ energy from 6 C6 and 12 C12
     CoulombSimd cs;
 } PairConstants;

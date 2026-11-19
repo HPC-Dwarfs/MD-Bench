@@ -17,16 +17,16 @@
 #include <parameter.h>
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-#define PAIR_RSQRT(x) rsqrt(x)
+#define PAIR_RSQRT(x)   rsqrt(x)
 #define PAIR_FMAX(a, b) fmax(a, b)
 #else
-#define PAIR_RSQRT(x) ((MD_FLOAT)1.0 / sqrt(x))
+#define PAIR_RSQRT(x)   ((MD_FLOAT)1.0 / sqrt(x))
 #define PAIR_FMAX(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
-/* Returns f_scalar of a pair inside the cut-off, the force on i is f_scalar * (r_i - r_j).
- * qi is the charge of i multiplied by epsfac. Atoms of the same molecule are excluded:
- * they skip Lennard-Jones and the direct Coulomb term, but still receive the
+/* Returns f_scalar of a pair inside the cut-off, the force on i is f_scalar * (r_i -
+ * r_j). qi is the charge of i multiplied by epsfac. Atoms of the same molecule are
+ * excluded: they skip Lennard-Jones and the direct Coulomb term, but still receive the
  * electrostatic correction term, as in GROMACS. */
 static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     MD_FLOAT sigma6,

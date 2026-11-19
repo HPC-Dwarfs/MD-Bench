@@ -173,7 +173,9 @@ static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 static inline MD_SIMD_MASK simd_mask_from_i32_cmp(__m128i c)
 {
     const __m256i m = _mm256_insertf128_si256(
-        _mm256_castsi128_si256(_mm_unpacklo_epi32(c, c)), _mm_unpackhi_epi32(c, c), 1);
+        _mm256_castsi128_si256(_mm_unpacklo_epi32(c, c)),
+        _mm_unpackhi_epi32(c, c),
+        1);
     return _mm256_castsi256_pd(m);
 }
 static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
@@ -322,7 +324,10 @@ static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
     return _mm_min_epi32(a, b);
 }
 // AVX has no integer gather: the scalar loads of the four lanes
-static inline void simd_i32_store(int* m, MD_SIMD_INT a) { _mm_store_si128((__m128i*)m, a); }
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    _mm_store_si128((__m128i*)m, a);
+}
 static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
 {
     int idx[4] __attribute__((aligned(16)));

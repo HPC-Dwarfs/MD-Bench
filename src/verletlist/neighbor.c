@@ -286,7 +286,6 @@ void setupNeighbor(Parameter* param)
     bins = (int*)allocate(ALIGNMENT, mbins * atoms_per_bin * sizeof(int));
 }
 
-
 void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 {
     DEBUG_MESSAGE("buildNeighborCPU begin\n");
@@ -420,7 +419,6 @@ MD_FLOAT bindist(int i, int j, int k)
     return (delx * delx + dely * dely + delz * delz);
 }
 
-
 void binatoms(Atom* atom)
 {
     DEBUG_MESSAGE("binatoms begin\n");
@@ -504,8 +502,8 @@ void sortAtom(Atom* atom)
         int start = mybin > 0 ? binpos[mybin - 1] : 0;
         int count = binpos[mybin] - start;
         for (int k = 0; k < count; k++) {
-            int new_i = start + k;
-            int old_i = bins[mybin * atoms_per_bin + k];
+            int new_i       = start + k;
+            int old_i       = bins[mybin * atoms_per_bin + k];
             new_type[new_i] = atom->type[old_i];
             new_id[new_i]   = atom->id[old_i];
 #ifdef ATOM_POSITION_AOS
@@ -608,4 +606,3 @@ int halfZone(Atom* atom, int i)
         return 1;
     }
 }
-

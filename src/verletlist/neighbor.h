@@ -104,10 +104,12 @@ extern void pruneNeighborCPU(Parameter*, Atom*, Neighbor*);
 #ifdef __cplusplus
 extern "C"
 #endif
-    extern void buildNeighborCUDA(Atom*, Neighbor*);
+    extern void
+    buildNeighborCUDA(Atom*, Neighbor*);
 #ifdef __cplusplus
 extern "C"
 #endif
-    extern void pruneNeighborCUDA(Parameter*, Atom*, Neighbor*);
+    extern void
+    pruneNeighborCUDA(Parameter*, Atom*, Neighbor*);
 #endif
 #endif //__NEIGHBOR_H_

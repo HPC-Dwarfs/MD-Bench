@@ -53,10 +53,10 @@ typedef struct {
     MD_FLOAT* sqrt_epsilon_per_type;
     MD_FLOAT* sigma3_per_type;
     // Electrostatics and exclusions
-    int molsize;          // atoms per molecule, consecutive atom ids (0: no exclusions)
-    int* id;              // original atom index, follows the atom (ghosts: of the original)
-    int* mol;             // molecule index per atom (exclusions)
-    MD_FLOAT* q;          // charge per atom
+    int molsize; // atoms per molecule, consecutive atom ids (0: no exclusions)
+    int* id;     // original atom index, follows the atom (ghosts: of the original)
+    int* mol;    // molecule index per atom (exclusions)
+    MD_FLOAT* q; // charge per atom
     MD_FLOAT* q_per_type; // charge per atom type (NULL: all atoms neutral)
     // Force arrays of threads 1..n-1 for the half-list kernels (see thread_forces.h)
     MD_FLOAT* f_threads;

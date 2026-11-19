@@ -106,8 +106,8 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define KERNEL_NAME "Reference"
 // Plain C, so the cluster size does not depend on the SIMD width (4x4 like the GROMACS
 // reference kernel)
-#define CLUSTER_M 4
-#define CLUSTER_N 4
+#define CLUSTER_M   4
+#define CLUSTER_N   4
 #else
 // Cluster pair kernels
 #ifdef CLUSTERPAIR_KERNEL_AUTO
