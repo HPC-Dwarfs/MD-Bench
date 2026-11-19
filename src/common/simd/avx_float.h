@@ -294,3 +294,32 @@ static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
         _mm256_extractf128_si256(b, 1));
     return _mm256_set_m128i(hi, lo);
 }
+// AVX has no integer gather: the scalar loads of the eight lanes
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    _mm256_store_si256((MD_SIMD_INT*)m, a);
+}
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    int idx[8] __attribute__((aligned(32)));
+    int result[8] __attribute__((aligned(32)));
+    simd_i32_store(idx, vidx);
+    for (int i = 0; i < 8; i++) {
+        result[i] = *(const int*)((const char*)base + (long)idx[i] * scale);
+    }
+    return _mm256_load_si256((const MD_SIMD_INT*)result);
+}
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    unsigned int m = simd_mask_to_u32(mask);
+    MD_FLOAT vals[8] __attribute__((aligned(32)));
+    int idx[8] __attribute__((aligned(32)));
+    simd_real_store(vals, v);
+    simd_i32_store(idx, vidx);
+    for (int i = 0; i < 8; i++) {
+        if ((m >> i) & 1) {
+            _Pragma("omp atomic") base[idx[i]] -= vals[i];
+        }
+    }
+}
