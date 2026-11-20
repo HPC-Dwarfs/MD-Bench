@@ -428,6 +428,10 @@ int main(int argc, char** argv)
             param.displacement_reneigh = 1;
             continue;
         }
+        if (strcmp(argv[i], "-ref") == 0) {
+            param.ref_kernel = 1;
+            continue;
+        }
         if ((strcmp(argv[i], "-v") == 0) || (strcmp(argv[i], "--verbose") == 0)) {
             param.verbose = 1;
             continue;
@@ -509,6 +513,8 @@ int main(int argc, char** argv)
                    "displacement "
                    "(skin/2 threshold); use --reneigh-every 0 to disable fixed-interval "
                    "rebuild\n");
+            printf("-ref:                 GPU builds (gpusimple, supercluster): use the "
+                   "simple force kernel instead of the optimized one\n");
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
             printf("--xtc <string>:       XTC file for visualization\n");

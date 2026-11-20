@@ -17,7 +17,12 @@
 #include <parameter.h>
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+// HIP has no float rsqrt overload, so rsqrt(float) would run in double
+#if PRECISION == 1
+#define PAIR_RSQRT(x) rsqrtf(x)
+#else
 #define PAIR_RSQRT(x) rsqrt(x)
+#endif
 #define PAIR_FMAX(a, b) fmax(a, b)
 #else
 #define PAIR_RSQRT(x) ((MD_FLOAT)1.0 / sqrt(x))

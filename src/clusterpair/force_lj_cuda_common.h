@@ -63,28 +63,28 @@ extern MD_FLOAT* cuda_cl_sqrt_epsilon;
 extern MD_FLOAT* cuda_cl_sigma3;
 extern MD_FLOAT* cuda_cl_q;
 extern int* cuda_cl_mol;
+extern MD_FLOAT* cuda_cutforcesq;
+extern MD_FLOAT* cuda_sigma6;
+extern MD_FLOAT* cuda_epsilon;
 // Packed data 
 extern MD_FLOAT4* cuda_cl_xq;
 extern AtomParam* cuda_cl_par;
 extern MD_FLOAT4* cuda_nbfp;
 }
 
-// Arguments of the force kernels
+// Arguments of the optimized force kernels
 typedef struct {
+    // Atoms
     const MD_FLOAT4* xq;
     const AtomParam* par;
     MD_FLOAT* f;
     int nclusters_local;
-} NbAtoms;
-
-typedef struct {
+    // Neighbor list
     const int* numneigh;
     const int* cj;       // gpusimple
     const int2* cj_mask; // super-cluster: {cj, mask}
     int maxneighs;
-} NbList;
-
-typedef struct {
+    // LJ parameters
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_FLOAT cutforcesq, sigma6, epsilon;
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
@@ -93,35 +93,31 @@ typedef struct {
     const MD_FLOAT4* nbfp;
     int ntypes;
 #endif
-} LjParams;
-
-typedef struct {
-    NbAtoms atoms;
-    NbList nbl;
-    LjParams lj;
     CoulombScalar cs;
 } NbForceArgs;
 
 NbForceArgs makeNbForceArgs(Parameter* param, Atom* atom, Neighbor* neighbor);
 
 typedef struct {
-    MD_FLOAT cutforcesq, sigma6, epsilon;
+    MD_FLOAT cutforcesq; 
+    MD_FLOAT sigma6; 
+    MD_FLOAT epsilon;
 } LjPair;
 
 static __device__ __forceinline__ LjPair ljPair(
-    const LjParams& lj, const AtomParam& pi, const AtomParam& pj)
+    const NbForceArgs& nb, const AtomParam& pi, const AtomParam& pj)
 {
     LjPair p;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
-    p.cutforcesq = lj.cutforcesq;
-    p.sigma6     = lj.sigma6;
-    p.epsilon    = lj.epsilon;
+    p.cutforcesq = nb.cutforcesq;
+    p.sigma6     = nb.sigma6;
+    p.epsilon    = nb.epsilon;
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
-    p.cutforcesq = lj.cutforcesq;
+    p.cutforcesq = nb.cutforcesq;
     p.sigma6     = pi.sigma3 * pj.sigma3;
     p.epsilon    = pi.sqrt_epsilon * pj.sqrt_epsilon;
 #else
-    const MD_FLOAT4 t = lj.nbfp[pi.type * lj.ntypes + pj.type];
+    const MD_FLOAT4 t = nb.nbfp[pi.type * nb.ntypes + pj.type];
     p.cutforcesq      = t.x;
     p.sigma6          = t.y;
     p.epsilon         = t.z;

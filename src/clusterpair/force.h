@@ -48,7 +48,11 @@ extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
 #ifdef CUDA_TARGET
 double computeForceLJCuda(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats);
+double computeForceLJCudaRef(
+    Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats);
 double computeForceLJCudaSup(
+    Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats);
+double computeForceLJCudaSupRef(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats);
 #endif
 

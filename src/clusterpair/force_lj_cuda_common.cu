@@ -46,6 +46,10 @@ MD_FLOAT* cuda_cl_sigma3;
 MD_FLOAT* cuda_cl_q;
 int* cuda_cl_mol;
 
+MD_FLOAT* cuda_cutforcesq;
+MD_FLOAT* cuda_sigma6;
+MD_FLOAT* cuda_epsilon;
+
 MD_FLOAT4* cuda_cl_xq;
 AtomParam* cuda_cl_par;
 MD_FLOAT4* cuda_nbfp;
@@ -114,23 +118,23 @@ extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par)
 NbForceArgs makeNbForceArgs(Parameter* param, Atom* atom, Neighbor* neighbor)
 {
     NbForceArgs nb;
-    nb.atoms.xq              = cuda_cl_xq;
-    nb.atoms.par             = cuda_cl_par;
-    nb.atoms.f               = cuda_cl_f;
-    nb.atoms.nclusters_local = atom->Nclusters_local;
-    nb.nbl.numneigh          = cuda_numneigh_inner;
-    nb.nbl.cj                = cuda_neighbors;
-    nb.nbl.cj_mask           = NULL;
-    nb.nbl.maxneighs         = neighbor->maxneighs;
+    nb.xq              = cuda_cl_xq;
+    nb.par             = cuda_cl_par;
+    nb.f               = cuda_cl_f;
+    nb.nclusters_local = atom->Nclusters_local;
+    nb.numneigh        = cuda_numneigh_inner;
+    nb.cj              = cuda_neighbors;
+    nb.cj_mask         = NULL;
+    nb.maxneighs       = neighbor->maxneighs;
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
-    nb.lj.cutforcesq = param->cutforce * param->cutforce;
-    nb.lj.sigma6     = param->sigma6;
-    nb.lj.epsilon    = param->epsilon;
+    nb.cutforcesq = param->cutforce * param->cutforce;
+    nb.sigma6     = param->sigma6;
+    nb.epsilon    = param->epsilon;
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
-    nb.lj.cutforcesq = param->cutforce * param->cutforce;
+    nb.cutforcesq = param->cutforce * param->cutforce;
 #else
-    nb.lj.nbfp   = cuda_nbfp;
-    nb.lj.ntypes = atom->ntypes;
+    nb.nbfp   = cuda_nbfp;
+    nb.ntypes = atom->ntypes;
 #endif
     nb.cs = coulombScalarInit(param);
     return nb;
@@ -155,18 +159,17 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 #endif
 #if LJ_COMB_RULE == LJ_COMB_FULL
-    // {cutforcesq, sigma6, epsilon} per type pair
+    // cutforcesq, sigma6 and epsilon per type pair
     const int ntypes2 = atom->ntypes * atom->ntypes;
-    MD_FLOAT4* nbfp   = (MD_FLOAT4*)malloc(ntypes2 * sizeof(MD_FLOAT4));
-    for (int t = 0; t < ntypes2; t++) {
-        nbfp[t].x = atom->cutforcesq[t];
-        nbfp[t].y = atom->sigma6[t];
-        nbfp[t].z = atom->epsilon[t];
-        nbfp[t].w = (MD_FLOAT)0.0;
+    if (param->ref_kernel) {
+        // Separate arrays for the reference kernels
+        cuda_cutforcesq = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
+        cuda_sigma6     = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
+        cuda_epsilon    = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
+    } else {
+        // Packed {cutforcesq, sigma6, epsilon} for the optimized kernels
+        cuda_nbfp = (MD_FLOAT4*)allocateGPU(ntypes2 * sizeof(MD_FLOAT4));
     }
-    cuda_nbfp = (MD_FLOAT4*)allocateGPU(ntypes2 * sizeof(MD_FLOAT4));
-    memcpyToGPU(cuda_nbfp, nbfp, ntypes2 * sizeof(MD_FLOAT4));
-    free(nbfp);
 #endif
 #if COULOMB_RULE != COULOMB_NONE
     cuda_cl_q = (MD_FLOAT*)allocateGPU(
@@ -215,6 +218,24 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         atom->cl_t,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
             sizeof(int));
+
+    // cutforcesq, sigma6 and epsilon per type pair
+    const int ntypes2 = atom->ntypes * atom->ntypes;
+    if (param->ref_kernel) {
+        memcpyToGPU(cuda_cutforcesq, atom->cutforcesq, ntypes2 * sizeof(MD_FLOAT));
+        memcpyToGPU(cuda_sigma6, atom->sigma6, ntypes2 * sizeof(MD_FLOAT));
+        memcpyToGPU(cuda_epsilon, atom->epsilon, ntypes2 * sizeof(MD_FLOAT));
+    } else {
+        MD_FLOAT4* nbfp = (MD_FLOAT4*)malloc(ntypes2 * sizeof(MD_FLOAT4));
+        for (int t = 0; t < ntypes2; t++) {
+            nbfp[t].x = atom->cutforcesq[t];
+            nbfp[t].y = atom->sigma6[t];
+            nbfp[t].z = atom->epsilon[t];
+            nbfp[t].w = (MD_FLOAT)0.0;
+        }
+        memcpyToGPU(cuda_nbfp, nbfp, ntypes2 * sizeof(MD_FLOAT4));
+        free(nbfp);
+    }
 #endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     memcpyToGPU(cuda_cl_sqrt_epsilon,
@@ -304,7 +325,13 @@ extern "C" void cudaDeviceFree(Parameter* param)
     GPUfree(cuda_cl_sigma3);
 #endif
 #if LJ_COMB_RULE == LJ_COMB_FULL
-    GPUfree(cuda_nbfp);
+    if (param->ref_kernel) {
+        GPUfree(cuda_cutforcesq);
+        GPUfree(cuda_sigma6);
+        GPUfree(cuda_epsilon);
+    } else {
+        GPUfree(cuda_nbfp);
+    }
 #endif
 #if COULOMB_RULE != COULOMB_NONE
     GPUfree(cuda_cl_q);

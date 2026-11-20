@@ -146,6 +146,7 @@ typedef struct {
     MD_FLOAT xprd, yprd, zprd;
     double proc_freq;
     int super_clustering;
+    int ref_kernel; // cluster-pair GPU kernels: use the reference (simple) version
     char* eam_file;
     int lj_table_points;
     // MPI implementation

@@ -120,6 +120,7 @@ void initParameter(Parameter* param)
 #else
     param->super_clustering = 0;
 #endif
+    param->ref_kernel = 0;
     // MPI
     param->balance       = 0;
     param->method        = 0;
@@ -274,6 +275,7 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(balance);
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
+            PARSE_INT(ref_kernel);
         }
     }
 
@@ -360,6 +362,11 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Super-clustering:                  %s\n",
         (param->super_clustering) ? "yes" : "no");
+#ifdef CLUSTER_PAIR
+    fprintf(stdout,
+        "    Force kernel version:              %s\n",
+        param->ref_kernel ? "ref" : "optimized");
+#endif
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
 #endif

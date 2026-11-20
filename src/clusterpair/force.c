@@ -22,6 +22,13 @@ void initForce(Parameter* param)
         exit(EXIT_FAILURE);
     }
 #endif
+#ifndef CLUSTERPAIR_KERNEL_GPU
+    if (param->ref_kernel) {
+        fprintf(stderr,
+            "Error: -ref needs CLUSTER_PAIR_KERNEL=gpusimple or supercluster!\n");
+        exit(EXIT_FAILURE);
+    }
+#endif
     switch (param->force_field) {
     case FF_EAM:
         computeForce = computeForceEam;
@@ -49,9 +56,10 @@ void initForce(Parameter* param)
         }
 #elif defined(CLUSTERPAIR_KERNEL_GPU)
         if (param->super_clustering) {
-            computeForce = computeForceLJCudaSup;
+            computeForce = param->ref_kernel ? computeForceLJCudaSupRef
+                                             : computeForceLJCudaSup;
         } else {
-            computeForce = computeForceLJCuda;
+            computeForce = param->ref_kernel ? computeForceLJCudaRef : computeForceLJCuda;
         }
 #endif
         break;
