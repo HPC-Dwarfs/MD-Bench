@@ -155,7 +155,7 @@ void initParameter(Parameter* param)
     param->dtforce              = 0.5 * param->dt;
     param->reneigh_every        = 20;
     param->displacement_reneigh = 0;
-    param->resort_every         = 0;
+    param->resort_every         = -1; // auto, see parseCommandLine()
     param->prune_every          = 5;
     param->x_out_every          = 20;
     param->v_out_every          = 5;
@@ -167,6 +167,7 @@ void initParameter(Parameter* param)
 #else
     param->super_clustering = 0;
 #endif
+    param->ref_kernel = 0;
     // MPI
     param->balance       = 0;
     param->method        = 0;
@@ -336,6 +337,7 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_PARAM(lj_comb_rule, str2ljcomb);
             PARSE_INT(accurate_reciprocal);
             PARSE_INT(kernel_prefetch);
+            PARSE_INT(ref_kernel);
         }
     }
 
@@ -428,6 +430,9 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Super-clustering:                  %s\n",
         (param->super_clustering) ? "yes" : "no");
+    fprintf(stdout,
+        "    Force kernel version:              %s\n",
+        param->ref_kernel ? "ref" : "optimized");
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
 #endif
@@ -442,6 +447,10 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Accurate 1/r^2:                    %s\n",
         param->accurate_reciprocal ? "yes" : "no (hardware estimate)");
+#elif defined(CUDA_TARGET)
+    fprintf(stdout,
+        "    Accurate 1/r and 1/r^2:            %s\n",
+        param->accurate_reciprocal ? "yes (IEEE)" : "no (fast division/rsqrt)");
 #endif
     fprintf(stdout, "    Atom data layout:                  %s\n", POS_DATA_LAYOUT);
     fprintf(stdout, "    Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
@@ -552,6 +561,9 @@ void printParameter(Parameter* param)
         fprintf(stdout,
             "    Resort atoms every:                %d steps\n",
             param->resort_every);
+    } else if (param->resort_every < 0) {
+        fprintf(stdout,
+            "    Resort atoms:                      at every neighbor-list build\n");
     }
     fprintf(stdout,
         "    Prune every:                       %d steps\n",

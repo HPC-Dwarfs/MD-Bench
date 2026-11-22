@@ -72,7 +72,8 @@ static void printHelp(void)
     printf("  --displacement-reneigh    rebuild when an atom moved more than skin/2 "
            "(--reneigh-every 0 disables the fixed interval)\n");
     printf("  --sort-every <int>        sort the atoms spatially every <int> steps, 0 "
-           "(default) disables it (verlet-list)\n");
+           "disables it (verlet-list; default: off on the CPU, at every neighbor-list "
+           "build on the GPU without MPI)\n");
     printf("  -half <int>               half (1) or full (0) neighbor lists\n");
     printf("  -method <int>             ghost interactions with MPI: 0 full shell, 1 "
            "half shell, 2 eighth shell, 3 half stencil (verlet-list)\n");
@@ -88,10 +89,15 @@ static void printHelp(void)
     printf("  -halflj                   LJ only for the first half of the i-clusters "
            "with at most half of their atoms having LJ (CPU cluster-pair)\n");
     printf("  --no-accurate-recip       use the 1/r and 1/r^2 hardware estimates of the "
-           "SIMD kernels without the Newton-Raphson refinement (default: refined, as "
-           "GROMACS; --accurate-recip selects it explicitly)\n");
+           "SIMD kernels without the Newton-Raphson refinement, and the fast "
+           "approximate division and rsqrt of the GPU kernels (as -use_fast_math) "
+           "instead of the IEEE ones (default: accurate, as GROMACS; --accurate-recip "
+           "selects it explicitly)\n");
     printf("  --no-prefetch             no j-cluster software prefetch (CPU "
            "cluster-pair SIMD kernels, GROMACS does not prefetch)\n");
+    printf("  -ref                      GPU builds: the reference force kernels (one "
+           "thread per atom pair, no packing, slicing or warp reductions, all forces "
+           "with atomicAdd) instead of the optimized ones\n");
     printf("  --kernel-bench <int>      after the setup, only run the force kernel this "
            "many times on the fixed neighbor lists\n");
     printf("  --dump-forces <file>      write the forces of a single kernel call (atom "
@@ -191,6 +197,8 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
             param->accurate_reciprocal = 0;
         } else if (IS("--no-prefetch")) {
             param->kernel_prefetch = 0;
+        } else if (IS("-ref")) {
+            param->ref_kernel = 1;
         } else if (IS("--kernel-bench")) {
             param->kernel_bench = atoi(NEXT_ARG());
         } else if (IS("--dump-forces")) {
@@ -247,6 +255,19 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
 #if !defined(CLUSTER_PAIR) || defined(CUDA_TARGET)
     if (param->half_lj) {
         cmdError(comm, "-halflj needs the CPU cluster-pair kernels");
+    }
+#endif
+    // Auto (< 0): the GPU verlet list sorts at every neighbor-list build, else no sort
+    if (param->resort_every < 0) {
+#if defined(CUDA_TARGET) && !defined(CLUSTER_PAIR) && !defined(_MPI)
+        param->resort_every = -1;
+#else
+        param->resort_every = 0;
+#endif
+    }
+#if defined(CUDA_TARGET) && defined(_MPI)
+    if (param->resort_every > 0) {
+        cmdError(comm, "--sort-every is not supported by the GPU kernels with MPI");
     }
 #endif
 #ifdef CLUSTER_PAIR

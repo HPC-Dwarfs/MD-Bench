@@ -133,7 +133,7 @@ endif
 ifeq ($(strip $(TOOLCHAIN)),HIPCC)
 $(BUILD_DIR)/%.o:  $(BUILD_DIR)/%.hip $(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
-	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $(HIP_DEVICE_CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) -MT $@ -MM  $< > $(BUILD_DIR)/$*.d
 endif
 

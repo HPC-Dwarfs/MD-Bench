@@ -53,14 +53,13 @@ SUPERCLUSTER_DATA_LAYOUT ?= AOS3
 # Map threadIdx.y to cii and threadIdx.x to cjj (true or false)
 # If false, use same thread mapping and reduction instructions as Gromacs
 SUPERCLUSTER_INVERSE_THREAD_MAPPING ?= true
-# Number of thread-block slices the GPU grid is split into along each
-# i-supercluster's j-neighbor list for the super-clustering kernel (grid.y).
-# 1 slice means each i-supercluster's neighbors are handled by a single
-# block, writing its force directly; >1 splits the neighbor list across
-# multiple blocks running concurrently (more parallelism/occupancy) that
-# combine their partial forces with atomicAdd (more atomic contention).
-# Tune based on system size and GPU occupancy.
-SUPERCLUSTER_J_SLICES ?= 4
+# Number of thread-block slices (grid.y) the GPU grid is split into along the
+# j-neighbor lists of the optimized GPU kernels (gpusimple, supercluster, verlet list).
+# 0 (auto) chooses them per force call from the occupancy and the list sizes;
+# 1 means each i-(super)cluster's neighbors are handled by a single block;
+# >1 splits the list across concurrent blocks that combine their partial forces
+# with atomicAdd (more parallelism, more atomic contention).
+SUPERCLUSTER_J_SLICES ?= 0
 # Use scalar version (and pray for the compiler to vectorize the code properly)
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)

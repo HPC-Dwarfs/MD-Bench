@@ -74,7 +74,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     }
 
     for (int k = 0; k < numneighs; k++) {
-        int j         = neighs(neigh_neighbors, i, k, Nlocal, neighbor);
+        int j         = neighs(neigh_neighbors, i, k, Nlocal, &neigh);
         MD_FLOAT delx = xtmp - atom_x(j);
         MD_FLOAT dely = ytmp - atom_y(j);
         MD_FLOAT delz = ztmp - atom_z(j);
@@ -155,7 +155,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
     }
 
     for (int k = 0; k < numneighs; k++) {
-        int j         = neighs(neigh_neighbors, i, k, Nlocal, neighbor);
+        int j         = neighs(neigh_neighbors, i, k, Nlocal, &neigh);
         MD_FLOAT delx = xtmp - atom_x(j);
         MD_FLOAT dely = ytmp - atom_y(j);
         MD_FLOAT delz = ztmp - atom_z(j);

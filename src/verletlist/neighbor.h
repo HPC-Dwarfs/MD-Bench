@@ -20,24 +20,36 @@
 #define NBLIST_DATA_LAYOUT      "CSR"
 #define neighs(l, i, j, M, nbr) (l)[(nbr)->neigh_start[(i)] + (j)]
 #else
-#define NBLIST_DATA_LAYOUT      "SoA"
-#define neighs(l, i, j, M, nbr) (l)[(j) * (M) + (i)]
+/* SoA ("neighbor"-major). GPU lists built for T = 2^tpa_log2 lanes per atom (TPA) keep the
+ * neighbors of an atom in groups of T (LAMMPS GPU package layout), so the lanes of an atom and
+ * the atoms of a warp read consecutive words; tpa_log2 = 0 is the plain layout j * M + i. */
+#define NBLIST_DATA_LAYOUT "SoA"
+#define neighs(l, i, j, M, nbr)                                                             \
+    (l)[((((j) >> (nbr)->tpa_log2) * (M)) << (nbr)->tpa_log2) + ((i) << (nbr)->tpa_log2) + \
+        ((j) & ((1 << (nbr)->tpa_log2) - 1))]
 #endif
 /* Shell list and build-phase scratch always use padded AOS layout */
 #define neighshell(nblist, i, j, N)       nblist[(i) * (N) + (j)]
 #define neighs_padded(nblist, i, j, M, N) nblist[(i) * (N) + (j)]
+
+/* GPU force kernels: lanes per atom (TPA), fixed per list type as LAMMPS' `package gpu tpa`.
+ * Given as log2 because they also set the layout of the SOA lists (see neighs). */
+#define VL_TPA_LOG2_HALF 3 // 8 lanes per atom with half lists
+#define VL_TPA_LOG2_FULL 4 // 16 lanes per atom with full lists
 
 typedef struct {
     int* neighbors;
     int* numneigh;
     int* numneigh_inner;
     int maxneighs;
+    int tpa_log2; // lanes per atom (TPA) the list is laid out for, see neighs
 } DeviceNeighbor;
 
 typedef struct {
     int every;
     int ncalls;
     int maxneighs;
+    int tpa_log2; // lanes per atom (TPA) the list is laid out for, see neighs; 0 on the CPU
     int half_neigh;
     int* neighbors;
     int* neigh_start;
@@ -109,7 +121,10 @@ extern "C"
 #ifdef __cplusplus
 extern "C"
 #endif
-    extern void
-    pruneNeighborCUDA(Parameter*, Atom*, Neighbor*);
+    extern void pruneNeighborCUDA(Parameter*, Atom*, Neighbor*);
+#ifdef __cplusplus
+extern "C"
+#endif
+    extern void sortAtomsCUDA(Atom*);
 #endif
 #endif //__NEIGHBOR_H_

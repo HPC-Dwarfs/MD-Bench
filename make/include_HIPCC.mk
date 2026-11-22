@@ -40,6 +40,9 @@ OPENMP = -fopenmp
 endif
 
 CFLAGS   = -O3 --offload-arch=$(GPU_ARCH) -march=native -ffast-math -funroll-loops $(OPENMP)
+# GPU code without fast-math, as NVCC (-ffast-math only reaches the host compiler there):
+# the force kernels select the fast division/rsqrt per kernel with --no-accurate-recip
+HIP_DEVICE_CFLAGS = -Xarch_device -fno-fast-math
 
 ASFLAGS  =  $(ASM_SYNTAX_FLAG)
 LFLAGS   = $(OPENMP)

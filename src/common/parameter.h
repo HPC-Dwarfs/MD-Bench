@@ -105,7 +105,7 @@ typedef struct {
     int nstat;
     int reneigh_every;
     int displacement_reneigh;
-    int resort_every;
+    int resort_every; // --sort-every: 0 off, < 0 at every neighbor-list build
     int prune_every;
     int x_out_every;
     int v_out_every;
@@ -123,6 +123,7 @@ typedef struct {
     MD_FLOAT xprd, yprd, zprd;
     double proc_freq;
     int super_clustering;
+    int ref_kernel; // GPU force kernels: use the reference (simple) version
     char* eam_file;
     int lj_table_points;
     // MPI implementation

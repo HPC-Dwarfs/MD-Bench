@@ -156,12 +156,13 @@ Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 - `SUPERCLUSTER_INVERSE_THREAD_MAPPING`: Map `threadIdx.y` to `cii` and
 `threadIdx.x` to `cjj` (true or false). If false, uses the same thread
 mapping and reduction as GROMACS.
-- `SUPERCLUSTER_J_SLICES` (default: 4): Number of thread-block slices the GPU
-grid is split into along each i-supercluster's j-neighbor list, for the
-super-clustering kernel. 1 means each i-supercluster's neighbors are handled
-by a single block; >1 splits the neighbor list across multiple concurrent
+- `SUPERCLUSTER_J_SLICES` (default: 0, auto): Number of thread-block slices the GPU
+grid is split into along the j-neighbor lists of the optimized GPU kernels
+(gpusimple, supercluster and verletlist). 1 means each i-(super)cluster's neighbors
+are handled by a single block; >1 splits the neighbor list across multiple concurrent
 blocks (more parallelism/occupancy) that combine partial forces with
-atomicAdd (more atomic contention). Tune based on system size and occupancy.
+atomicAdd (more atomic contention); 0 chooses the slices per force call from the
+occupancy and the list sizes (default).
 - `XTC_OUTPUT`: Enable XTC trajectory output (GROMACS file format)
 - `MEM_TRACER`: Trace memory addresses for cache simulation (true or false)
 - `INDEX_TRACER`: Trace indexes and distances for gather-MD analysis (true or false)
@@ -252,8 +253,10 @@ Simulation and neighbor lists:
 - `--displacement-reneigh`: rebuild the lists when an atom moved more than skin/2 (use
 `--reneigh-every 0` to disable the fixed interval)
 - `--sort-every <int>`: sort the atoms spatially every `<int>` steps, followed by a
-neighbor-list build; 0 (default) disables it (verletlist; the cluster-pair scheme sorts
-the atoms into clusters at every build). Parameter file key `resort_every`.
+neighbor-list build; 0 disables it (verletlist; the cluster-pair scheme sorts
+the atoms into clusters at every build). Default: off on the CPU, while the GPU
+verletlist without MPI sorts the atoms on the device at every neighbor-list build.
+Parameter file key `resort_every`.
 - `-half <int>`: use half (1) or full (0) neighbor lists (default 0 - full
 neighbor list). The cluster-pair SIMD kernels without MPI keep only half of
 the periodic ghost clusters with half lists, so a half list has about half the entries of
@@ -284,8 +287,13 @@ their atoms with LJ, whose LJ atoms are sorted to the front (`gmx nonbonded-benc
 (12-14 bits) of the SIMD kernels (cluster-pair and verletlist with `USE_SIMD_KERNEL`)
 without refining them. By default they are refined with Newton-Raphson steps, as GROMACS
 does, so the forces agree with a code that evaluates 1/r^2 to full precision and between
-the SIMD widths (`--accurate-recip` selects the default explicitly). Parameter file key
+the SIMD widths (`--accurate-recip` selects the default explicitly). On the GPU it
+selects the fast division and rsqrt (as `-use_fast_math`) instead of the IEEE ones, per
+kernel, so both versions are in the same binary. Parameter file key
 `accurate_reciprocal` (0 or 1).
+- `-ref`: GPU builds: use the reference force kernels (one thread per atom pair, no
+packing, j-slicing or warp reductions, all forces with atomicAdd) instead of the
+optimized ones. Parameter file key `ref_kernel`.
 - `--no-prefetch`: no software prefetch of the j-cluster data in the CPU cluster-pair
 SIMD kernels. GROMACS does not prefetch, use it for a like-for-like comparison.
 Parameter file key `kernel_prefetch`.

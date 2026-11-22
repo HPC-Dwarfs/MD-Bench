@@ -126,14 +126,22 @@ double setup(Parameter* param,
         adjustThermo(param, atom);
     }
 
+#ifndef CUDA_TARGET
     if (param->resort_every > 0) {
         atom->Nghost = 0;
         sortAtom(atom);
     }
+#endif
 
     // initDevice must precede setupPbc: the CUDA setupPbc reads positions on
     // the device, so the initial H2D upload has to happen first.
     initDevice(param, atom, neighbor);
+#if defined(CUDA_TARGET) && !defined(_MPI)
+    // Spatial order of the local atoms (--sort-every), before the ghosts are made
+    if (param->resort_every != 0) {
+        sortAtomsCUDA(atom);
+    }
+#endif
     setupPbc(atom, param);
 
 #ifdef _MPI
@@ -158,6 +166,16 @@ double reneighbour(
     timeStart = getTimeStamp();
     LIKWID_MARKER_START("reneighbour");
     // updateAtomsPbc(atom, param, true); function called at updateAtoms
+#if defined(CUDA_TARGET) && !defined(_MPI)
+    // Spatial order of the local atoms (--sort-every: at every build or every
+    // resort_every steps), before the ghosts are made
+    if (param->resort_every < 0 ||
+        (param->resort_every > 0 && (n + 1) % param->resort_every == 0)) {
+        stepStart = getTimeStamp();
+        sortAtomsCUDA(atom);
+        timer[NEIGH_SORT] += getTimeStamp() - stepStart;
+    }
+#endif
     stepStart = getTimeStamp();
 #ifdef _MPI
     ghostNeighbor(comm, atom, param);
@@ -454,6 +472,7 @@ int main(int argc, char** argv)
     }
     for (int n = 0; n < param.ntimes; n++) {
         bool resort = param.resort_every > 0 && (n + 1) % param.resort_every == 0;
+#ifndef CUDA_TARGET
         if (resort) {
             double sortStart = getTimeStamp();
             DEBUG_MESSAGE("Resorting atoms\n");
@@ -463,6 +482,7 @@ int main(int argc, char** argv)
             timer[NEIGH] += sortElapsed;
             timer[NEIGH_SORT] += sortElapsed;
         }
+#endif
 
         // Sorting permutes the atoms and drops the ghosts: the lists have to be rebuilt
         bool reneigh = resort ||

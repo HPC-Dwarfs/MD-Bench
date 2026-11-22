@@ -33,6 +33,15 @@ void initForce(Parameter* param)
         fprintf(stderr, "Error: the verlet-list GPU kernels do not support -method!\n");
         exit(EXIT_FAILURE);
     }
+    if (param->ref_kernel && param->force_field != FF_LJ) {
+        fprintf(stderr, "Error: -ref is only available with -f lj!\n");
+        exit(EXIT_FAILURE);
+    }
+#else
+    if (param->ref_kernel) {
+        fprintf(stderr, "Error: -ref needs a GPU build (TOOLCHAIN=NVCC or HIPCC)!\n");
+        exit(EXIT_FAILURE);
+    }
 #endif
     // Energies (-energy) are computed by the LJ kernels only
     if (param->compute_energy && param->force_field != FF_LJ) {
@@ -64,7 +73,7 @@ void initForce(Parameter* param)
         break;
     case FF_LJ:
 #ifdef CUDA_TARGET
-        computeForce = computeForceLJCUDA;
+        computeForce = param->ref_kernel ? computeForceLJCUDARef : computeForceLJCUDA;
 #else
 #ifdef __SIMD_KERNEL__
 #ifdef __SIMD_COMPRESS__

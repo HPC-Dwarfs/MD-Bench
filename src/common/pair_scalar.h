@@ -17,18 +17,27 @@
 #include <parameter.h>
 
 #if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-#define PAIR_RSQRT(x)   rsqrt(x)
+// acc (--accurate-recip): IEEE 1/x and 1/sqrt(x), else the fast hardware versions that
+// -use_fast_math would give; HIP has no float rsqrt overload, so use the f versions
+#if PRECISION == 1
+#define PAIR_RECIP(x, acc) ((acc) ? 1.0f / (x) : __fdividef(1.0f, (x)))
+#define PAIR_RSQRT(x, acc) ((acc) ? 1.0f / sqrtf(x) : rsqrtf(x))
+#else
+#define PAIR_RECIP(x, acc) (1.0 / (x))
+#define PAIR_RSQRT(x, acc) ((acc) ? 1.0 / sqrt(x) : rsqrt(x))
+#endif
 #define PAIR_FMAX(a, b) fmax(a, b)
 #else
-#define PAIR_RSQRT(x)   ((MD_FLOAT)1.0 / sqrt(x))
-#define PAIR_FMAX(a, b) ((a) > (b) ? (a) : (b))
+#define PAIR_RECIP(x, acc) ((MD_FLOAT)1.0 / (x))
+#define PAIR_RSQRT(x, acc) ((MD_FLOAT)1.0 / sqrt(x))
+#define PAIR_FMAX(a, b)    ((a) > (b) ? (a) : (b))
 #endif
 
 /* Returns f_scalar of a pair inside the cut-off, the force on i is f_scalar * (r_i -
  * r_j). qi is the charge of i multiplied by epsfac. Atoms of the same molecule are
  * excluded: they skip Lennard-Jones and the direct Coulomb term, but still receive the
  * electrostatic correction term, as in GROMACS. */
-static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
+static inline MD_HOST_DEVICE MD_FLOAT pairForceScalarAcc(MD_FLOAT rsq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
     MD_FLOAT qi,
@@ -36,6 +45,7 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     int mol_i,
     int mol_j,
     const int excl,
+    const int accurate,
     CoulombScalar cs)
 {
     // Padding atoms can sit at the same point. Like GROMACS, clamp the distance so that
@@ -43,9 +53,9 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     rsq = PAIR_FMAX(rsq, MIN_DISTANCE_SQ);
 
 #if COULOMB_RULE == COULOMB_NONE
-    MD_FLOAT sr2 = (MD_FLOAT)(1.0) / rsq;
+    MD_FLOAT sr2 = PAIR_RECIP(rsq, accurate);
 #else
-    MD_FLOAT rinv = PAIR_RSQRT(rsq);
+    MD_FLOAT rinv = PAIR_RSQRT(rsq, accurate);
     MD_FLOAT sr2  = rinv * rinv;
 #endif
     MD_FLOAT sr6   = sr2 * sr2 * sr2 * sigma6;
@@ -80,11 +90,12 @@ static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
     (void)mol_j;
     (void)interact;
     (void)cs;
+    (void)accurate;
     return force;
 }
 
 // LJ and Coulomb energy of a pair inside the cut-off (see pairForceScalar())
-static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
+static inline MD_HOST_DEVICE void pairEnergyScalarAcc(MD_FLOAT rsq,
     MD_FLOAT sigma6,
     MD_FLOAT epsilon,
     MD_FLOAT qi,
@@ -92,15 +103,16 @@ static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
     int mol_i,
     int mol_j,
     const int excl,
+    const int accurate,
     CoulombScalar cs,
     MD_FLOAT* vlj,
     MD_FLOAT* vc)
 {
     rsq = PAIR_FMAX(rsq, MIN_DISTANCE_SQ);
 #if COULOMB_RULE == COULOMB_NONE
-    MD_FLOAT sr2 = (MD_FLOAT)(1.0) / rsq;
+    MD_FLOAT sr2 = PAIR_RECIP(rsq, accurate);
 #else
-    MD_FLOAT rinv = PAIR_RSQRT(rsq);
+    MD_FLOAT rinv = PAIR_RSQRT(rsq, accurate);
     MD_FLOAT sr2  = rinv * rinv;
 #endif
     MD_FLOAT sr6 = sr2 * sr2 * sr2 * sigma6;
@@ -136,6 +148,37 @@ static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
     (void)mol_j;
     (void)interact;
     (void)cs;
+    (void)accurate;
+}
+
+// pairForceScalarAcc() with IEEE reciprocals, for the CPU kernels
+static inline MD_HOST_DEVICE MD_FLOAT pairForceScalar(MD_FLOAT rsq,
+    MD_FLOAT sigma6,
+    MD_FLOAT epsilon,
+    MD_FLOAT qi,
+    MD_FLOAT qj,
+    int mol_i,
+    int mol_j,
+    const int excl,
+    CoulombScalar cs)
+{
+    return pairForceScalarAcc(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, excl, 1, cs);
+}
+
+// pairEnergyScalarAcc() with IEEE reciprocals, for the CPU kernels
+static inline MD_HOST_DEVICE void pairEnergyScalar(MD_FLOAT rsq,
+    MD_FLOAT sigma6,
+    MD_FLOAT epsilon,
+    MD_FLOAT qi,
+    MD_FLOAT qj,
+    int mol_i,
+    int mol_j,
+    const int excl,
+    CoulombScalar cs,
+    MD_FLOAT* vlj,
+    MD_FLOAT* vc)
+{
+    pairEnergyScalarAcc(rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, excl, 1, cs, vlj, vc);
 }
 
 #endif

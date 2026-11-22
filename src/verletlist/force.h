@@ -43,6 +43,7 @@ DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJFullNeigh_simd)
 
 #ifdef CUDA_TARGET
 extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
+extern double computeForceLJCUDARef(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define KERNEL_NAME "CUDA"
 #else

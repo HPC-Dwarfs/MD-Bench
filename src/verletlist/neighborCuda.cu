@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 //---
 
 #include <device.h>
@@ -35,6 +36,8 @@ extern int* stencil; // stencil list of bin offsets
 static int* c_stencil       = NULL;
 static int* c_resize_needed = NULL;
 static int* c_new_maxneighs = NULL;
+static long c_neigh_total   = 0; // neighbor entries of all local atoms, last build
+static int c_build_count    = 0; // list builds so far (atom order/ghosts may change)
 static Binning c_binning {
     .bincount = NULL, .bins = NULL, .mbins = 0, .atoms_per_bin = 0
 };
@@ -243,11 +246,8 @@ __global__ void prune_neighborhood(
 
         if (rsq < cutsq) {
             if (hi != lo) {
-                neighs(neighbor->neighbors,
-                    i,
-                    hi,
-                    nlocal,
-                    neighbor) = neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
+                neighs(neighbor->neighbors, i, hi, nlocal, neighbor) =
+                    neighs(neighbor->neighbors, i, lo, nlocal, neighbor);
                 neighs(neighbor->neighbors, i, lo, nlocal, neighbor) = j;
             }
             lo++;
@@ -341,7 +341,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
 
     int nall = atom->Nlocal + atom->Nghost;
     if (nall > nmax) {
-        nmax = nall;
+        nmax = nall + nall / 20;
         d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
             nmax * neighbor->maxneighs * sizeof(int*));
         d_neighbor->numneigh      = (int*)reallocateGPU(d_neighbor->numneigh,
@@ -349,6 +349,20 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
         d_neighbor->numneigh_inner = (int*)reallocateGPU(d_neighbor->numneigh_inner,
             nmax * sizeof(int));
     }
+
+    // Lanes per atom of the force kernel, the layout of this list (see neighs)
+    d_neighbor->tpa_log2 = neighbor->half_neigh ? VL_TPA_LOG2_HALF : VL_TPA_LOG2_FULL;
+#ifndef NBLIST_CSR
+    // the interleaved groups of SOA lists need maxneighs to be a multiple of 32
+    if (neighbor->maxneighs % 32 != 0) {
+        neighbor->maxneighs   = (neighbor->maxneighs + 31) / 32 * 32;
+        d_neighbor->maxneighs = neighbor->maxneighs;
+        const int nalloc      = nmax > atom->Nmax ? nmax : atom->Nmax;
+        d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
+            (size_t)nalloc * neighbor->maxneighs * sizeof(int));
+        neighbor->neighbors   = d_neighbor->neighbors;
+    }
+#endif
 
     // TODO move all of this initialization into its own method
     if (c_stencil == NULL) {
@@ -433,7 +447,7 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
 
         if (resize) {
             printf("RESIZE %d\n", neighbor->maxneighs);
-            neighbor->maxneighs   = new_maxneighs * 1.2;
+            neighbor->maxneighs   = ((int)(new_maxneighs * 1.2) + 31) / 32 * 32;
             d_neighbor->maxneighs = neighbor->maxneighs;
             printf("NEW SIZE %d\n", neighbor->maxneighs);
             d_neighbor->neighbors = (int*)reallocateGPU(d_neighbor->neighbors,
@@ -446,6 +460,236 @@ void buildNeighborCUDA(Atom* atom, Neighbor* neighbor)
     // double-cutoff scheme is disabled) after a full rebuild.
     pruneNeighborDevice(atom, neighbor);
 
+    // Total number of neighbor entries, for the j-slices of the force kernels
+    {
+        const int nlocal = atom->Nlocal;
+        int* h_numneigh  = (int*)malloc(nlocal * sizeof(int));
+        memcpyFromGPU(h_numneigh, d_neighbor->numneigh, nlocal * sizeof(int));
+        long total = 0;
+        for (int ii = 0; ii < nlocal; ii++) {
+            total += h_numneigh[ii];
+        }
+        free(h_numneigh);
+        c_neigh_total = total;
+    }
+    c_build_count++;
+
     GPU_PROFILE_STOP();
     DEBUG_MESSAGE("buildNeighborCUDA end\n");
+}
+
+// Neighbor entries of all local atoms after the last list build (forceCuda.cu)
+extern "C" long numNeighborsTotalCUDA(void) { return c_neigh_total; }
+
+// Number of list builds so far: atom order and ghosts are only changed together with a build
+extern "C" int neighborBuildCountCUDA(void) { return c_build_count; }
+
+/* -----------------------------------------------------------------------------------------
+ * Spatial sort of the local atoms, as LAMMPS' atom_modify sort: before the ghosts and the
+ * neighbor list of a rebuild are made (main.c), the local atoms are ordered by the bins of the
+ * list build in row-major order. The 32 atoms of a warp then sit in one or two bins, their
+ * neighbor lists overlap and the gathers of xq[j] in the force kernel share cache lines (the
+ * input files keep no spatial order). The sort is stable, so the permutation is the one of
+ * LAMMPS' Atom::sort. On the host only the original ids (dumpForces) and the types follow the
+ * atoms; positions and velocities are copied back from the device where the host needs them.
+ * Controlled by --sort-every (main.c): by default at every list build (no MPI).
+ * ----------------------------------------------------------------------------------------- */
+
+// Row-major index of the list-build bin of each local atom, counted per bin. The stable
+// sort by bin is a counting sort: count, exclusive scan, scatter and a sort of each bin by
+// the atom index (the scatter order inside a bin depends on the atomics)
+__global__ void binIndexKernel(DeviceAtom a,
+    int nlocal,
+    MD_FLOAT invx,
+    MD_FLOAT invy,
+    MD_FLOAT invz,
+    int nbx,
+    int nby,
+    int nbz,
+    unsigned int* bin,
+    int* count)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nlocal) {
+        return;
+    }
+    DeviceAtom* atom = &a;
+    const int ix     = min(max((int)(atom_x(i) * invx), 0), nbx - 1);
+    const int iy     = min(max((int)(atom_y(i) * invy), 0), nby - 1);
+    const int iz     = min(max((int)(atom_z(i) * invz), 0), nbz - 1);
+    const int b      = (iz * nby + iy) * nbx + ix;
+    bin[i]           = (unsigned int)b;
+    atomicAdd(&count[b], 1);
+}
+
+#define SORT_SCAN_THREADS 1024
+
+// start[b] = count[0] + ... + count[b-1] for the n bins, in one block: each thread sums
+// a contiguous chunk, the chunk sums are scanned in shared memory, then the chunks are
+// written
+__global__ void binScanKernel(const int* count, int* start, int n)
+{
+    __shared__ int s_sum[SORT_SCAN_THREADS];
+    const int t     = threadIdx.x;
+    const int chunk = (n + SORT_SCAN_THREADS - 1) / SORT_SCAN_THREADS;
+    const int b0    = min(t * chunk, n);
+    const int b1    = min(b0 + chunk, n);
+    int sum         = 0;
+    for (int b = b0; b < b1; b++) {
+        sum += count[b];
+    }
+    s_sum[t] = sum;
+    __syncthreads();
+    // Inclusive Hillis-Steele scan of the chunk sums
+    for (int off = 1; off < SORT_SCAN_THREADS; off <<= 1) {
+        const int v = t >= off ? s_sum[t - off] : 0;
+        __syncthreads();
+        s_sum[t] += v;
+        __syncthreads();
+    }
+    int offset = t > 0 ? s_sum[t - 1] : 0;
+    for (int b = b0; b < b1; b++) {
+        start[b] = offset;
+        offset += count[b];
+    }
+}
+
+// Scatters the atoms into their bins, afterwards start[b] is the end of bin b
+__global__ void binScatterKernel(
+    const unsigned int* bin, int* start, int* perm, int nlocal)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= nlocal) {
+        return;
+    }
+    perm[atomicAdd(&start[bin[i]], 1)] = i;
+}
+
+// Orders the atoms of each bin by their index (insertion sort, bins hold few atoms),
+// which makes the counting sort stable
+__global__ void binSortKernel(const int* count, const int* end, int* perm, int nbins)
+{
+    const int b = blockIdx.x * blockDim.x + threadIdx.x;
+    if (b >= nbins) {
+        return;
+    }
+    const int k1 = end[b];
+    const int k0 = k1 - count[b];
+    for (int k = k0 + 1; k < k1; k++) {
+        const int v = perm[k];
+        int m       = k - 1;
+        while (m >= k0 && perm[m] > v) {
+            perm[m + 1] = perm[m];
+            m--;
+        }
+        perm[m + 1] = v;
+    }
+}
+
+// dst[i] = src[perm[i]] for the first n entries
+template <typename T>
+__global__ void gatherKernel(
+    T* __restrict__ dst, const T* __restrict__ src, const int* perm, int n)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        dst[i] = src[perm[i]];
+    }
+}
+
+// arr[i] = arr[perm[i]] for the first n entries
+template <typename T>
+static void permuteOnDevice(T* arr, const int* perm, int n, void* scratch)
+{
+    const int threads = 256;
+    gatherKernel<<<(n + threads - 1) / threads, threads>>>((T*)scratch, arr, perm, n);
+    cuda_assert("gatherKernel", cudaPeekAtLastError());
+    memcpyOnGPU(arr, scratch, sizeof(T) * n);
+}
+
+extern "C" void sortAtomsCUDA(Atom* atom)
+{
+    static int cap             = 0;
+    static unsigned int* d_bin = NULL;
+    static int* d_perm         = NULL;
+    static void* d_scratch     = NULL;
+    static int bin_cap         = 0;
+    static int* d_count        = NULL; // atoms per bin
+    static int* d_start        = NULL; // first atom of each bin, then its end
+    static int* h_perm         = NULL;
+    static int* h_tmp          = NULL;
+    const int n                = atom->Nlocal;
+    if (n < 2) {
+        return;
+    }
+    if (n > cap) {
+        cap       = atom->Nmax > n ? atom->Nmax : n;
+        d_bin     = (unsigned int*)reallocateGPU(d_bin, sizeof(unsigned int) * cap);
+        d_perm    = (int*)reallocateGPU(d_perm, sizeof(int) * cap);
+        d_scratch = reallocateGPU(d_scratch, sizeof(MD_FLOAT3) * cap); // largest per-atom data
+        h_perm    = (int*)realloc(h_perm, sizeof(int) * cap);
+        h_tmp     = (int*)realloc(h_tmp, sizeof(int) * cap);
+    }
+    const int nbins = nbinx * nbiny * nbinz;
+    if (nbins > bin_cap) {
+        bin_cap = nbins;
+        d_count = (int*)reallocateGPU(d_count, sizeof(int) * bin_cap);
+        d_start = (int*)reallocateGPU(d_start, sizeof(int) * bin_cap);
+    }
+    GPU_PROFILE_START("sort_atoms");
+
+    // d_perm[new index] = old index, the atoms ordered by bin (stable counting sort)
+    const int threads = 256;
+    memsetGPU(d_count, 0, sizeof(int) * nbins);
+    binIndexKernel<<<(n + threads - 1) / threads, threads>>>(atom->d_atom,
+        n,
+        bininvx,
+        bininvy,
+        bininvz,
+        nbinx,
+        nbiny,
+        nbinz,
+        d_bin,
+        d_count);
+    cuda_assert("binIndexKernel", cudaPeekAtLastError());
+    binScanKernel<<<1, SORT_SCAN_THREADS>>>(d_count, d_start, nbins);
+    cuda_assert("binScanKernel", cudaPeekAtLastError());
+    binScatterKernel<<<(n + threads - 1) / threads, threads>>>(d_bin, d_start, d_perm, n);
+    cuda_assert("binScatterKernel", cudaPeekAtLastError());
+    binSortKernel<<<(nbins + threads - 1) / threads, threads>>>(d_count,
+        d_start,
+        d_perm,
+        nbins);
+    cuda_assert("binSortKernel", cudaPeekAtLastError());
+
+    // Device data of the local atoms (forces are recomputed and ghosts rebuilt after the sort)
+    DeviceAtom* d = &atom->d_atom;
+#ifdef ATOM_POSITION_AOS
+    permuteOnDevice((MD_FLOAT3*)d->x, d_perm, n, d_scratch);
+    permuteOnDevice((MD_FLOAT3*)d->vx, d_perm, n, d_scratch);
+#else
+    permuteOnDevice(d->x, d_perm, n, d_scratch);
+    permuteOnDevice(d->y, d_perm, n, d_scratch);
+    permuteOnDevice(d->z, d_perm, n, d_scratch);
+    permuteOnDevice(d->vx, d_perm, n, d_scratch);
+    permuteOnDevice(d->vy, d_perm, n, d_scratch);
+    permuteOnDevice(d->vz, d_perm, n, d_scratch);
+#endif
+    permuteOnDevice(d->type, d_perm, n, d_scratch);
+    permuteOnDevice(d->sqrt_epsilon, d_perm, n, d_scratch);
+    permuteOnDevice(d->sigma3, d_perm, n, d_scratch);
+    permuteOnDevice(d->q, d_perm, n, d_scratch);
+    permuteOnDevice(d->mol, d_perm, n, d_scratch);
+
+    // Host: the original ids (dumpForces) and the types follow the atoms
+    memcpyFromGPU(h_perm, d_perm, sizeof(int) * n);
+    for (int i = 0; i < n; i++) {
+        h_tmp[i] = atom->id[h_perm[i]];
+    }
+    memcpy(atom->id, h_tmp, sizeof(int) * n);
+    for (int i = 0; i < n; i++) {
+        h_tmp[i] = atom->type[h_perm[i]];
+    }
+    memcpy(atom->type, h_tmp, sizeof(int) * n);
+    GPU_PROFILE_STOP();
 }

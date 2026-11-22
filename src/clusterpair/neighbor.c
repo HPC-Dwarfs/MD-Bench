@@ -388,55 +388,104 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                             d_bb_sq += dm0 * dm0;
 
                             if (d_bb_sq < cutneighsq) {
-                                int is_neighbor = (d_bb_sq < rbb_sq) ? 1 : 0;
-                                if (!is_neighbor) {
-                                    for (int sci_ci = 0;
-                                        sci_ci < atom->siclusters[sci].nclusters;
-                                        sci_ci++) {
-                                        const int ci    = sci * SCLUSTER_SIZE + sci_ci;
-                                        int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
+                                /* Per-sub-cluster interaction mask: bit sci_ci is set
+                                 * when i-sub-cluster ci of this supercluster has at
+                                 * least one atom within cutneigh of j-cluster cj. The
+                                 * bit is uniform across the whole (cii, cjj) thread
+                                 * block in the sup kernel, so a cleared bit skips the
+                                 * sub-cluster iteration without warp divergence. */
+                                unsigned int imask = 0;
+                                const int order_cj =
+                                    cj < ncj_local_for_order
+                                        ? cj
+                                        : atom->border_map[cj - ncj_local_for_order];
+                                const int cj_vec_base = CJ_VECTOR_BASE_INDEX(cj);
+                                MD_FLOAT* cj_x        = &atom->cl_x[cj_vec_base];
+                                const int cj_natoms   = atom->jclusters[cj].natoms;
+
+                                for (int sci_ci = 0;
+                                    sci_ci < atom->siclusters[sci].nclusters;
+                                    sci_ci++) {
+                                    const int ci = sci * SCLUSTER_SIZE + sci_ci;
+
+                                    // Half list: the kernel skips ci > order_cj anyway
+                                    if (neighbor->half_neigh && ci > order_cj) {
+                                        continue;
+                                    }
+
+                                    // Sub-cluster bbox vs. cj bbox (an empty
+                                    // sub-cluster has an INF/-INF box and drops out)
+                                    MD_FLOAT sd2;
+                                    dl  = atom->iclusters[ci].bbminz - jbb_zmax;
+                                    dh  = jbb_zmin - atom->iclusters[ci].bbmaxz;
+                                    dm  = MAX(dl, dh);
+                                    dm0 = MAX(dm, 0.0);
+                                    sd2 = dm0 * dm0;
+                                    dl  = atom->iclusters[ci].bbminy - jbb_ymax;
+                                    dh  = jbb_ymin - atom->iclusters[ci].bbmaxy;
+                                    dm  = MAX(dl, dh);
+                                    dm0 = MAX(dm, 0.0);
+                                    sd2 += dm0 * dm0;
+                                    dl  = atom->iclusters[ci].bbminx - jbb_xmax;
+                                    dh  = jbb_xmin - atom->iclusters[ci].bbmaxx;
+                                    dm  = MAX(dl, dh);
+                                    dm0 = MAX(dm, 0.0);
+                                    sd2 += dm0 * dm0;
+
+                                    if (sd2 >= cutneighsq) {
+                                        continue;
+                                    }
+
+                                    if (sd2 < rbb_sq) {
+                                        imask |= (1u << sci_ci);
+                                        continue;
+                                    }
+
 #ifdef SOA_SUP
-                                        MD_FLOAT* ci_x = &atom->cl_x[sci_vec_base +
-                                                                     sci_ci * CLUSTER_M];
+                                    MD_FLOAT* ci_x = &atom->cl_x[sci_vec_base +
+                                                                 sci_ci * CLUSTER_M];
 #else
-                                        MD_FLOAT* ci_x =
-                                            &atom->cl_x[sci_vec_base +
-                                                        sci_ci * CLUSTER_M * ATOM_DIM];
+                                    MD_FLOAT* ci_x =
+                                        &atom->cl_x[sci_vec_base +
+                                                    sci_ci * CLUSTER_M * ATOM_DIM];
 #endif
-                                        MD_FLOAT* cj_x = &atom->cl_x[cj_vec_base];
+                                    int sub_hit = 0;
+                                    for (int cii = 0;
+                                        cii < atom->iclusters[ci].natoms && !sub_hit;
+                                        cii++) {
+                                        for (int cjj = 0; cjj < cj_natoms; cjj++) {
+                                            MD_FLOAT delx = ci_x[CL_X_INDEX(cii)] -
+                                                            cj_x[CL_X_INDEX(cjj)];
+                                            MD_FLOAT dely = ci_x[CL_Y_INDEX(cii)] -
+                                                            cj_x[CL_Y_INDEX(cjj)];
+                                            MD_FLOAT delz = ci_x[CL_Z_INDEX(cii)] -
+                                                            cj_x[CL_Z_INDEX(cjj)];
 
-                                        for (int cii = 0;
-                                            cii < atom->iclusters[ci].natoms;
-                                            cii++) {
-                                            for (int cjj = 0;
-                                                cjj < atom->jclusters[cj].natoms;
-                                                cjj++) {
-                                                MD_FLOAT delx = ci_x[CL_X_INDEX(cii)] -
-                                                                cj_x[CL_X_INDEX(cjj)];
-                                                MD_FLOAT dely = ci_x[CL_Y_INDEX(cii)] -
-                                                                cj_x[CL_Y_INDEX(cjj)];
-                                                MD_FLOAT delz = ci_x[CL_Z_INDEX(cii)] -
-                                                                cj_x[CL_Z_INDEX(cjj)];
-
-                                                if (delx * delx + dely * dely +
-                                                        delz * delz <
-                                                    cutneighsq) {
-                                                    is_neighbor = 1;
-                                                    goto distance_check_out;
-                                                }
+                                            if (delx * delx + dely * dely + delz * delz <
+                                                cutneighsq) {
+                                                sub_hit = 1;
+                                                break;
                                             }
                                         }
                                     }
+
+                                    if (sub_hit) {
+                                        imask |= (1u << sci_ci);
+                                    }
                                 }
 
-                            distance_check_out:
-                                if (is_neighbor) {
+                                if (imask != 0) {
                                     if (n < neighbor->maxneighs) {
                                         neighs_padded(neighbor->neighbors,
                                             sci,
                                             n,
                                             nbM,
                                             nbN) = cj;
+                                        neighs_padded(neighbor->neighbors_imask,
+                                            sci,
+                                            n,
+                                            nbM,
+                                            nbN) = imask;
                                     }
                                     n++;
                                 }
@@ -467,6 +516,11 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                             n,
                             nbM,
                             nbN) = atom->dummy_cj;
+                        neighs_padded(neighbor->neighbors_imask,
+                            sci,
+                            n,
+                            nbM,
+                            nbN) = 0;
                     }
                     n++;
                 }
@@ -506,6 +560,8 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
         const int nbM        = atom->Nclusters_local;
         int* soa_neighbors   = (int*)allocateHostPinned(
             (size_t)nmax * padded_nbN * sizeof(int));
+        unsigned int* soa_imask = (unsigned int*)allocateHostPinned(
+            (size_t)nmax * padded_nbN * sizeof(unsigned int));
 
         for (int sci = 0; sci < nbM; sci++) {
             int nn = neighbor->numneigh[sci];
@@ -515,11 +571,18 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                     k,
                     nbM,
                     padded_nbN);
+                soa_imask[k * nbM + sci]     = neighs_padded(neighbor->neighbors_imask,
+                    sci,
+                    k,
+                    nbM,
+                    padded_nbN);
             }
         }
 
         freeHostPinned(neighbor->neighbors);
-        neighbor->neighbors = soa_neighbors;
+        freeHostPinned(neighbor->neighbors_imask);
+        neighbor->neighbors       = soa_neighbors;
+        neighbor->neighbors_imask = soa_imask;
     }
 #endif
 
@@ -806,14 +869,10 @@ void pruneNeighborSuperclusters(Parameter* param, Atom* atom, Neighbor* neighbor
 {
     DEBUG_MESSAGE("pruneNeighbor start\n");
     if (!dcut_enabled) {
-        const int nbM = atom->Nclusters_local;
-        // Mirror cudaPruneNeighborSup()'s early return: imask all-1s.
+        // Keep the per-sub-cluster imask computed at the outer cutoff by
+        // buildNeighborSuperclusters(); only mirror the counts.
         for (int sci = 0; sci < atom->Nclusters_local; sci++) {
-            const int numneighs           = neighbor->numneigh[sci];
-            neighbor->numneigh_inner[sci] = numneighs;
-            for (int k = 0; k < numneighs; k++) {
-                neighs(neighbor->neighbors_imask, sci, k, nbM, neighbor) = ~0u;
-            }
+            neighbor->numneigh_inner[sci] = neighbor->numneigh[sci];
         }
         return;
     }

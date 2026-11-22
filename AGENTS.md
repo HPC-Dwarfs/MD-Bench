@@ -121,7 +121,7 @@ into `DEFINES` and the binary tag:
 - `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 - `ASM_SYNTAX`: Assembly syntax for generated `.s` files on X86 (`intel`/`att`), passed to the compiler as `-masm=`; ignored on ARM
 - `USE_PINNED_MEMORY`: Use pinned (page-locked) host memory for buffers that are `cudaMemcpy`'d to/from the GPU every reneighbor step, for faster/more predictable transfers (default true; CUDA/HIP builds only)
-- `SUPERCLUSTER_J_SLICES`: Number of thread-block slices the GPU grid is split into along each i-supercluster's j-neighbor list, for the super-clustering kernel (default 4)
+- `SUPERCLUSTER_J_SLICES`: Number of thread-block slices (grid.y) the GPU grid is split into along the j-neighbor lists of the optimized GPU kernels (gpusimple, supercluster, verlet list); 0 (default, auto) chooses them per force call from the occupancy and the list sizes
 - `ENABLE_LIKWID`: Enable LIKWID performance counter instrumentation
 
 Example build commands:
@@ -238,7 +238,8 @@ one static pattern rule adds the `VARIANT_FLAGS_<option>` of the variant).
 The neighbor templates hold the original code with its `#if LJ_COMB_RULE` blocks; the
 state they share with `neighbor.c` is declared in `neighbor_internal.h` of each scheme.
 The prune kernels have no rule dependence and are compiled once. The GPU kernels use C++
-templates instead (`template <int RULE, bool ENERGY, bool EXCL>`, `if constexpr` on RULE,
+templates instead (`template <int RULE, bool ENERGY, bool EXCL, bool ACCURATE>`, `if constexpr` on RULE,
+ACCURATE = `--accurate-recip` selecting IEEE or fast 1/x and rsqrt in `pairForceScalarAcc()`,
 the launch picks the instantiation with `SELECT_GPU_KERNEL` of
 `src/common/kernel_select_gpu.h`; the verlet-list GPU neighbor kernels are templates on the
 per-type cut-off). Runtime flags inside the kernels cost 1.5-3% (measured on Genoa: GCC lays
@@ -284,7 +285,9 @@ field, used by `pairForces()` in all three SIMD kernels. All scalar kernels eval
 with `pairForceScalar()` (`src/common/pair_scalar.h`, host and device code, using the
 scalar copy of the correction in `src/common/coulomb_scalar.h`): the cluster-pair reference
 kernel and eight-shell ghost routine, the cluster-pair GPU kernels (`gpusimple`,
-`supercluster`; loads in `src/clusterpair/pair_cuda.h`) and the verlet-list kernels. They
+`supercluster`; loads in `src/clusterpair/pair_cuda.h`, packed atom data, j-slicing and
+warp-shuffle reductions in `force_lj_cuda_common.{h,cu}`, padding slots marked by `mol = -1`
+in the packed `AtomParam`) and the verlet-list kernels (packed `xq`/`par`, T lanes per atom). They
 compare the molecule index per pair when the `excl` argument is set (a literal or
 template constant: `EXCL` of the GPU kernels, the `excl` copy of the verlet-list C
 kernels), as their lists have no masked part. `cl_q` is only copied to the GPU with
@@ -405,7 +408,8 @@ a `key value` text file (`readParameter`/`readTypesFile` in
 | `src/common/simd_math.h`, `src/clusterpair/kernel_math.h`, `coulomb.h` | accurate reciprocal/rsqrt; Ewald (`pmeForceCorrectionSimd`) |
 | `src/clusterpair/thread_forces.h` | per-thread force arrays of the half-list kernels |
 | `tests/gromacs_nonbonded/` | GROMACS benchmark comparison: reference, patch, scripts |
-| `src/clusterpair/force_lj_cuda.cu`, `force_lj_cuda_sup.cu` | Cluster-pair CUDA/HIP LJ kernels (plain and super-clustering) |
+| `src/clusterpair/force_lj_cuda.cu`, `force_lj_cuda_sup.cu` | Cluster-pair CUDA/HIP LJ kernels (plain and super-clustering; optimized and `-ref`) |
+| `src/clusterpair/force_lj_cuda_common.cu`, `.h` | Shared cluster-pair GPU data: device arrays, atom packing, j-slice choice, warp reductions |
 | `src/verletlist/force_lj.c` | Verlet-list LJ force kernels |
 | `src/common/ljtable.c` | Tabulated LJ force lookup |
 | `src/common/ewald_table.c`, `ewald_table.h` | GROMACS' tabulated Ewald correction (`COULOMB_RULE=ewald_table`) |
@@ -442,9 +446,10 @@ options are an error. Common command line arguments:
 - `-p <file>`: Parameter file; `outer_skin` can be set here to enable double-cutoff pruning
 - `-gmxbench [-size N]`, `--kernel-bench N`, `--dump-forces <file>`: the water system of the GROMACS non-bonded benchmark, a kernel-only timing loop and a per-atom force dump (both schemes, see below)
 - `-energy`, `-halflj`: energy kernels and half-LJ i-clusters, as `gmx nonbonded-benchmark -energy`/`-halflj` (see below)
-- `--no-accurate-recip`: hardware reciprocal estimates of the SIMD kernels without the Newton-Raphson refinement (refined by default, as GROMACS; `--accurate-recip` selects the default explicitly)
+- `--no-accurate-recip`: hardware reciprocal estimates of the SIMD kernels without the Newton-Raphson refinement, and the fast division/rsqrt of the GPU kernels (what `-use_fast_math` gives; neither the NVCC nor the HIPCC device flags enable fast math) instead of the IEEE ones (accurate by default, as GROMACS; `--accurate-recip` selects the default explicitly)
+- `-ref`: GPU builds: reference force kernels (one thread per atom pair, no packing, j-slicing or warp reductions, all forces with `atomicAdd`) instead of the optimized ones
 - `--no-prefetch`: no j-cluster prefetch (CPU cluster-pair), needed for a like-for-like GROMACS comparison
-- `--sort-every <n>`: spatial atom sort every n steps with a list rebuild (verlet-list; 0 = off, default)
+- `--sort-every <n>`: spatial atom sort every n steps with a list rebuild (verlet-list; 0 = off). Default: off on the CPU; the GPU verlet list without MPI sorts on the device (`sortAtomsCUDA`) at every list build
 
 ### Test Cases
 

@@ -5,8 +5,9 @@
  * license that can be found in the LICENSE file.
  */
 // Selection of the GPU force kernel instantiation for the runtime options: the kernels
-// are templates on the LJ combination rule (RULE), the energies (ENERGY) and the
-// molecular exclusions (EXCL), so none of these options costs a branch inside the kernel.
+// are templates on the LJ combination rule (RULE), the energies (ENERGY), the molecular
+// exclusions (EXCL) and the IEEE reciprocals (ACCURATE, --accurate-recip), so none of
+// these options costs a branch inside the kernel.
 #ifndef __KERNEL_SELECT_GPU_H_
 #define __KERNEL_SELECT_GPU_H_
 
@@ -18,15 +19,23 @@
         : (rule) == LJ_COMB_GEOM ? K<LJ_COMB_GEOM>                                       \
                                  : K<LJ_COMB_FULL>)
 
-// K<R, energy, excl> for a fixed rule R
-#define SELECT_GPU_KERNEL_EE(K, R, energy, excl)                                         \
-    ((energy) ? ((excl) ? K<R, true, true> : K<R, true, false>)                          \
-              : ((excl) ? K<R, false, true> : K<R, false, false>))
+// K<R, E, excl, accurate> for a fixed rule R and energies E
+#define SELECT_GPU_KERNEL_XA(K, R, E, excl, accurate)                                    \
+    ((excl) ? ((accurate) ? K<R, E, true, true> : K<R, E, true, false>)                  \
+            : ((accurate) ? K<R, E, false, true> : K<R, E, false, false>))
 
-// K<rule, energy, excl> for the combination rule, energies and exclusions
-#define SELECT_GPU_KERNEL(K, rule, energy, excl)                                         \
-    ((rule) == LJ_COMB_SINGLE    ? SELECT_GPU_KERNEL_EE(K, LJ_COMB_SINGLE, energy, excl) \
-        : (rule) == LJ_COMB_GEOM ? SELECT_GPU_KERNEL_EE(K, LJ_COMB_GEOM, energy, excl)   \
-                                 : SELECT_GPU_KERNEL_EE(K, LJ_COMB_FULL, energy, excl))
+// K<R, energy, excl, accurate> for a fixed rule R
+#define SELECT_GPU_KERNEL_EXA(K, R, energy, excl, accurate)                              \
+    ((energy) ? SELECT_GPU_KERNEL_XA(K, R, true, excl, accurate)                         \
+              : SELECT_GPU_KERNEL_XA(K, R, false, excl, accurate))
+
+// K<rule, energy, excl, accurate> for the combination rule, energies, exclusions and
+// reciprocals
+#define SELECT_GPU_KERNEL(K, rule, energy, excl, accurate)                               \
+    ((rule) == LJ_COMB_SINGLE                                                            \
+            ? SELECT_GPU_KERNEL_EXA(K, LJ_COMB_SINGLE, energy, excl, accurate)           \
+        : (rule) == LJ_COMB_GEOM                                                         \
+            ? SELECT_GPU_KERNEL_EXA(K, LJ_COMB_GEOM, energy, excl, accurate)             \
+            : SELECT_GPU_KERNEL_EXA(K, LJ_COMB_FULL, energy, excl, accurate))
 
 #endif
