@@ -567,9 +567,8 @@ static void packAtomsForForceVL(Atom* atom, MD_FLOAT4** xq, MD_FLOAT4** par)
     *par         = d_par;
 }
 
-// j-slices (grid.y) of the force kernels: 0 = chosen per force call (auto), > 0 = fixed
 #ifndef GPU_J_SLICES
-#define GPU_J_SLICES 0
+#error "GPU_J_SLICES is not defined"
 #endif
 
 #if GPU_J_SLICES == 0
