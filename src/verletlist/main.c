@@ -479,6 +479,10 @@ int main(int argc, char** argv)
             param.displacement_reneigh = 1;
             continue;
         }
+        if (strcmp(argv[i], "-ref") == 0) {
+            param.ref_kernel = 1;
+            continue;
+        }
         if ((strcmp(argv[i], "-v") == 0) || (strcmp(argv[i], "--verbose") == 0)) {
             param.verbose = 1;
             continue;
@@ -516,6 +520,10 @@ int main(int argc, char** argv)
                        "given)\n");
                 printf("-size <int>:                replicate the -gmxbench system this many "
                        "times (power of two)\n");
+                printf("-ref:                       GPU builds: use the reference force "
+                       "kernel (one thread per atom, no packing, slicing or warp "
+                       "reductions, all forces with atomicAdd) instead of the optimized "
+                       "one\n");
                 printf("--kernel-bench <int>:       after setup, only run the force kernel "
                        "this many times on the fixed neighbor lists and report its time\n");
                 printf("--dump-forces <file>:       write the forces of a single kernel pass "

@@ -362,11 +362,9 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Super-clustering:                  %s\n",
         (param->super_clustering) ? "yes" : "no");
-#ifdef CLUSTER_PAIR
     fprintf(stdout,
         "    Force kernel version:              %s\n",
         param->ref_kernel ? "ref" : "optimized");
-#endif
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
 #endif
