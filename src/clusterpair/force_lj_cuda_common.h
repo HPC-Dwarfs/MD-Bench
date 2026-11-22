@@ -36,7 +36,7 @@
 #endif
 
 #ifndef GPU_J_SLICES
-#define GPU_J_SLICES 0
+#error "GPU_J_SLICES is not defined"
 #endif
 
 // Per-atom parameters of the optimized kernels
