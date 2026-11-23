@@ -16,6 +16,14 @@ include config.mk
 include $(MAKE_DIR)/options.mk
 include $(MAKE_DIR)/include_$(TOOLCHAIN).mk
 include $(MAKE_DIR)/include_LIKWID.mk
+# The cluster-pair SIMD kernels keep SIMD vectors in structs, which SVE allows only for
+# fixed-length vector types (see common/simd/sve_*.h), so fix the SVE vector length there.
+ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+ifneq ($(filter $(strip $(SIMD)),SVE SVE2),)
+SVE_VECTOR_BITS ?= 128
+OPTS += -msve-vector-bits=$(SVE_VECTOR_BITS)
+endif
+endif
 INCLUDES  += -I$(CURDIR)/$(SRC_DIR) -I$(CURDIR)/$(COMMON_DIR)
 VPATH     = $(SRC_DIR) $(COMMON_DIR) $(CUDA_DIR)
 ASM       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.c))

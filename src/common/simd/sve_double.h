@@ -10,9 +10,21 @@
 
 #define SIMD_INTRINSICS "sve_double"
 
+#if defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
+/* Fixed-length SVE types (-msve-vector-bits), which unlike the sizeless ones can be
+ * struct members, as in the cluster-pair kernels; they convert implicitly to and from
+ * the sizeless types of the intrinsics. */
+typedef svfloat64_t md_sve_float_t __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
+typedef svbool_t md_sve_mask_t __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
+typedef svint64_t md_sve_int_t __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
+#define MD_SIMD_FLOAT md_sve_float_t
+#define MD_SIMD_MASK  md_sve_mask_t
+#define MD_SIMD_INT   md_sve_int_t
+#else
 #define MD_SIMD_FLOAT svfloat64_t
 #define MD_SIMD_MASK  svbool_t
 #define MD_SIMD_INT   svint64_t
+#endif
 
 static inline int simd_test_any(MD_SIMD_MASK a) { return svptest_any(svptrue_b64(), a); }
 static inline MD_SIMD_FLOAT simd_real_broadcast(MD_FLOAT value)
