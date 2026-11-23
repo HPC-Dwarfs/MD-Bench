@@ -459,7 +459,9 @@ void printParameter(Parameter* param)
         "    Displacement reneighbor:           %s\n",
         param->displacement_reneigh ? "enabled" : "disabled");
     fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
-#ifdef SORT_ATOMS
+#if defined(SORT_ATOMS) && defined(CUDA_TARGET)
+    fprintf(stdout, "    Resort atoms:                      at every neighbor-list build\n");
+#elif defined(SORT_ATOMS)
     fprintf(stdout,
         "    Resort atoms every:                %d steps\n",
         param->resort_every);

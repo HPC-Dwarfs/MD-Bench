@@ -401,7 +401,7 @@ __global__ void computeForceLJCudaHalfNeigh(DeviceAtom a,
             MD_FLOAT partial_force_y = dely * force;
             MD_FLOAT partial_force_z = delz * force;
 
-            if (j < Nlocal) { /
+            if (j < Nlocal) {
                 atomicAdd(&atom_fx(j), -partial_force_x);
                 atomicAdd(&atom_fy(j), -partial_force_y);
                 atomicAdd(&atom_fz(j), -partial_force_z);

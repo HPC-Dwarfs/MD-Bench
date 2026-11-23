@@ -674,7 +674,7 @@ extern "C" int neighborBuildCountCUDA(void) { return c_build_count; }
  * input files keep no spatial order). The sort is stable, so the permutation is the one of
  * LAMMPS' Atom::sort. On the host only the original ids (dumpForces) and the types follow the
  * atoms; positions and velocities are copied back from the device where the host needs them.
- * On by default (no MPI); VL_GPU_SORT=0 disables it.
+ * Built with SORT_ATOMS (no MPI).
  * ----------------------------------------------------------------------------------------- */
 
 // Row-major index of the list-build bin of each local atom
@@ -709,19 +709,14 @@ static void permuteOnDevice(T* arr, const int* perm, int n, void* scratch)
 
 extern "C" void sortAtomsCUDA(Atom* atom)
 {
-    static int enabled         = -1;
     static int cap             = 0;
     static unsigned int* d_bin = NULL;
     static int* d_perm         = NULL;
     static void* d_scratch     = NULL;
     static int* h_perm         = NULL;
     static int* h_tmp          = NULL;
-    if (enabled < 0) {
-        const char* e = getenv("VL_GPU_SORT");
-        enabled       = e == NULL || atoi(e) != 0;
-    }
     const int n = atom->Nlocal;
-    if (!enabled || n < 2) {
+    if (n < 2) {
         return;
     }
     if (n > cap) {

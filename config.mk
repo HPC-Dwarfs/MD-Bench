@@ -24,12 +24,12 @@ DATA_TYPE ?= SP
 ATOM_DATA_LAYOUT ?= AOS
 # Neighbor-lists data layout (auto/AOS/SOA/CSR)
 # AOS="atom"-major, SOA="neighbor"-major, CSR=compact (no padding)
-# For CPU, auto=AOS; For GPU, auto=SOA
+# For CPU, auto=AOS; for GPU (NVCC, HIPCC), auto=AOS with clusterpair and SOA with VL
 NBLIST_DATA_LAYOUT ?= auto
 # Debug
 DEBUG ?= false
 
-# Sort atoms at a separate frequency (true or false)
+# Sort atoms (true or false): CPU every resort_every steps, GPU verlet list at every list build
 SORT_ATOMS ?= false
 # Index variable for tabulated LJ forces (r/rsq)
 # r:   uniform grid in distance (matches GROMACS), needs a sqrt per pair
@@ -64,23 +64,14 @@ MEM_TRACER ?= false
 INDEX_TRACER ?= false
 # Compute statistics
 COMPUTE_STATS ?= false
-
 # Configurations for clusterpair optimization scheme
 # Cluster pair kernel variant (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 CLUSTER_PAIR_KERNEL ?= auto
 # Data layout for super-clustering kernels (AOS3/AOS4/SOA)
 SUPERCLUSTER_DATA_LAYOUT ?= AOS3
-# Map threadIdx.y to cii and threadIdx.x to cjj (true or false)
-# If false, use same thread mapping and reduction instructions as Gromacs
-SUPERCLUSTER_INVERSE_THREAD_MAPPING ?= true
-# Number of thread-block slices the GPU grid is split into along each
-# i-supercluster's j-neighbor list for the super-clustering kernel (grid.y).
-# 1 slice means each i-supercluster's neighbors are handled by a single
-# block, writing its force directly; >1 splits the neighbor list across
-# multiple blocks running concurrently (more parallelism/occupancy) that
-# combine their partial forces with atomicAdd (more atomic contention).
-# Tune based on system size and GPU occupancy.
-SUPERCLUSTER_J_SLICES ?= 4
+# A number fixes S for all of them: 1 means no slicing, >1 splits the neighbor
+# lists across blocks that combine their partial forces with atomicAdd.
+GPU_J_SLICES ?= auto
 # Use scalar version (and pray for the compiler to vectorize the code properly)
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)
@@ -124,12 +115,18 @@ ifeq ($(strip $(TOOLCHAIN)),HIPCC)
 	SIMD=NONE
 	USE_REFERENCE_KERNEL=true
 	NBLIST_DATA_LAYOUT_DEFAULT=SOA
+    ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+        NBLIST_DATA_LAYOUT_DEFAULT=AOS
+    endif
 endif
 ifeq ($(strip $(TOOLCHAIN)),NVCC)
 	VECTOR_WIDTH=1
 	SIMD=NONE
 	USE_REFERENCE_KERNEL=true
 	NBLIST_DATA_LAYOUT_DEFAULT=SOA
+    ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+        NBLIST_DATA_LAYOUT_DEFAULT=AOS
+    endif
 endif
 ifeq ($(strip $(SIMD)),NONE)
 	VECTOR_WIDTH=1
@@ -356,11 +353,14 @@ ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     DEFINES += -DCLUSTER_PAIR
 endif
 
-ifeq ($(strip $(SUPERCLUSTER_INVERSE_THREAD_MAPPING)),true)
-    DEFINES += -DSUPERCLUSTER_INVERSE_THREAD_MAPPING
+# auto is passed as 0 (#if can only compare numbers)
+ifeq ($(strip $(GPU_J_SLICES)),auto)
+    DEFINES += -DGPU_J_SLICES=0
+else ifeq ($(shell echo '$(strip $(GPU_J_SLICES))' | grep -xE '[1-9][0-9]*'),)
+    $(error GPU_J_SLICES must be auto or a positive integer, got '$(GPU_J_SLICES)')
+else
+    DEFINES += -DGPU_J_SLICES=$(strip $(GPU_J_SLICES))
 endif
-
-DEFINES += -DGPU_J_SLICES=$(strip $(SUPERCLUSTER_J_SLICES))
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL

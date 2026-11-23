@@ -120,7 +120,7 @@ double setup(Parameter* param,
         adjustThermo(param, atom);
     }
 
-#ifdef SORT_ATOMS
+#if defined(SORT_ATOMS) && !defined(CUDA_TARGET)
     atom->Nghost = 0;
     sortAtom(atom);
 #endif
@@ -128,8 +128,8 @@ double setup(Parameter* param,
     // initDevice must precede setupPbc: the CUDA setupPbc reads positions on
     // the device, so the initial H2D upload has to happen first.
     initDevice(param, atom, neighbor);
-#if defined(CUDA_TARGET) && !defined(_MPI)
-    // Spatial order of the local atoms (VL_GPU_SORT), before the ghosts are made
+#if defined(SORT_ATOMS) && defined(CUDA_TARGET) && !defined(_MPI)
+    // Sort the local atoms on the device, before the ghosts are made
     sortAtomsCUDA(atom);
 #endif
     setupPbc(atom, param);
@@ -156,8 +156,8 @@ double reneighbour(
     timeStart = getTimeStamp();
     LIKWID_MARKER_START("reneighbour");
     // updateAtomsPbc(atom, param, true); function called at updateAtoms
-#if defined(CUDA_TARGET) && !defined(_MPI)
-    // Spatial order of the local atoms (VL_GPU_SORT), before the ghosts are made
+#if defined(SORT_ATOMS) && defined(CUDA_TARGET) && !defined(_MPI)
+    // Sort the local atoms on the device, before the ghosts are made
     stepStart = getTimeStamp();
     sortAtomsCUDA(atom);
     timer[NEIGH_SORT] += getTimeStamp() - stepStart;
@@ -623,7 +623,7 @@ int main(int argc, char** argv)
         printvtk(param.vtk_file, &comm, &atom, &param, 0);
     }
     for (int n = 0; n < param.ntimes; n++) {
-#ifdef SORT_ATOMS
+#if defined(SORT_ATOMS) && !defined(CUDA_TARGET)
         bool resort = (n + 1) % param.resort_every == 0;
         if (resort) {
             double sortStart = getTimeStamp();
