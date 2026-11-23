@@ -95,7 +95,7 @@ variant_flags = $(foreach o,$(subst -, ,$(subst .,,$(suffix $(1)))),$(VARIANT_FL
 $(filter $(addprefix $(BUILD_DIR)/,$(addsuffix .%,force_lj_4xn force_lj_2xnn force_lj_2xn)),$(VARIANT_OBJ)): CFLAGS += $(KERNEL_CFLAGS)
 
 .SECONDEXPANSION:
-$(VARIANT_OBJ): $(BUILD_DIR)/%.o: $$(basename $$*).c $(MAKE_DIR)/include_$(TOOLCHAIN).mk $(CONFIG_STAMP)
+$(VARIANT_OBJ): $(BUILD_DIR)/%.o: $$(basename $$*).c $(MAKE_DIR)/include_$(TOOLCHAIN).mk $$(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
 	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $(call variant_flags,$*) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) $(call variant_flags,$*) -MT $@ -MM $< > $(@:.o=.d)
