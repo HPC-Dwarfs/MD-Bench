@@ -46,6 +46,11 @@ static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm512_sub_ps(a, b);
 }
+
+static inline MD_SIMD_FLOAT simd_real_max(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
+{
+    return _mm512_max_ps(a, b);
+}
 static inline MD_SIMD_FLOAT simd_real_mul(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     return _mm512_mul_ps(a, b);
@@ -118,7 +123,8 @@ static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
 {
     MD_FLOAT ret;
     fprintf(stderr,
-        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX512 with float precision!");
+        "simd_real_incr_reduced_sum_j2(): Not implemented for AVX512 with float "
+        "precision!");
     exit(-1);
     return ret;
 }

@@ -63,6 +63,17 @@ static inline MD_SIMD_FLOAT simd_real_sub(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
     return result;
 }
 
+static inline MD_SIMD_FLOAT simd_real_max(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
+{
+    MD_SIMD_FLOAT result;
+
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        result.val[i] = a.val[i] > b.val[i] ? a.val[i] : b.val[i];
+    }
+
+    return result;
+}
+
 static inline MD_SIMD_FLOAT simd_real_mul(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     MD_SIMD_FLOAT result;

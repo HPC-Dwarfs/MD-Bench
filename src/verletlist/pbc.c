@@ -56,6 +56,21 @@ void updatePbcCPU(Atom* atom, Parameter* param, bool doReneighbor)
         // Copy per-atom LJ parameters for geometric combination rule
         atom->sqrt_epsilon[nlocal + i] = atom->sqrt_epsilon[borderMap[i]];
         atom->sigma3[nlocal + i]       = atom->sigma3[borderMap[i]];
+        atom->q[nlocal + i]            = atom->q[borderMap[i]];
+        atom->mol[nlocal + i]          = atom->mol[borderMap[i]];
+    }
+}
+
+/* fold the reaction forces on ghost atoms back onto the local atoms they mirror */
+void reverseGhostForcesCPU(Atom* atom, Parameter* param)
+{
+    int* borderMap = atom->border_map;
+    int nlocal     = atom->Nlocal;
+
+    for (int i = 0; i < atom->Nghost; i++) {
+        atom_fx(borderMap[i]) += atom_fx(nlocal + i);
+        atom_fy(borderMap[i]) += atom_fy(nlocal + i);
+        atom_fz(borderMap[i]) += atom_fz(nlocal + i);
     }
 }
 
@@ -100,7 +115,10 @@ void updateAtomsPbcCPU(Atom* atom, Parameter* param, bool doReneighbor)
     PBCz[Nghost]                              = dz;                                      \
     atom->type[atom->Nlocal + Nghost]         = atom->type[i];                           \
     atom->sqrt_epsilon[atom->Nlocal + Nghost] = atom->sqrt_epsilon[i];                   \
-    atom->sigma3[atom->Nlocal + Nghost]       = atom->sigma3[i]
+    atom->sigma3[atom->Nlocal + Nghost]       = atom->sigma3[i];                         \
+    atom->q[atom->Nlocal + Nghost]            = atom->q[i];                              \
+    atom->id[atom->Nlocal + Nghost]           = atom->id[i];                             \
+    atom->mol[atom->Nlocal + Nghost]          = atom->mol[i]
 
 void setupPbcCPU(Atom* atom, Parameter* param)
 {

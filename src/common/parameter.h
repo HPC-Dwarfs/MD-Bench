@@ -7,6 +7,7 @@
 #ifndef __PARAMETER_H_
 #define __PARAMETER_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // Portable vector types compatible with CUDA/HIP.
@@ -73,6 +74,39 @@ typedef struct {
 #define LJ_COMB_RULE_NAME "full"
 #endif
 
+// Coulomb treatment compile-time macros
+// Use -DCOULOMB_RULE=<value> at compile time
+#define COULOMB_NONE  0 // No electrostatics (LJ only)
+#define COULOMB_RF    1 // Reaction-field with infinite dielectric, shifted at the cut-off
+#define COULOMB_EWALD 2 // Real-space Ewald with analytical force correction
+
+#ifndef COULOMB_RULE
+#define COULOMB_RULE COULOMB_NONE
+#endif
+
+// Molecular exclusions: atoms of the same molecule do not interact via LJ and the
+// direct Coulomb term, only through the Coulomb exclusion correction
+#ifndef USE_EXCLUSIONS
+#define USE_EXCLUSIONS 0
+#endif
+
+// Lower limit of the squared distance in the force kernels, as GROMACS'
+// c_nbnxmMinDistanceSquared: below it 1/r^12 overflows. The padding atoms of two clusters
+// are at the same point, the limit keeps their (zero) force finite.
+#if PRECISION == 1
+#define MIN_DISTANCE_SQ ((MD_FLOAT)3.82e-07)
+#else
+#define MIN_DISTANCE_SQ ((MD_FLOAT)1.0e-36)
+#endif
+
+#if COULOMB_RULE == COULOMB_NONE
+#define COULOMB_RULE_NAME "none"
+#elif COULOMB_RULE == COULOMB_RF
+#define COULOMB_RULE_NAME "reaction-field"
+#else
+#define COULOMB_RULE_NAME "ewald"
+#endif
+
 typedef struct {
     int force_field;
     char* param_file;
@@ -112,6 +146,7 @@ typedef struct {
     MD_FLOAT xprd, yprd, zprd;
     double proc_freq;
     int super_clustering;
+    int ref_kernel; // GPU force kernels: use the reference (simple) version
     char* eam_file;
     int lj_table_points;
     // MPI implementation
@@ -120,12 +155,22 @@ typedef struct {
     int balance_every;
     int setup;
     int verbose;
+    int size;
+    bool gmxbenchmark;
+    // Electrostatics (only used when COULOMB_RULE != COULOMB_NONE)
+    MD_FLOAT epsfac;     // Coulomb prefactor (1/(4 pi eps0) in the unit system used)
+    MD_FLOAT ewald_rtol; // Relative tolerance at the cut-off used to derive ewald_beta
+    MD_FLOAT ewald_beta; // Ewald splitting coefficient
+    // Kernel-only benchmark: run the force kernel this many times on a fixed list
+    int kernel_bench;
+    char* dump_forces_file;
 } Parameter;
 
 void initParameter(Parameter*);
 void readParameter(Parameter*, const char*);
 void readTypesFile(Parameter*);
 void printParameter(Parameter*);
+double computeEwaldCoefficient(double cutoff, double rtol);
 void computePerTypeLJParameters(int, Parameter*, MD_FLOAT*, MD_FLOAT*);
 void computeTypePairLJParameters(int, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*, MD_FLOAT*);
 

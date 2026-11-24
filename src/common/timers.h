@@ -27,14 +27,14 @@ typedef enum {
     NEIGH_PBC,         // setupPbc()/updatePbc() (verletlist) or ghostNeighbor() (MPI)
     NEIGH_BUILD,       // buildNeighbor()
     NEIGH_PRUNE,       // pruneNeighbor()/pruneNeighborCUDA()
-    NEIGH_SORT,        // sortAtom() (verletlist, SORT_ATOMS only)
+    NEIGH_SORT,        // sortAtom() or sortAtomsCUDA() (verletlist, SORT_ATOMS)
     NEIGH_CLUSTERS,    // buildClusters()+defineJClusters() (clusterpair only)
     NEIGH_BIN,         // binJClusters() (clusterpair only)
     INTEGRATE_INITIAL, // initialIntegrate()
     INTEGRATE_FINAL,   // finalIntegrate()
     THERMO,            // computeThermo()
     RENEIGH_CHECK,     // needsReneigh() (displacement_reneigh only)
-    DEVICE_COPY,       // copyDataToCUDADevice()/copyDataFromCUDADevice() (CUDA_TARGET only)
+    DEVICE_COPY, // copyDataToCUDADevice()/copyDataFromCUDADevice() (CUDA_TARGET only)
     NUMTIMER
 } timertype;
 

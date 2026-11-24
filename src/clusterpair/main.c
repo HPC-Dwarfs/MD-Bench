@@ -71,10 +71,34 @@ double setup(Parameter* param,
     initStats(stats);
     initNeighbor(neighbor, param);
     if (param->input_file == NULL) {
-        createAtom(atom, param);
+        if (param->gmxbenchmark) {
+#if LJ_COMB_RULE == LJ_COMB_SINGLE
+            fprintf(stderr, "-gmxbench needs LJ_COMB_RULE=geometric or full\n");
+            exit(EXIT_FAILURE);
+#endif
+            readAtomGmx(atom, param);
+        } else {
+            createAtom(atom, param);
+        }
     } else {
         readAtom(atom, param);
     }
+    // Before the atoms are distributed over the MPI ranks, so the ids are global
+    initAtomIds(atom);
+#if COULOMB_RULE == COULOMB_EWALD
+    param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
+#endif
+#ifndef _MPI
+    // Single domain: its box is the simulation box, which the half-shell selection of the
+    // periodic ghost clusters (see initForce()) works on
+    atom->mybox.xprd  = param->xprd;
+    atom->mybox.yprd  = param->yprd;
+    atom->mybox.zprd  = param->zprd;
+    atom->mybox.lo[0] = atom->mybox.lo[1] = atom->mybox.lo[2] = 0.0;
+    atom->mybox.hi[0]                                         = param->xprd;
+    atom->mybox.hi[1]                                         = param->yprd;
+    atom->mybox.hi[2]                                         = param->zprd;
+#endif
     setupNeighbor(param, atom);
 #ifdef _MPI
     setupGrid(grid, atom, param);
@@ -178,6 +202,121 @@ double updateAtoms(Comm* comm, Atom* atom, Parameter* param)
     return timeStop - timeStart;
 }
 
+// Writes the forces of the local atoms, ordered by their original index
+static void dumpForces(Parameter* param, Atom* atom)
+{
+#ifdef CUDA_TARGET
+    // The forces, with the ghost reaction forces folded back, are on the device
+    copyForceFromGPU(atom);
+#endif
+    MD_FLOAT* f = (MD_FLOAT*)allocate(ALIGNMENT, atom->Natoms * 3 * sizeof(MD_FLOAT));
+    for (int i = 0; i < atom->Natoms * 3; i++) {
+        f[i] = 0.0;
+    }
+
+#ifdef CLUSTERPAIR_KERNEL_GPU_SUPERCLUSTERS
+    // Nclusters_local counts the super-clusters, each holds SCLUSTER_SIZE clusters
+    for (int sci = 0; sci < atom->Nclusters_local; sci++) {
+        const int sci_vec_base = SCI_VECTOR3_BASE_INDEX(sci);
+        const int sci_sca_base = SCI_SCALAR_BASE_INDEX(sci);
+        for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
+            const int ci = sci * SCLUSTER_SIZE + sci_ci;
+            for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
+                const int ai  = sci_ci * CLUSTER_M + cii;
+                const int id  = atom->cl_id[sci_sca_base + ai];
+                f[id * 3 + 0] = atom->cl_f[sci_vec_base + CL_X_INDEX_3D(ai)];
+                f[id * 3 + 1] = atom->cl_f[sci_vec_base + CL_Y_INDEX_3D(ai)];
+                f[id * 3 + 2] = atom->cl_f[sci_vec_base + CL_Z_INDEX_3D(ai)];
+            }
+        }
+    }
+#else
+    for (int ci = 0; ci < atom->Nclusters_local; ci++) {
+        const int ci_vec_base = CI_VECTOR3_BASE_INDEX(ci);
+        const int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
+        for (int cii = 0; cii < atom->iclusters[ci].natoms; cii++) {
+            const int id  = atom->cl_id[ci_sca_base + cii];
+            f[id * 3 + 0] = atom->cl_f[ci_vec_base + CL_X_INDEX_3D(cii)];
+            f[id * 3 + 1] = atom->cl_f[ci_vec_base + CL_Y_INDEX_3D(cii)];
+            f[id * 3 + 2] = atom->cl_f[ci_vec_base + CL_Z_INDEX_3D(cii)];
+        }
+    }
+#endif
+
+#ifdef _MPI
+    // Every atom is local to exactly one rank, the others contribute zeros
+    int me;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    MPI_Reduce(me == 0 ? MPI_IN_PLACE : f,
+        f,
+        atom->Natoms * 3,
+        sizeof(MD_FLOAT) == 4 ? MPI_FLOAT : MPI_DOUBLE,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
+    if (me != 0) {
+        free(f);
+        return;
+    }
+#endif
+
+    FILE* fp = fopen(param->dump_forces_file, "w");
+    if (fp == NULL) {
+        perror("Could not open the force dump file");
+        free(f);
+        return;
+    }
+
+    fprintf(fp, "# natoms %d\n", atom->Natoms);
+    for (int i = 0; i < atom->Natoms; i++) {
+        fprintf(fp, "%d %.9g %.9g %.9g\n", i, f[i * 3 + 0], f[i * 3 + 1], f[i * 3 + 2]);
+    }
+
+    free(f);
+    fclose(fp);
+}
+
+// Runs only the force kernel on the fixed neighbor lists, like the GROMACS non-bonded
+// benchmark does, and reports the time per kernel call
+static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+{
+    double time = 0.0;
+    for (int it = 0; it < param->kernel_bench; it++) {
+        time += computeForce(param, atom, neighbor, stats);
+    }
+
+    // Same estimate of the number of useful pairs as the GROMACS benchmark uses
+    const double volume   = (double)param->xprd * param->yprd * param->zprd;
+    const double density  = atom->Natoms / volume;
+    const double rc       = param->cutforce;
+    const double pairsCut = density * 4.0 / 3.0 * M_PI * rc * rc * rc;
+    const double useful   = atom->Natoms * 0.5 * (pairsCut + 1.0);
+    const double perIter  = time / param->kernel_bench;
+
+    long long clusterPairs = 0;
+    for (int ci = 0; ci < atom->Nclusters_local; ci++) {
+        clusterPairs += neighbor->numneigh_inner[ci];
+    }
+
+    fprintf(stdout, "\nKERNEL BENCHMARK\n");
+    fprintf(stdout, "  Atoms:                 %d\n", atom->Natoms);
+    fprintf(stdout, "  Cut-off:               %g\n", rc);
+    fprintf(stdout, "  Neighbor lists:        %s\n", param->half_neigh ? "half" : "full");
+    fprintf(stdout,
+        "  Cluster pairs in list: %lld (%dx%d, %lld atom pairs)\n",
+        clusterPairs,
+        CLUSTER_M,
+        CLUSTER_N,
+        clusterPairs * CLUSTER_M * CLUSTER_N);
+    fprintf(stdout, "  Iterations:            %d\n", param->kernel_bench);
+    fprintf(stdout, "  Time per iteration:    %.3f us\n", perIter * 1e6);
+    fprintf(stdout, "  Useful pairs per iter: %.0f\n", useful);
+    fprintf(stdout,
+        "  Computed pairs/us:     %.3f\n",
+        (double)clusterPairs * CLUSTER_M * CLUSTER_N / (perIter * 1e6));
+    fprintf(stdout, "  Useful pairs/us:       %.3f\n", useful / (perIter * 1e6));
+}
+
 int main(int argc, char** argv)
 {
     double timer[NUMTIMER];
@@ -196,6 +335,7 @@ int main(int argc, char** argv)
         // LIKWID_MARKER_REGISTER("pbc");
     }
 
+    int cutoffGiven = 0, skinGiven = 0;
     initComm(&argc, &argv, &comm);
     initParameter(&param);
     for (int i = 0; i < argc; i++) {
@@ -264,10 +404,12 @@ int main(int argc, char** argv)
         }
         if ((strcmp(argv[i], "-r") == 0) || (strcmp(argv[i], "--radius") == 0)) {
             param.cutforce = atof(argv[++i]);
+            cutoffGiven    = 1;
             continue;
         }
         if ((strcmp(argv[i], "-s") == 0) || (strcmp(argv[i], "--skin") == 0)) {
             param.skin = atof(argv[++i]);
+            skinGiven  = 1;
             continue;
         }
         if ((strcmp(argv[i], "--outer-skin") == 0)) {
@@ -284,6 +426,10 @@ int main(int argc, char** argv)
         }
         if (strcmp(argv[i], "--displacement-reneigh") == 0) {
             param.displacement_reneigh = 1;
+            continue;
+        }
+        if (strcmp(argv[i], "-ref") == 0) {
+            param.ref_kernel = 1;
             continue;
         }
         if ((strcmp(argv[i], "-v") == 0) || (strcmp(argv[i], "--verbose") == 0)) {
@@ -315,6 +461,30 @@ int main(int argc, char** argv)
             continue;
         }
 
+        if ((strcmp(argv[i], "-gmxbench") == 0)) {
+            param.gmxbenchmark = true;
+            if (param.input_file != NULL) {
+                free(param.input_file);
+                param.input_file = NULL;
+            }
+            continue;
+        }
+
+        if ((strcmp(argv[i], "-size") == 0)) {
+            param.size = atoi(argv[++i]);
+            continue;
+        }
+
+        if ((strcmp(argv[i], "--kernel-bench") == 0)) {
+            param.kernel_bench = atoi(argv[++i]);
+            continue;
+        }
+
+        if ((strcmp(argv[i], "--dump-forces") == 0)) {
+            param.dump_forces_file = strdup(argv[++i]);
+            continue;
+        }
+
         if ((strcmp(argv[i], "--ntypes") == 0)) {
             param.ntypes = atoi(argv[++i]);
             continue;
@@ -343,10 +513,21 @@ int main(int argc, char** argv)
                    "displacement "
                    "(skin/2 threshold); use --reneigh-every 0 to disable fixed-interval "
                    "rebuild\n");
+            printf("-ref:                 GPU builds (gpusimple, supercluster): use the "
+                   "simple force kernel instead of the optimized one\n");
             printf("--freq <real>:        processor frequency (GHz)\n");
             printf("--vtk <string>:       VTK file for visualization\n");
             printf("--xtc <string>:       XTC file for visualization\n");
             printf("--ntypes <int>:       set number of atom types\n");
+            printf("-gmxbench:            use the water system of the GROMACS non-bonded "
+                   "benchmark (cut-off 1.0 and no skin unless -r/-s are given)\n");
+            printf("-size <int>:          replicate the -gmxbench system this many times "
+                   "(power of two)\n");
+            printf(
+                "--kernel-bench <int>: after setup, only run the force kernel this many "
+                "times on the fixed neighbor lists and report its time\n");
+            printf("--dump-forces <file>: write the forces of a single kernel pass "
+                   "(atom id, fx, fy, fz) to a text file\n");
             printf("-v / --verbose:       print a per-routine timing breakdown in the "
                    "performance report\n");
             printf(HLINE);
@@ -360,6 +541,17 @@ int main(int argc, char** argv)
             "Half Shell is not supported with load balance!\n");
         endComm(&comm);
         exit(0);
+    }
+
+    if (param.gmxbenchmark) {
+        // The GROMACS benchmark builds its pair list with exactly the interaction
+        // cut-off (no buffer)
+        if (!cutoffGiven) {
+            param.cutforce = 1.0;
+        }
+        if (!skinGiven) {
+            param.skin = 0.0;
+        }
     }
 
     param.outer_skin = MAX(param.outer_skin, 0.0);
@@ -417,6 +609,17 @@ int main(int argc, char** argv)
     timer[RENEIGH_CHECK]     = 0.0;
     timer[DEVICE_COPY]       = 0.0;
     timer[REVERSE]           = reverse(&comm, &atom, &param);
+
+    if (param.dump_forces_file != NULL) {
+        dumpForces(&param, &atom);
+    }
+
+    if (param.kernel_bench > 0) {
+        runKernelBench(&param, &atom, &neighbor, &stats);
+        endComm(&comm);
+        LIKWID_MARKER_CLOSE;
+        return EXIT_SUCCESS;
+    }
 
     if (param.vtk_file != NULL) {
         printvtk(param.vtk_file, &comm, &atom, &param, 0);

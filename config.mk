@@ -24,12 +24,12 @@ DATA_TYPE ?= SP
 ATOM_DATA_LAYOUT ?= AOS
 # Neighbor-lists data layout (auto/AOS/SOA/CSR)
 # AOS="atom"-major, SOA="neighbor"-major, CSR=compact (no padding)
-# For CPU, auto=AOS; For GPU, auto=SOA
+# For CPU, auto=AOS; for GPU (NVCC, HIPCC), auto=AOS with clusterpair and SOA with VL
 NBLIST_DATA_LAYOUT ?= auto
 # Debug
 DEBUG ?= false
 
-# Sort atoms at a separate frequency (true or false)
+# Sort atoms (true or false): CPU every resort_every steps, GPU verlet list at every list build
 SORT_ATOMS ?= false
 # Index variable for tabulated LJ forces (r/rsq)
 # r:   uniform grid in distance (matches GROMACS), needs a sqrt per pair
@@ -40,29 +40,38 @@ LJ_TABLE_INDEX ?= rsq
 # geometric: per-type params with geometric combination (default)
 # full: full type-pair matrix lookup (not supported in SIMD kernels)
 LJ_COMB_RULE ?= geometric
+# Electrostatics (none/rf/ewald), only supported by the CPU cluster-pair kernels
+# none: LJ only (default)
+# rf: reaction-field with infinite dielectric, shifted at the cut-off
+# ewald: real-space Ewald part with an analytical force correction
+COULOMB_RULE ?= none
+# Molecular exclusions (true/false), atoms of the same molecule skip LJ and the direct
+# Coulomb term (the Ewald/RF exclusion correction is still applied). Defaults to true
+# whenever COULOMB_RULE is not none.
+EXCLUSIONS ?= auto
+# Refine the hardware reciprocal estimate of the SIMD force kernels (cluster-pair and
+# verlet-list with USE_SIMD_KERNEL) with Newton-Raphson steps (true or false). The
+# estimate is only 12-14 bits accurate, so enable this when forces have to be comparable with codes that compute 1/r^2 to
+# full precision, at the cost of a few extra instructions per pair.
+ACCURATE_RECIPROCAL ?= false
+# Software prefetch of the j-cluster data a few list entries ahead in the CPU
+# cluster-pair SIMD kernels (true or false). GROMACS does not prefetch, disable it for a
+# like-for-like comparison.
+KERNEL_PREFETCH ?= true
 # Trace memory addresses for cache simulator (true or false)
 MEM_TRACER ?= false
 # Trace indexes and distances for gather-md (true or false)
 INDEX_TRACER ?= false
 # Compute statistics
 COMPUTE_STATS ?= false
-
 # Configurations for clusterpair optimization scheme
 # Cluster pair kernel variant (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 CLUSTER_PAIR_KERNEL ?= auto
 # Data layout for super-clustering kernels (AOS3/AOS4/SOA)
 SUPERCLUSTER_DATA_LAYOUT ?= AOS3
-# Map threadIdx.y to cii and threadIdx.x to cjj (true or false)
-# If false, use same thread mapping and reduction instructions as Gromacs
-SUPERCLUSTER_INVERSE_THREAD_MAPPING ?= true
-# Number of thread-block slices the GPU grid is split into along each
-# i-supercluster's j-neighbor list for the super-clustering kernel (grid.y).
-# 1 slice means each i-supercluster's neighbors are handled by a single
-# block, writing its force directly; >1 splits the neighbor list across
-# multiple blocks running concurrently (more parallelism/occupancy) that
-# combine their partial forces with atomicAdd (more atomic contention).
-# Tune based on system size and GPU occupancy.
-SUPERCLUSTER_J_SLICES ?= 4
+# A number fixes S for all of them: 1 means no slicing, >1 splits the neighbor
+# lists across blocks that combine their partial forces with atomicAdd.
+GPU_J_SLICES ?= auto
 # Use scalar version (and pray for the compiler to vectorize the code properly)
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)
@@ -106,12 +115,18 @@ ifeq ($(strip $(TOOLCHAIN)),HIPCC)
 	SIMD=NONE
 	USE_REFERENCE_KERNEL=true
 	NBLIST_DATA_LAYOUT_DEFAULT=SOA
+    ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+        NBLIST_DATA_LAYOUT_DEFAULT=AOS
+    endif
 endif
 ifeq ($(strip $(TOOLCHAIN)),NVCC)
 	VECTOR_WIDTH=1
 	SIMD=NONE
 	USE_REFERENCE_KERNEL=true
 	NBLIST_DATA_LAYOUT_DEFAULT=SOA
+    ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+        NBLIST_DATA_LAYOUT_DEFAULT=AOS
+    endif
 endif
 ifeq ($(strip $(SIMD)),NONE)
 	VECTOR_WIDTH=1
@@ -203,6 +218,32 @@ else
     $(error Invalid LJ_COMB_RULE, must be one of: single, geometric, full)
 endif
 
+# Translate COULOMB_RULE and EXCLUSIONS to compiler defines
+ifeq ($(strip $(COULOMB_RULE)),none)
+    DEFINES += -DCOULOMB_RULE=0
+    ifeq ($(strip $(EXCLUSIONS)),auto)
+        EXCLUSIONS_RESOLVED = false
+    endif
+else ifeq ($(strip $(COULOMB_RULE)),rf)
+    DEFINES += -DCOULOMB_RULE=1
+    ifeq ($(strip $(EXCLUSIONS)),auto)
+        EXCLUSIONS_RESOLVED = true
+    endif
+else ifeq ($(strip $(COULOMB_RULE)),ewald)
+    DEFINES += -DCOULOMB_RULE=2
+    ifeq ($(strip $(EXCLUSIONS)),auto)
+        EXCLUSIONS_RESOLVED = true
+    endif
+else
+    $(error Invalid COULOMB_RULE, must be one of: none, rf, ewald)
+endif
+ifneq ($(strip $(EXCLUSIONS)),auto)
+    EXCLUSIONS_RESOLVED = $(strip $(EXCLUSIONS))
+endif
+ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
+    DEFINES += -DUSE_EXCLUSIONS=1
+endif
+
 ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
     DEFINES += -DLJ_TABLE_RSQ
 else ifneq ($(strip $(LJ_TABLE_INDEX)),r)
@@ -215,6 +256,14 @@ else ifeq ($(strip $(ASM_SYNTAX)),att)
     ASM_SYNTAX_FLAG = -masm=att
 else
     $(error Invalid ASM_SYNTAX, must be one of: intel, att)
+endif
+
+ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
+    DEFINES += -DACCURATE_RECIPROCAL
+endif
+
+ifeq ($(strip $(KERNEL_PREFETCH)),false)
+    DEFINES += -DKERNEL_NO_PREFETCH
 endif
 
 ifeq ($(strip $(MEM_TRACER)),true)
@@ -304,11 +353,14 @@ ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     DEFINES += -DCLUSTER_PAIR
 endif
 
-ifeq ($(strip $(SUPERCLUSTER_INVERSE_THREAD_MAPPING)),true)
-    DEFINES += -DSUPERCLUSTER_INVERSE_THREAD_MAPPING
+# auto is passed as 0 (#if can only compare numbers)
+ifeq ($(strip $(GPU_J_SLICES)),auto)
+    DEFINES += -DGPU_J_SLICES=0
+else ifeq ($(shell echo '$(strip $(GPU_J_SLICES))' | grep -xE '[1-9][0-9]*'),)
+    $(error GPU_J_SLICES must be auto or a positive integer, got '$(GPU_J_SLICES)')
+else
+    DEFINES += -DGPU_J_SLICES=$(strip $(GPU_J_SLICES))
 endif
-
-DEFINES += -DGPU_J_SLICES=$(strip $(SUPERCLUSTER_J_SLICES))
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL
@@ -322,6 +374,20 @@ else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
 		OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
 endif
 TAG_SUFFIX = -$(strip $(LJ_COMB_RULE))
+ifneq ($(strip $(COULOMB_RULE)),none)
+    TAG_SUFFIX := $(TAG_SUFFIX)-$(strip $(COULOMB_RULE))
+endif
+ifeq ($(strip $(ACCURATE_RECIPROCAL)),true)
+    TAG_SUFFIX := $(TAG_SUFFIX)-accrecip
+endif
+ifeq ($(strip $(OPT_SCHEME))-$(strip $(KERNEL_PREFETCH)),clusterpair-false)
+    TAG_SUFFIX := $(TAG_SUFFIX)-nopf
+endif
+ifeq ($(strip $(EXCLUSIONS_RESOLVED)),true)
+    ifeq ($(strip $(COULOMB_RULE)),none)
+        TAG_SUFFIX := $(TAG_SUFFIX)-excl
+    endif
+endif
 
 ifeq ($(strip $(SIMD)),NONE)
 		TOOL_TAG = $(TOOLCHAIN)-$(ISA)

@@ -108,11 +108,30 @@ to `AOS` for CPU builds and `SOA` for GPU builds.
 with broadcast global parameters (fastest, no type lookup). `geometric` uses
 per-type parameters with geometric combination (default). `full` uses a full
 type-pair matrix lookup (not supported in SIMD kernels).
+- `COULOMB_RULE`: Electrostatics (`none` (default)/`rf`/`ewald`) for all cluster-pair
+kernels (SIMD, reference and GPU) and for the verletlist plain C and GPU kernels. `rf` is
+a reaction-field with infinite dielectric, `ewald` the real-space Ewald part with the
+analytical force correction used by GROMACS. The verletlist explicit SIMD kernels
+(`USE_SIMD_KERNEL=true`), EAM and the tabulated kernels do not support it.
+Atom charges are given per atom type.
+- `EXCLUSIONS` (`auto` (default)/`true`/`false`): Molecular exclusions. Atoms of the
+same molecule (consecutive atom ids, `atom->molsize` atoms per molecule) do not
+interact via LJ or the direct Coulomb term, but get the exclusion correction of the
+selected `COULOMB_RULE`. `auto` enables it whenever `COULOMB_RULE` is not `none`.
+- `ACCURATE_RECIPROCAL` (default: false): Refine the hardware reciprocal and
+reciprocal square root estimates (12-14 bits) used by the SIMD kernels (cluster-pair
+and verlet-list with `USE_SIMD_KERNEL`) with Newton-Raphson steps. Needed
+when forces have to agree with a code that evaluates 1/r^2 to full precision, e.g. to
+compare against GROMACS.
 - `DEBUG`: Enable additional debug output
 - `SORT_ATOMS`: Resort atoms to ensure that atoms that are nearby are also close
 to each other in the data structures
 - `USE_REFERENCE_KERNEL`: Enforce usage of the C reference implementation for
-validation (automatically set for GPU and `SIMD=NONE` builds)
+validation (automatically set for GPU and `SIMD=NONE` builds). It uses 4x4 clusters
+whatever the SIMD width.
+- `KERNEL_PREFETCH` (default: true): Software prefetch of the j-cluster data in the
+CPU cluster-pair SIMD kernels. GROMACS does not prefetch, set it to false (binary
+suffix `-nopf`) for a like-for-like comparison.
 - `USE_SCALAR_KERNEL`: Use scalar version and rely on the compiler for
 auto-vectorization
 - `USE_SIMD_KERNEL`: Use hand-written SIMD intrinsic kernels for force computation
@@ -188,13 +207,27 @@ Brookhaven protein data bank (.pdb), GROMACS GROMOS87 (.gro), and LAMMPS dump
 - `-nx/-ny/-nz <int>`:  set linear dimension of systembox in x/y/z direction
 (default 32 in every dimension)
 - `-half <int>`: use half (1) or full (0) neighbor lists (default 0 - full
-neighbor list)
+neighbor list). The cluster-pair SIMD kernels without MPI keep only half of
+the periodic ghost clusters with half lists, so a half list has about half the entries of
+a full list. With several OpenMP threads the half-list kernels accumulate into per-thread
+force arrays that are summed afterwards
 - `-r / --radius <real>`:   set cutoff radius (default 2.5)
 - `-s / --skin <real>`:   set skin (verlet buffer, default 0.3)
 - `-w <file>`:  write input atoms to file
 - `--freq <real>`:  processor frequency (GHz), used to calculate cycle metrics
 (default 2.4)
 - `--vtk <string>`:    VTK output file for visualization
+- `-gmxbench`:  use the water system of the GROMACS non-bonded benchmark
+(`src/gromacs/nbnxm/benchmark`) instead of the default testcase: 3000 SPC/E-like
+atoms with charges and intramolecular exclusions, cut-off 1.0 and no skin unless
+`-r`/`-s` are given. `-size <int>` replicates the box (power of two) as `gmx
+nonbonded-benchmark -size` does. Available in both schemes. Build with `COULOMB_RULE=ewald` (or `rf`),
+`CLUSTER_PAIR_KERNEL=4xN` and `ACCURATE_RECIPROCAL=true` to compare with GROMACS.
+- `--kernel-bench <int>`:  after setup only run the force kernel this many times on the
+fixed neighbor lists and report the time per call and the useful pair rate, as the
+GROMACS benchmark does
+- `--dump-forces <file>`:  write the forces of a single kernel pass (`atom id fx fy
+fz`, original atom order) to a text file
 
 ## Available testcases
 
@@ -247,6 +280,68 @@ Call MD-Bench as follows:
 ```shell=bash
 ./MDBench-<TAG> -i ./data/argon/input.gro  -p ./data/argon/mdbench_params.conf
 ```
+
+### GROMACS non-bonded kernel benchmark (clusterpair only)
+
+`gmx nonbonded-benchmark` times the non-bonded kernels of GROMACS (NBNxM) on a box of
+1000 water molecules with a fixed pair list. MD-Bench can run the same system with the
+same physics (Lennard-Jones, Ewald or reaction-field electrostatics, intramolecular
+exclusions, cut-off 1.0 nm) through its generic cluster-pair SIMD kernels, so forces and
+kernel times can be compared. `tests/gromacs_nonbonded/` has the exact reference, the
+GROMACS patch and the comparison script, see the README there.
+
+Run the benchmark with MD-Bench (one thread, the default of GROMACS' benchmark):
+
+```shell=bash
+# 4xN kernel (SIMD=AVX2 and single precision give the 4x8 kernel of GROMACS' 4xM)
+make OPT_SCHEME=clusterpair SIMD=AVX2 DATA_TYPE=SP CLUSTER_PAIR_KERNEL=4xN \
+     COULOMB_RULE=ewald ACCURATE_RECIPROCAL=true
+OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-X86-AVX2-SP-geometric-ewald-accrecip \
+     -gmxbench -size 1 -half 1 --kernel-bench 500
+```
+
+`-size` replicates the box (a power of two, 3000 atoms times this value), `-half 1` uses
+half neighbor lists, which is what GROMACS does, and `--kernel-bench` runs only the force
+kernel that many times. The output ends with
+
+```
+KERNEL BENCHMARK
+  Atoms:                 3000
+  Cut-off:               1
+  Neighbor lists:        half
+  Cluster pairs in list: 45109 (4x8, 1443488 atom pairs)
+  Iterations:            500
+  Time per iteration:    1146.344 us
+  Useful pairs per iter: 629741
+  Computed pairs/us:     1259.210
+  Useful pairs/us:       549.348
+```
+
+(The timings depend on the machine and vary by about 10% from run to run.)
+
+The same with GROMACS (a `gmx` built with `tests/gromacs_nonbonded/gromacs-force-dump.patch`
+adds the `-forces` option used to compare results):
+
+```shell=bash
+gmx nonbonded-benchmark -size 1 -nt 1 -simd 4xm -coulomb ewald -combrule geometric \
+    -cutoff 1.0 -iter 500 -time -forces gmx_forces.txt
+OMP_NUM_THREADS=1 ./MDBench-CP-4xN-GCC-X86-AVX2-SP-geometric-ewald-accrecip \
+    -gmxbench -size 1 -half 1 --kernel-bench 500 --dump-forces mdbench_forces.txt
+python3 tests/gromacs_nonbonded/compare_forces.py gmx_forces.txt mdbench_forces.txt
+```
+
+or build GROMACS, run both programs and compare forces and times in one go:
+
+```shell=bash
+GMX=/path/to/gmx PIN_CORE=3 tests/gromacs_nonbonded/run_comparison.sh 1 8
+```
+
+Other kernels: `CLUSTER_PAIR_KERNEL=2xNN` (compare with `-simd 2xmm`), `COULOMB_RULE=rf`
+(compare with `-coulomb reaction-field`). `ACCURATE_RECIPROCAL=true` is needed for the
+forces to agree with GROMACS (rms error about 1e-6 in single precision), without it
+the kernels use the 12-bit hardware estimates and are a bit faster. `-gmxbench` is a
+kernel benchmark: the molecules have no bonded terms, so integrating them for many steps
+is not meaningful.
 
 ### Tabulated Lennard-Jones potential (verletlist only)
 

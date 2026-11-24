@@ -120,13 +120,22 @@ void initParameter(Parameter* param)
 #else
     param->super_clustering = 0;
 #endif
+    param->ref_kernel = 0;
     // MPI
     param->balance       = 0;
     param->method        = 0;
     param->balance_every = param->reneigh_every;
     param->setup         = 1;
     param->verbose       = 0;
-
+    // gmx benchmark
+    param->gmxbenchmark = false;
+    param->size         = 1;
+    // electrostatics
+    param->epsfac           = 1.0;
+    param->ewald_rtol       = 1e-5;
+    param->ewald_beta       = 0.0;
+    param->kernel_bench     = 0;
+    param->dump_forces_file = NULL;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
@@ -266,6 +275,7 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(balance);
             PARSE_INT(balance_every);
             PARSE_INT(super_clustering);
+            PARSE_INT(ref_kernel);
         }
     }
 
@@ -298,6 +308,32 @@ void readParameter(Parameter* param, const char* filename)
     fclose(fp);
 }
 
+// Ewald splitting coefficient such that erfc(beta * cutoff) == rtol
+// (same bisection as GROMACS' calc_ewaldcoeff_q)
+double computeEwaldCoefficient(double cutoff, double rtol)
+{
+    double beta = 5.0, low, high;
+    int n, i = 0;
+
+    do {
+        i++;
+        beta *= 2.0;
+    } while (erfc(beta * cutoff) > rtol);
+
+    n    = i + 60;
+    low  = 0.0;
+    high = beta;
+    for (i = 0; i < n; i++) {
+        beta = (low + high) / 2.0;
+        if (erfc(beta * cutoff) > rtol) {
+            low = beta;
+        } else {
+            high = beta;
+        }
+    }
+    return beta;
+}
+
 void printParameter(Parameter* param)
 {
     fprintf(stdout, "SIMULATION PARAMETERS\n");
@@ -326,6 +362,9 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Super-clustering:                  %s\n",
         (param->super_clustering) ? "yes" : "no");
+    fprintf(stdout,
+        "    Force kernel version:              %s\n",
+        param->ref_kernel ? "ref" : "optimized");
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
 #endif
@@ -381,6 +420,13 @@ void printParameter(Parameter* param)
     fprintf(stdout, "    Sigma:                             %.6e\n", param->sigma);
     fprintf(stdout, "    Number of types:                   %d\n", param->ntypes);
     fprintf(stdout, "    LJ combination rule:               %s\n", LJ_COMB_RULE_NAME);
+    fprintf(stdout, "    Coulomb:                           %s\n", COULOMB_RULE_NAME);
+#if COULOMB_RULE == COULOMB_EWALD
+    fprintf(stdout, "    Ewald coefficient:                 %.6e\n", param->ewald_beta);
+#endif
+#if USE_EXCLUSIONS
+    fprintf(stdout, "    Molecular exclusions:              yes\n");
+#endif
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     if (param->epsilon_per_type != NULL) {
         fprintf(stdout, "    Per-type epsilon:                  ");
@@ -413,7 +459,9 @@ void printParameter(Parameter* param)
         "    Displacement reneighbor:           %s\n",
         param->displacement_reneigh ? "enabled" : "disabled");
     fprintf(stdout, "    Report stats every:                %d steps\n", param->nstat);
-#ifdef SORT_ATOMS
+#if defined(SORT_ATOMS) && defined(CUDA_TARGET)
+    fprintf(stdout, "    Resort atoms:                      at every neighbor-list build\n");
+#elif defined(SORT_ATOMS)
     fprintf(stdout,
         "    Resort atoms every:                %d steps\n",
         param->resort_every);
