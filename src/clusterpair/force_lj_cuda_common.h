@@ -169,16 +169,19 @@ static __device__ __forceinline__ void addForceI(MD_FLOAT* f, int i, MD_FLOAT3 f
     }
 
 #ifdef __HIP_PLATFORM_AMD__
-    // AMD: add the cjj 4-7 half to cjj 0-3 within the wavefront
-    fi.x += SHFL_DOWN(fi.x, 4 * CLUSTER_M);
-    if (cjj < 3) {
-        atomicAdd(&f[i * 3 + cjj], fi.x);
+    // AMD wave64: add the cjj 4-7 half to cjj 0-3 within the wavefront
+    if (warpSize == 64) {
+        fi.x += SHFL_DOWN(fi.x, 4 * CLUSTER_M);
+        if (cjj < 3) {
+            atomicAdd(&f[i * 3 + cjj], fi.x);
+        }
+        return;
     }
-#else
+#endif
+    // One atomic per 32-lane half (NVIDIA, AMD wave32)
     if ((cjj & 3) < 3) {
         atomicAdd(&f[i * 3 + (cjj & 3)], fi.x);
     }
-#endif
 }
 
 extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par);
