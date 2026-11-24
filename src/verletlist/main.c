@@ -328,10 +328,21 @@ static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Sta
     const double useful   = atom->Natoms * 0.5 * (pairsCut + 1.0);
     const double perIter  = time / param->kernel_bench;
 
+#ifdef CUDA_TARGET
+    int* inner_counts = (int*)allocate(ALIGNMENT,
+        MAX(1, atom->Nlocal) * sizeof(int));
+    memcpyFromGPU(inner_counts, neighbor->d_neighbor.numneigh_inner,
+        atom->Nlocal * sizeof(int));
+#else
+    const int* inner_counts = neighbor->numneigh_inner;
+#endif
     long long pairs = 0;
     for (int i = 0; i < atom->Nlocal; i++) {
-        pairs += neighbor->numneigh_inner[i];
+        pairs += inner_counts[i];
     }
+#ifdef CUDA_TARGET
+    free(inner_counts);
+#endif
 
     fprintf(stdout, "\nKERNEL BENCHMARK\n");
     fprintf(stdout, "  Atoms:                 %d\n", atom->Natoms);
