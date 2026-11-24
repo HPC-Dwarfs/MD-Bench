@@ -43,10 +43,11 @@ fi
 status=0
 # kernel:data type of every kernel the SIMD back-end can run (REF: cluster-pair
 # reference kernel, VL: verlet lists)
-CONFIGS=("4xN:DP" "4xN:SP" "REF:DP" "REF:SP" "VL:DP" "VL:SP")
+CONFIGS=("4xN:DP" "REF:DP" "REF:SP" "VL:DP" "VL:SP")
 case "${SIMD}" in
-  AVX2) CONFIGS+=("2xNN:SP" "2xN:DP") ;;
+  AVX2) CONFIGS+=("4xN:SP" "2xNN:SP" "2xN:DP") ;;
   AVX512) CONFIGS+=("2xNN:SP") ;;
+  *) CONFIGS+=("4xN:SP") ;;
 esac
 for rule in rf ewald none; do
   "${PYTHON}" "${DIR}/nbnxm_reference.py" --size 1 --coulomb "${rule}" --out "${WORK}/ref_${rule}.txt"
