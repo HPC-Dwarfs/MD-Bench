@@ -23,7 +23,7 @@ DATA_TYPE ?= SP
 ATOM_DATA_LAYOUT ?= AOS
 # Neighbor-lists data layout (auto/AOS/SOA/CSR)
 # AOS="atom"-major, SOA="neighbor"-major, CSR=compact (no padding, CPU only)
-# For CPU, auto=AOS; For GPU, auto=SOA
+# For CPU, auto=AOS; for GPU (NVCC, HIPCC), auto=AOS with clusterpair and SOA with VL
 NBLIST_DATA_LAYOUT ?= auto
 # Debug
 DEBUG ?= false
@@ -50,16 +50,13 @@ COMPUTE_STATS ?= false
 CLUSTER_PAIR_KERNEL ?= auto
 # Data layout for super-clustering kernels (AOS3/AOS4/SOA)
 SUPERCLUSTER_DATA_LAYOUT ?= AOS3
-# Map threadIdx.y to cii and threadIdx.x to cjj (true or false)
-# If false, use same thread mapping and reduction instructions as Gromacs
-SUPERCLUSTER_INVERSE_THREAD_MAPPING ?= true
 # Number of thread-block slices (grid.y) the GPU grid is split into along the
 # j-neighbor lists of the optimized GPU kernels (gpusimple, supercluster, verlet list).
-# 0 (auto) chooses them per force call from the occupancy and the list sizes;
+# auto chooses them per force call from the occupancy and the list sizes;
 # 1 means each i-(super)cluster's neighbors are handled by a single block;
 # >1 splits the list across concurrent blocks that combine their partial forces
 # with atomicAdd (more parallelism, more atomic contention).
-SUPERCLUSTER_J_SLICES ?= 0
+GPU_J_SLICES ?= auto
 # Use scalar version (and pray for the compiler to vectorize the code properly)
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)

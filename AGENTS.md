@@ -103,7 +103,7 @@ into `DEFINES` and the binary tag:
   cluster-pair and verlet-list SIMD kernels have no SSE version (make stops)
 - `DATA_TYPE`: Precision (SP for single, DP for double)
 - `ATOM_DATA_LAYOUT`: Data layout (AOS for array-of-structures, SOA for structure-of-arrays)
-- `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU and SOA for GPU
+- `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (auto/AOS/SOA); `auto` defaults to AOS for CPU, and for GPU to AOS with clusterpair and SOA with verletlist
 - `COULOMB_RULE`: Electrostatics (`none`/`rf`/`ewald`/`ewald_table`), the plain LJ kernels of both schemes (CPU and GPU; `ewald_table` CPU only, `config.mk` rejects it for NVCC/HIPCC); adds `-<rule>` to the binary tag
 - `ENABLE_MPI`: Enable MPI parallelization (`-mpi` in the binary name)
 - `ENABLE_OPENMP`: Enable OpenMP parallelization (`-omp` in the binary name)
@@ -121,7 +121,7 @@ into `DEFINES` and the binary tag:
 - `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 - `ASM_SYNTAX`: Assembly syntax for generated `.s` files on X86 (`intel`/`att`), passed to the compiler as `-masm=`; ignored on ARM
 - `USE_PINNED_MEMORY`: Use pinned (page-locked) host memory for buffers that are `cudaMemcpy`'d to/from the GPU every reneighbor step, for faster/more predictable transfers (default true; CUDA/HIP builds only)
-- `SUPERCLUSTER_J_SLICES`: Number of thread-block slices (grid.y) the GPU grid is split into along the j-neighbor lists of the optimized GPU kernels (gpusimple, supercluster, verlet list); 0 (default, auto) chooses them per force call from the occupancy and the list sizes
+- `GPU_J_SLICES`: Number of thread-block slices (grid.y) the GPU grid is split into along the j-neighbor lists of the optimized GPU kernels (gpusimple, supercluster, verlet list); auto (default) chooses them per force call from the occupancy and the list sizes, a positive integer fixes them
 - `ENABLE_LIKWID`: Enable LIKWID performance counter instrumentation
 
 Example build commands:

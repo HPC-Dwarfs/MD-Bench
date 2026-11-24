@@ -40,6 +40,9 @@ ifneq ($(GPU_TOOLCHAIN),)
 	VECTOR_WIDTH=1
 	USE_REFERENCE_KERNEL=true
 	NBLIST_DATA_LAYOUT_DEFAULT=SOA
+    ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+        NBLIST_DATA_LAYOUT_DEFAULT=AOS
+    endif
 endif
 ifeq ($(strip $(SIMD)),NONE)
 	VECTOR_WIDTH=1
@@ -244,11 +247,17 @@ ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     DEFINES += -DCLUSTER_PAIR
 endif
 
-ifeq ($(strip $(SUPERCLUSTER_INVERSE_THREAD_MAPPING)),true)
-    DEFINES += -DSUPERCLUSTER_INVERSE_THREAD_MAPPING
+ifneq ($(filter command line file override,$(origin SUPERCLUSTER_J_SLICES)),)
+    $(error SUPERCLUSTER_J_SLICES is renamed to GPU_J_SLICES (auto or a positive integer))
 endif
-
-DEFINES += -DGPU_J_SLICES=$(strip $(SUPERCLUSTER_J_SLICES))
+# auto is passed as 0 (#if can only compare numbers)
+ifeq ($(strip $(GPU_J_SLICES)),auto)
+    DEFINES += -DGPU_J_SLICES=0
+else ifeq ($(shell echo '$(strip $(GPU_J_SLICES))' | grep -xE '[1-9][0-9]*'),)
+    $(error GPU_J_SLICES must be auto or a positive integer, got '$(GPU_J_SLICES)')
+else
+    DEFINES += -DGPU_J_SLICES=$(strip $(GPU_J_SLICES))
+endif
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL

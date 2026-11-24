@@ -126,7 +126,7 @@ point. This is controlled by defines.
 (`SOA`) layout for atom positions and forces. Tradeoff between better cache
 utilisation and easier SIMD vectorization.
 - `NBLIST_DATA_LAYOUT`: Neighbor-list data layout (`auto`/`AOS`/`SOA`). `auto` defaults
-to `AOS` for CPU builds and `SOA` for GPU builds.
+to `AOS` for CPU builds; for GPU builds to `AOS` with clusterpair and `SOA` with verletlist.
 - `COULOMB_RULE`: Electrostatics (`none` (default)/`rf`/`ewald`/`ewald_table`) for all
 cluster-pair kernels (SIMD, reference and GPU) and for the verletlist plain C and GPU
 kernels. `rf` is a reaction-field with infinite dielectric, `ewald` the real-space Ewald
@@ -153,16 +153,13 @@ Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 (`auto`/`4xN`/`2xN`/`2xNN`/`gpusimple`/`supercluster`)
 - `SUPERCLUSTER_DATA_LAYOUT`: Data layout for super-clustering kernels
 (`AOS3`/`AOS4`/`SOA`)
-- `SUPERCLUSTER_INVERSE_THREAD_MAPPING`: Map `threadIdx.y` to `cii` and
-`threadIdx.x` to `cjj` (true or false). If false, uses the same thread
-mapping and reduction as GROMACS.
-- `SUPERCLUSTER_J_SLICES` (default: 0, auto): Number of thread-block slices the GPU
+- `GPU_J_SLICES` (default: auto): Number of thread-block slices the GPU
 grid is split into along the j-neighbor lists of the optimized GPU kernels
 (gpusimple, supercluster and verletlist). 1 means each i-(super)cluster's neighbors
 are handled by a single block; >1 splits the neighbor list across multiple concurrent
 blocks (more parallelism/occupancy) that combine partial forces with
-atomicAdd (more atomic contention); 0 chooses the slices per force call from the
-occupancy and the list sizes (default).
+atomicAdd (more atomic contention); auto chooses the slices per force call from the
+occupancy and the list sizes.
 - `XTC_OUTPUT`: Enable XTC trajectory output (GROMACS file format)
 - `MEM_TRACER`: Trace memory addresses for cache simulation (true or false)
 - `INDEX_TRACER`: Trace indexes and distances for gather-MD analysis (true or false)
