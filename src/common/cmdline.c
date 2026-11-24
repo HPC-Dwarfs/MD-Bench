@@ -40,6 +40,18 @@ static void cmdError(Comm* comm, const char* format, ...)
     exit(EXIT_FAILURE);
 }
 
+static void cmdWarning(Comm* comm, const char* format, ...)
+{
+    if (comm->myproc == 0) {
+        va_list args;
+        va_start(args, format);
+        fprintf(stderr, "Warning: ");
+        vfprintf(stderr, format, args);
+        fprintf(stderr, "\n");
+        va_end(args);
+    }
+}
+
 static void printHelp(void)
 {
     printf("MD-Bench: A performance-oriented prototyping harness for MD algorithms "
@@ -255,6 +267,15 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
 #if !defined(CLUSTER_PAIR) || defined(CUDA_TARGET)
     if (param->half_lj) {
         cmdError(comm, "-halflj needs the CPU cluster-pair kernels");
+    }
+#endif
+#ifdef CPU_RECIPROCAL_EXACT
+    if (!param->accurate_reciprocal) {
+        cmdWarning(comm,
+            "--no-accurate-recip has no effect with %s: the reciprocals are exact "
+            "divisions, the kernels run accurate",
+            RECIPROCAL_EXACT_TARGET);
+        param->accurate_reciprocal = 1;
     }
 #endif
     // Auto (< 0): the GPU verlet list sorts at every neighbor-list build, else no sort

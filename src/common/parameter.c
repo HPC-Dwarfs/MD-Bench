@@ -439,14 +439,14 @@ void printParameter(Parameter* param)
 #if defined(CLUSTER_PAIR) && !defined(USE_REFERENCE_KERNEL) && !defined(CUDA_TARGET)
     fprintf(stdout,
         "    Accurate 1/r and 1/r^2:            %s\n",
-        param->accurate_reciprocal ? "yes" : "no (hardware estimate)");
+        ACCURATE_RECIP_STR(param));
     fprintf(stdout,
         "    j-cluster prefetch:                %s\n",
         param->kernel_prefetch ? "yes" : "no");
 #elif defined(__SIMD_KERNEL__)
     fprintf(stdout,
         "    Accurate 1/r^2:                    %s\n",
-        param->accurate_reciprocal ? "yes" : "no (hardware estimate)");
+        ACCURATE_RECIP_STR(param));
 #elif defined(CUDA_TARGET)
     fprintf(stdout,
         "    Accurate 1/r and 1/r^2:            %s\n",

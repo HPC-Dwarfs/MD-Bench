@@ -10,6 +10,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* CPU SIMD kernels whose reciprocal is an exact division (SVE, and the scalar SIMD
+ * emulation, see SIMD_RECIPROCAL_EXACT in simd_math.h): they are always accurate, and
+ * --no-accurate-recip is turned into --accurate-recip with a warning. */
+#if (defined(__ISA_SVE__) || defined(USE_SCALAR_KERNEL)) && !defined(CUDA_TARGET)
+#define CPU_RECIPROCAL_EXACT
+#ifdef __ISA_SVE__
+#define RECIPROCAL_EXACT_TARGET "SVE"
+#else
+#define RECIPROCAL_EXACT_TARGET "the scalar SIMD emulation"
+#endif
+#define ACCURATE_RECIP_STR(param) "yes (exact division)"
+#else
+#define ACCURATE_RECIP_STR(param)                                                        \
+    ((param)->accurate_reciprocal ? "yes" : "no (hardware estimate)")
+#endif
+
 // Portable vector types compatible with CUDA/HIP.
 // Skip our definitions whenever CUDA/HIP runtime headers are (or may be)
 // pulled in — including for .c files compiled by NVCC's host compiler,
