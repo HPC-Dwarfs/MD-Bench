@@ -9,6 +9,8 @@
 #include <string.h>
 
 #define SIMD_INTRINSICS "scalar"
+// simd_real_reciprocal is an exact division, see simd_math.h
+#define SIMD_RECIPROCAL_EXACT
 
 // At least for x86, this works
 typedef MD_FLOAT SimdRealRegT

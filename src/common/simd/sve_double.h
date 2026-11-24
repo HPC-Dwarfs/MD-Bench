@@ -9,6 +9,8 @@
 #include <stdlib.h>
 
 #define SIMD_INTRINSICS "sve_double"
+// simd_real_reciprocal is an exact division, see simd_math.h
+#define SIMD_RECIPROCAL_EXACT
 
 #if defined(__ARM_FEATURE_SVE_BITS) && __ARM_FEATURE_SVE_BITS > 0
 /* Fixed-length SVE types (-msve-vector-bits), which unlike the sizeless ones can be
