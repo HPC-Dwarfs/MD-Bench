@@ -180,6 +180,12 @@ ifeq ($(strip $(USE_PINNED_MEMORY)),true)
     DEFINES += -DUSE_PINNED_MEMORY
 endif
 
+ifeq ($(strip $(CLUSTER_RSQ_CLAMP)),false)
+    DEFINES += -DNO_CLUSTER_RSQ_CLAMP
+else ifneq ($(strip $(CLUSTER_RSQ_CLAMP)),true)
+    $(error Invalid CLUSTER_RSQ_CLAMP, must be true or false)
+endif
+
 ifeq ($(strip $(USE_SCALAR_KERNEL)),true)
     DEFINES += -DUSE_SCALAR_KERNEL
 endif

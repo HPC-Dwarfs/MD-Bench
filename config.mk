@@ -85,6 +85,11 @@ USE_CUDA_HOST_MEMORY ?= false
 # pages that go untouched by the CPU between reneighbor steps.
 USE_PINNED_MEMORY ?= true
 
+# Clamp the squared distance of the SIMD cluster-pair kernels to MIN_DISTANCE_SQ after
+# the cut-off check, as GROMACS does. The padding slots are masked by their atom id, so
+# the clamp only matters for real atoms closer than sqrt(MIN_DISTANCE_SQ).
+CLUSTER_RSQ_CLAMP ?= true
+
 #Feature options
 OPTIONS =  -DALIGNMENT=64
 #OPTIONS +=  More options

@@ -215,10 +215,14 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
         wm.v[r] = simd_mask_and(wm.v[r], simd_mask_and(valid_i, valid_j));
     }
 
-    // Clamp after the cut-off check, like GROMACS: padding atoms are at distance zero
+#ifndef NO_CLUSTER_RSQ_CLAMP
+    // Clamp after the cut-off check, like GROMACS: two padding atoms are at the same
+    // point. The masked lanes are zeroed below, so this only matters for real atoms
+    // closer than sqrt(MIN_DISTANCE_SQ) (CLUSTER_RSQ_CLAMP=false removes it).
     for (int r = 0; r < nr; r++) {
         rsq.v[r] = simd_real_max(rsq.v[r], pc->minrsq);
     }
+#endif
 
 #if COULOMB_RULE == COULOMB_NONE
     // Without electrostatics only 1/r^2 is needed, which is cheaper than via 1/r

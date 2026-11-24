@@ -443,6 +443,11 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    j-cluster prefetch:                %s\n",
         param->kernel_prefetch ? "yes" : "no");
+#ifdef NO_CLUSTER_RSQ_CLAMP
+    fprintf(stdout, "    Minimum r^2 clamp:                 no\n");
+#else
+    fprintf(stdout, "    Minimum r^2 clamp:                 yes\n");
+#endif
 #elif defined(__SIMD_KERNEL__)
     fprintf(stdout,
         "    Accurate 1/r^2:                    %s\n",
