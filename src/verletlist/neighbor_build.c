@@ -308,7 +308,7 @@ void RULE_VARIANT_NAME(buildNeighborLists)(Atom* atom, Neighbor* neighbor)
 #pragma omp parallel
     {
 #ifdef _OPENMP
-        int tid         = omp_get_thread_num();
+        int tid = omp_get_thread_num();
 #pragma omp single
         actual_nthreads = omp_get_num_threads();
 #else
@@ -434,7 +434,7 @@ void RULE_VARIANT_NAME(buildNeighborListsSimd)(Atom* atom, Neighbor* neighbor)
 #pragma omp parallel
     {
 #ifdef _OPENMP
-        int tid         = omp_get_thread_num();
+        int tid = omp_get_thread_num();
 #pragma omp single
         actual_nthreads = omp_get_num_threads();
 #else

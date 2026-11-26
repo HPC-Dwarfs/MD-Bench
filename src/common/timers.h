@@ -24,12 +24,12 @@ typedef enum {
     // NEIGH_BUILD + NEIGH_PRUNE [+ NEIGH_SORT | NEIGH_CLUSTERS + NEIGH_BIN]
     // sum to NEIGH), always accumulated since the extra getTimeStamp() calls
     // are negligible next to a simulation step.
-    NEIGH_PBC,         // setupPbc()/updatePbc() (verletlist) or ghostNeighbor() (MPI)
-    NEIGH_BUILD,       // buildNeighbor()
-    NEIGH_PRUNE,       // pruneNeighbor()/pruneNeighborCUDA()
-    NEIGH_SORT,        // sortAtom() (verletlist CPU) or sortAtomsCUDA() (GPU), --sort-every
-    NEIGH_CLUSTERS,    // buildClusters()+defineJClusters() (clusterpair only)
-    NEIGH_BIN,         // binJClusters() (clusterpair only)
+    NEIGH_PBC,      // setupPbc()/updatePbc() (verletlist) or ghostNeighbor() (MPI)
+    NEIGH_BUILD,    // buildNeighbor()
+    NEIGH_PRUNE,    // pruneNeighbor()/pruneNeighborCUDA()
+    NEIGH_SORT,     // sortAtom() (verletlist CPU) or sortAtomsCUDA() (GPU), --sort-every
+    NEIGH_CLUSTERS, // buildClusters()+defineJClusters() (clusterpair only)
+    NEIGH_BIN,      // binJClusters() (clusterpair only)
     INTEGRATE_INITIAL, // initialIntegrate()
     INTEGRATE_FINAL,   // finalIntegrate()
     THERMO,            // computeThermo()

@@ -442,8 +442,8 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                                     }
 
 #ifdef SOA_SUP
-                                    MD_FLOAT* ci_x = &atom->cl_x[sci_vec_base +
-                                                                 sci_ci * CLUSTER_M];
+                                    MD_FLOAT* ci_x =
+                                        &atom->cl_x[sci_vec_base + sci_ci * CLUSTER_M];
 #else
                                     MD_FLOAT* ci_x =
                                         &atom->cl_x[sci_vec_base +
@@ -516,11 +516,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
                             n,
                             nbM,
                             nbN) = atom->dummy_cj;
-                        neighs_padded(neighbor->neighbors_imask,
-                            sci,
-                            n,
-                            nbM,
-                            nbN) = 0;
+                        neighs_padded(neighbor->neighbors_imask, sci, n, nbM, nbN) = 0;
                     }
                     n++;
                 }

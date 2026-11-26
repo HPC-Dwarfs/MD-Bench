@@ -159,12 +159,21 @@ static __device__ __forceinline__ MD_FLOAT pairForceCuda(MD_FLOAT rsq,
         vlj += e_lj;
         vc += e_c;
     }
-    return pairForceScalarAcc(
-        rsq, p.sigma6, p.epsilon, qi, qj, mol_i, mol_j, EXCL, ACCURATE, cs);
+    return pairForceScalarAcc(rsq,
+        p.sigma6,
+        p.epsilon,
+        qi,
+        qj,
+        mol_i,
+        mol_j,
+        EXCL,
+        ACCURATE,
+        cs);
 }
 
 // Adds fj summed over the 8 lanes cii to atom j of f; lanes cii = 0, 1, 2 add x, y, z
-static __device__ __forceinline__ void addForceJ(MD_FLOAT* f, int j, MD_FLOAT3 fj, int cii)
+static __device__ __forceinline__ void addForceJ(
+    MD_FLOAT* f, int j, MD_FLOAT3 fj, int cii)
 {
     fj.x += SHFL_DOWN_ROW(fj.x, 1);
     fj.y += SHFL_UP_ROW(fj.y, 1);
@@ -189,7 +198,8 @@ static __device__ __forceinline__ void addForceJ(MD_FLOAT* f, int j, MD_FLOAT3 f
 }
 
 // Adds fi summed over the 8 lanes cjj to atom i of f
-static __device__ __forceinline__ void addForceI(MD_FLOAT* f, int i, MD_FLOAT3 fi, int cjj)
+static __device__ __forceinline__ void addForceI(
+    MD_FLOAT* f, int i, MD_FLOAT3 fi, int cjj)
 {
     fi.x += SHFL_DOWN(fi.x, CLUSTER_M);
     fi.y += SHFL_UP(fi.y, CLUSTER_M);

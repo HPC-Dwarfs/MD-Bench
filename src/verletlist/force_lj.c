@@ -24,7 +24,8 @@ void RULE_VARIANT_NAME(computeForceGhostShell)(Parameter*, Atom*, Neighbor*);
 #define VL_ALWAYS_INLINE static inline
 #endif
 
-// GCC (tested 13.3 on SVE2) does not vectorize the matrix-rule neighbor loop when it honors
+// GCC (tested 13.3 on SVE2) does not vectorize the matrix-rule neighbor loop when it
+// honors
 // "#pragma omp simd" (-fopenmp or -fopenmp-simd): the conditional sigma6/epsilon loads
 // are then "not supported" as masked gathers and the loop stays scalar, with a
 // data-dependent branch. Without the pragma GCC vectorizes it with SVE gathers. Clang

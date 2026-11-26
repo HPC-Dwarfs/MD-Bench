@@ -818,7 +818,6 @@ double VARIANT_NAME(computeForceLJHalfNeigh_simd_vla)(
 
 #endif // SIMD_FORCE_VLA
 
-
 // Extra per-i (and, for LJ_COMB_MATRIX, per-pair) state that ljforce_compressed() needs
 // on top of the buffered (j, delx, dely, delz) triples, depending on LJ_COMB_RULE.
 #if LJ_COMB_RULE == LJ_COMB_GEOM

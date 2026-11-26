@@ -493,7 +493,8 @@ MD_ALWAYS_INLINE void prefetchAhead(const Atom* atom,
 #endif
 }
 
-/* Type-pair tables of 6*C6 and 12*C12 of the matrix combination rule, built on first use */
+/* Type-pair tables of 6*C6 and 12*C12 of the matrix combination rule, built on first use
+ */
 #if LJ_COMB_RULE == LJ_COMB_MATRIX
 static inline void setupTypePairC6C12(Atom* atom)
 {

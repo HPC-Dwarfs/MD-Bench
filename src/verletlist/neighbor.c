@@ -63,8 +63,8 @@ int shellMethod;         // If shell method exist
 void initNeighbor(Neighbor* neighbor, Parameter* param)
 {
     // The list build variant, setup() sets it again after resolving --lj-comb auto
-    neighbor->lj_comb_rule   = param->lj_comb_rule;
-    neighbor->simd           = param->neighbor_simd;
+    neighbor->lj_comb_rule = param->lj_comb_rule;
+    neighbor->simd         = param->neighbor_simd;
 #ifndef HAVE_SIMD_NEIGHBOR
     if (neighbor->simd != SIMD_MODE_AUTOVEC) {
         fprintf(stderr,

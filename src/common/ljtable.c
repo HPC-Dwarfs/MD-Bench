@@ -50,10 +50,10 @@ void initLJTable(Parameter* param)
         n = 1000;
     }
 
-    MD_FLOAT cut = param->cutforce;
+    MD_FLOAT cut    = param->cutforce;
     const int index = param->lj_table_index;
     MD_FLOAT xmax   = index == LJ_TABLE_INDEX_RSQ ? cut * cut : cut;
-    MD_FLOAT h = xmax / (MD_FLOAT)n;
+    MD_FLOAT h      = xmax / (MD_FLOAT)n;
 
     ljtable.n       = n;
     ljtable.index   = index;

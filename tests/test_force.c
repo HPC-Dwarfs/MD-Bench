@@ -176,9 +176,9 @@ static int test_table_index = LJ_TABLE_INDEX_RSQ;
 static double table_fpair(double r, double epsilon, double sigma6)
 {
     double coord = ljtable.index == LJ_TABLE_INDEX_RSQ ? r * r : r;
-    double u = coord * (double)ljtable.inv_h;
-    int m    = (int)u;
-    int nm1  = ljtable.n - 1;
+    double u     = coord * (double)ljtable.inv_h;
+    int m        = (int)u;
+    int nm1      = ljtable.n - 1;
     if (m > nm1) m = nm1;
     double eps         = u - (double)m;
     const MD_FLOAT* cc = &ljtable.coeff[m * LJ_TABLE_STRIDE];

@@ -16,9 +16,12 @@
 /* Fixed-length SVE types (-msve-vector-bits), which unlike the sizeless ones can be
  * struct members, as in the cluster-pair kernels; they convert implicitly to and from
  * the sizeless types of the intrinsics. */
-typedef svfloat64_t md_sve_float_t __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
-typedef svbool_t md_sve_mask_t __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
-typedef svint64_t md_sve_int_t __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
+typedef svfloat64_t md_sve_float_t
+    __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
+typedef svbool_t md_sve_mask_t
+    __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
+typedef svint64_t md_sve_int_t
+    __attribute__((arm_sve_vector_bits(__ARM_FEATURE_SVE_BITS)));
 #define MD_SIMD_FLOAT md_sve_float_t
 #define MD_SIMD_MASK  md_sve_mask_t
 #define MD_SIMD_INT   md_sve_int_t
