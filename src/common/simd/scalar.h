@@ -4,10 +4,13 @@
  * Use of this source code is governed by a LGPL-3.0
  * license that can be found in the LICENSE file.
  */
+#include <math.h>
 #include <stdbool.h>
 #include <string.h>
 
 #define SIMD_INTRINSICS "scalar"
+// simd_real_reciprocal is an exact division, see simd_math.h
+#define SIMD_RECIPROCAL_EXACT
 
 // At least for x86, this works
 typedef MD_FLOAT SimdRealRegT
@@ -123,6 +126,20 @@ static inline MD_SIMD_FLOAT simd_real_masked_add(
 }
 
 static inline MD_SIMD_MASK simd_mask_and(MD_SIMD_MASK a, MD_SIMD_MASK b) { return a & b; }
+static inline MD_SIMD_MASK simd_mask_not(MD_SIMD_MASK a)
+{
+    return (MD_SIMD_MASK)(~a & ((1u << VECTOR_WIDTH) - 1));
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_eq(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    MD_SIMD_MASK result = 0;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        if (a.val[i] == b.val[i]) {
+            result |= (1 << i);
+        }
+    }
+    return result;
+}
 static inline MD_SIMD_MASK simd_mask_cond_lt(MD_SIMD_FLOAT a, MD_SIMD_FLOAT b)
 {
     MD_SIMD_MASK result = 0;
@@ -397,4 +414,55 @@ static inline MD_SIMD_INT simd_i32_min(MD_SIMD_INT a, MD_SIMD_INT b)
         result.val[i] = a.val[i] < b.val[i] ? a.val[i] : b.val[i];
     }
     return result;
+}
+
+static inline MD_FLOAT simd_real_h_reduce_sum(MD_SIMD_FLOAT a)
+{
+    MD_FLOAT sum = 0;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        sum += a.val[i];
+    }
+    return sum;
+}
+static inline MD_FLOAT simd_real_incr_reduced_sum_j2(
+    MD_FLOAT* m, MD_SIMD_FLOAT v0, MD_SIMD_FLOAT v1)
+{
+    const MD_FLOAT s0 = simd_real_h_reduce_sum(v0);
+    const MD_FLOAT s1 = simd_real_h_reduce_sum(v1);
+    m[0] += s0;
+    m[1] += s1;
+    return s0 + s1;
+}
+static inline void simd_i32_store(int* m, MD_SIMD_INT a)
+{
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        m[i] = a.val[i];
+    }
+}
+static inline MD_SIMD_INT simd_i32_gather(MD_SIMD_INT vidx, int* base, const int scale)
+{
+    MD_SIMD_INT result;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        result.val[i] = *(const int*)((const char*)base + (long)vidx.val[i] * scale);
+    }
+    return result;
+}
+static inline MD_SIMD_MASK simd_mask_i32_cond_lt(MD_SIMD_INT a, MD_SIMD_INT b)
+{
+    MD_SIMD_MASK result = 0;
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        if (a.val[i] < b.val[i]) {
+            result |= (1 << i);
+        }
+    }
+    return result;
+}
+static inline void simd_real_masked_scatter_sub(
+    MD_FLOAT* base, MD_SIMD_INT vidx, MD_SIMD_FLOAT v, MD_SIMD_MASK mask)
+{
+    for (int i = 0; i < VECTOR_WIDTH; i++) {
+        if ((mask >> i) & 1) {
+            _Pragma("omp atomic") base[vidx.val[i]] -= v.val[i];
+        }
+    }
 }

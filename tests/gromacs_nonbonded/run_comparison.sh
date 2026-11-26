@@ -1,42 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Compares MD-Bench's 4xN cluster-pair kernel with GROMACS' NBNxM kernel on the
-# GROMACS non-bonded benchmark (gmx nonbonded-benchmark), in forces and kernel time.
-#
-# Forces: both programs evaluate one kernel pass on the same system (3000 SPC/E atoms
-# times -size, charges, intramolecular exclusions, cut-off 1.0, no pair-list buffer)
-# and the per-atom forces are compared, so the physics, exclusions and the Coulomb
-# treatment have to agree for the check to pass.
-#
-# Time: GROMACS' loop of kernel calls on one fixed pair list is mirrored by
-# MD-Bench's --kernel-bench. Both use one thread and single precision.
-#
-# GROMACS' benchmark only prints timings, so it has to be built from a tree with
-# tests/gromacs_nonbonded/gromacs-force-dump.patch applied, which adds a "-forces
-# <file>" option (see the README in this directory).
+# Forces, energies and kernel time of MD-Bench 4xN/2xNN vs GROMACS 4xM/2xMM (patched gmx)
 #
 # Usage:
 #   GMX=/path/to/gmx ./tests/gromacs_nonbonded/run_comparison.sh [size ...]
 #
 # Environment:
-#   GMX         gmx binary built with the force dump patch (required)
-#   SIMD        MD-Bench SIMD (default AVX2); GROMACS' 4xM kernel is used
+#   GMX         gmx built with gromacs-force-dump.patch (AVX2_256 for 4xM, AVX_512 for 2xMM)
+#   SIMD        MD-Bench SIMD (default AVX2), AVX512 compares 2xNN with 2xMM
 #   ITER        kernel iterations for the timing (default 500)
 #   PIN_CORE    pin both programs to this core with taskset (optional)
-#   RULES       Coulomb treatments to run (default "ewald rf")
+#   RULES       Coulomb treatments to run (default "ewald ewald_table rf")
+#   VARIANTS    ';'-separated kernel options (default ";-energy;-halflj")
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIR="${ROOT_DIR}/tests/gromacs_nonbonded"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 PYTHON="${PYTHON:-python3}"
 ITER="${ITER:-500}"
-RULES="${RULES:-ewald rf}"
+RULES="${RULES:-ewald ewald_table rf}"
+VARIANTS="${VARIANTS:-;-energy;-halflj}"
 SIZES=("$@")
 [ ${#SIZES[@]} -eq 0 ] && SIZES=(1)
+
+if [ "${SIMD}" = "AVX512" ]; then
+  KERNEL=2xNN
+  GMX_KERNEL=2xmm
+else
+  KERNEL=4xN
+  GMX_KERNEL=4xm
+fi
 
 if [ -z "${GMX:-}" ] || [ ! -x "${GMX}" ]; then
   echo "Set GMX to a gmx binary built with gromacs-force-dump.patch" >&2
@@ -55,79 +51,89 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/mdbench_gmxcmp.XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 cd "${ROOT_DIR}"
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-
-build() { # rule accurate
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE=SP \
-       OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL=4xN COULOMB_RULE="$1" \
-       ACCURATE_RECIPROCAL="$2" >/dev/null
-}
-binary() { # rule accurate
-  local suffix=""
-  [ "$2" = "true" ] && suffix="-accrecip"
-  echo "./MDBench-CP-4xN-${TOOL_TAG}-SP-geometric-$1${suffix}"
+build() { # rule, prints the binary
+  local cfg=(TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE=SP
+             OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${KERNEL}" COULOMB_RULE="$1")
+  make "${cfg[@]}" >/dev/null
+  make -s "${cfg[@]}" print-target
 }
 mdb_value() { # file label
   awk -F': *' -v k="$2" '$1 ~ k {gsub(/ us$/, "", $2); print $2}' "$1" | head -n 1
 }
+row() { # label time total useful
+  printf '%-48s %12s %14s %14s\n' "$1" "$2" "$3" "$4"
+}
 
 status=0
+IFS=';' read -r -a VARIANT_LIST <<<"${VARIANTS}"
 for size in "${SIZES[@]}"; do
   for rule in ${RULES}; do
-    gmx_coulomb=ewald
-    [ "${rule}" = "rf" ] && gmx_coulomb=reaction-field
+    gmx_coulomb=(-coulomb ewald)
+    [ "${rule}" = "rf" ] && gmx_coulomb=(-coulomb reaction-field)
+    [ "${rule}" = "ewald_table" ] && gmx_coulomb=(-coulomb ewald -table)
     echo
-    echo "=== size ${size} ($((3000 * size)) atoms), Coulomb: ${rule} ==="
+    echo "=== size ${size} ($((3000 * size)) atoms), Coulomb: ${rule}, ${KERNEL} vs ${GMX_KERNEL} ==="
 
-    "${PIN[@]}" "${GMX}" nonbonded-benchmark -size "${size}" -nt 1 -simd 4xm \
-        -coulomb "${gmx_coulomb}" -combrule geometric -cutoff 1.0 -iter "${ITER}" \
-        -warmup 50 -time -forces "${WORK}/gmx_forces.txt" >"${WORK}/gmx.log" 2>&1
-    gmx_line="$(grep -E '^(Ewald|RF) ' "${WORK}/gmx.log" | tail -n 1)"
-    gmx_time="$(echo "${gmx_line}" | awk '{print $(NF-2)}')"
-    gmx_total="$(echo "${gmx_line}" | awk '{print $(NF-1)}')"
-    gmx_useful="$(echo "${gmx_line}" | awk '{print $NF}')"
+    bin="$(build "${rule}")"
 
-    build "${rule}" true
-    bin_acc="$(binary "${rule}" true)"
-    for half in 1 0; do
-      OMP_NUM_THREADS=1 "${PIN[@]}" "${bin_acc}" -gmxbench -size "${size}" -half "${half}" \
-          --kernel-bench "${ITER}" --dump-forces "${WORK}/mdb_forces_${half}.txt" \
-          >"${WORK}/mdb_acc_${half}.log"
-      if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/gmx_forces.txt" \
-           "${WORK}/mdb_forces_${half}.txt" --tol 1e-5 --tol-max 1e-4 \
-           --label "MD-Bench vs GROMACS, half=${half}"; then
-        status=1
+    rows=()
+    for variant in "${VARIANT_LIST[@]}"; do
+      read -r -a opts <<<"${variant}"
+      energy_args=()
+      if [[ " ${variant} " == *" -energy "* ]]; then
+        energy_args=(--require-energy)
       fi
+      name="${variant:-forces}"
+      "${PIN[@]}" "${GMX}" nonbonded-benchmark -size "${size}" -nt 1 -simd "${GMX_KERNEL}" \
+          "${gmx_coulomb[@]}" "${opts[@]}" -combrule geometric -cutoff 1.0 -iter "${ITER}" \
+          -warmup 50 -time -forces "${WORK}/gmx_forces.txt" >"${WORK}/gmx.log" 2>&1
+      gmx_line="$(grep -E '^(Ewald|RF) ' "${WORK}/gmx.log" | tail -n 1)"
+      rows+=("$(row "GROMACS ${GMX_KERNEL} ${name}" \
+          "$(echo "${gmx_line}" | awk '{print $(NF-2)}')" \
+          "$(echo "${gmx_line}" | awk '{print $(NF-1)}')" \
+          "$(echo "${gmx_line}" | awk '{print $NF}')")")
+
+      for half in 1 0; do
+        # The full list only for the plain force kernel
+        [ "${half}" = "0" ] && [ -n "${variant}" ] && continue
+        OMP_NUM_THREADS=1 "${PIN[@]}" "${bin}" -gmxbench -size "${size}" -half "${half}" \
+            --kernel-bench "${ITER}" --lj-comb geometric --accurate-recip "${opts[@]}" \
+            --dump-forces "${WORK}/mdb_forces.txt" \
+            >"${WORK}/mdb.log"
+        # GROMACS sums energies in single precision (2e-4 off the exact RF energy at size 8)
+        if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/gmx_forces.txt" \
+             "${WORK}/mdb_forces.txt" --tol 1e-5 --tol-max 1e-4 --etol 1e-3 \
+             "${energy_args[@]}" --label "MD-Bench vs GROMACS ${name}, half=${half}"; then
+          status=1
+        fi
+        list="half"
+        [ "${half}" = "0" ] && list="full"
+        rows+=("$(row "MD-Bench ${KERNEL} ${list} ${name}, accurate 1/r^2" \
+            "$(mdb_value "${WORK}/mdb.log" 'Time per iteration')" \
+            "$(mdb_value "${WORK}/mdb.log" 'Computed pairs/us')" \
+            "$(mdb_value "${WORK}/mdb.log" 'Useful pairs/us')")")
+      done
+
+      OMP_NUM_THREADS=1 "${PIN[@]}" "${bin}" -gmxbench -size "${size}" -half 1 \
+          --kernel-bench "${ITER}" --lj-comb geometric "${opts[@]}" >"${WORK}/mdb_fast.log"
+      rows+=("$(row "MD-Bench ${KERNEL} half ${name}, 1/r^2 estimate" \
+          "$(mdb_value "${WORK}/mdb_fast.log" 'Time per iteration')" \
+          "$(mdb_value "${WORK}/mdb_fast.log" 'Computed pairs/us')" \
+          "$(mdb_value "${WORK}/mdb_fast.log" 'Useful pairs/us')")")
     done
 
-    build "${rule}" false
-    bin_fast="$(binary "${rule}" false)"
-    OMP_NUM_THREADS=1 "${PIN[@]}" "${bin_fast}" -gmxbench -size "${size}" -half 1 \
-        --kernel-bench "${ITER}" >"${WORK}/mdb_fast.log"
-
-    printf '\n%-44s %12s %14s %14s\n' "kernel (1 thread, SP)" "us/iter" "pairs/us" "useful pairs/us"
-    printf '%-44s %12s %14s %14s\n' "GROMACS 4xM, analytical corr." "${gmx_time}" "${gmx_total}" "${gmx_useful}"
-    for variant in "acc_1:MD-Bench 4xN half, accurate 1/r^2" "acc_0:MD-Bench 4xN full, accurate 1/r^2" "fast:MD-Bench 4xN half, 1/r^2 estimate"; do
-      f="${WORK}/mdb_${variant%%:*}.log"
-      [ "${variant%%:*}" = "fast" ] && f="${WORK}/mdb_fast.log"
-      printf '%-44s %12s %14s %14s\n' "${variant#*:}" \
-        "$(mdb_value "${f}" 'Time per iteration')" \
-        "$(mdb_value "${f}" 'Computed pairs/us')" \
-        "$(mdb_value "${f}" 'Useful pairs/us')"
-    done
+    echo
+    row "kernel (1 thread, SP)" "us/iter" "pairs/us" "useful pairs/us"
+    printf '%s\n' "${rows[@]}"
     printf '\nGROMACS pair list: %s\n' "$(grep '^# pairs' "${WORK}/gmx_forces.txt")"
-    printf 'MD-Bench pair list: %s\n' "$(grep 'Cluster pairs' "${WORK}/mdb_acc_1.log" | sed 's/^ *//')"
+    printf 'MD-Bench pair list: %s\n' "$(grep 'Cluster pairs' "${WORK}/mdb.log" | sed 's/^ *//')"
   done
 done
 
 if [ "${status}" -eq 0 ]; then
   echo
-  echo "MD-Bench and GROMACS agree on the forces"
+  echo "MD-Bench and GROMACS agree on the forces and energies"
 else
-  echo "Force comparison FAILED" >&2
+  echo "Force or energy comparison FAILED" >&2
 fi
 exit "${status}"

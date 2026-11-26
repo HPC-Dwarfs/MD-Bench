@@ -118,7 +118,7 @@ static int test_pack_unpack_exchange_roundtrip(void)
     atom_vz(0)    = 0.3;
     atom->type[0] = 7;
     // Above 2^24, which single precision cannot hold exactly as one value
-    atom->id[0]   = 20000003;
+    atom->id[0] = 20000003;
 
     MD_FLOAT buf[9];
     int m1 = packExchange(atom, 0, buf);

@@ -841,7 +841,7 @@ void growAtom(Atom* atom)
     atom->Nmax += DELTA;
 
 // atom->p is cudaMemcpy'd to/from the GPU (see device.c, forceCuda.cu),
-// so it comes from pinned host memory when USE_PINNED_MEMORY is set.
+// so it comes from pinned host memory unless --no-pinned-memory is given.
 #undef REALLOC
 #define REALLOC(p, t, ns, os)                                                            \
     ;                                                                                    \
@@ -888,10 +888,8 @@ void growAtom(Atom* atom)
     REALLOC(sigma3, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
     REALLOC(q, MD_FLOAT, atom->Nmax * sizeof(MD_FLOAT), nold * sizeof(MD_FLOAT));
     REALLOC(mol, int, atom->Nmax * sizeof(int), nold * sizeof(int));
-    atom->id = (int*)reallocate(atom->id,
-        ALIGNMENT,
-        atom->Nmax * sizeof(int),
-        nold * sizeof(int));
+    atom->id = (int*)
+        reallocate(atom->id, ALIGNMENT, atom->Nmax * sizeof(int), nold * sizeof(int));
 
 // NUMA-aware first-touch initialization for newly allocated memory
 #ifdef _OPENMP
@@ -1013,12 +1011,12 @@ int unpackGhost(Parameter* param, Atom* atom, int i, MD_FLOAT* buf)
         growAtom(atom);
     }
 
-    int m                 = 0;
-    atom_x(i)             = buf[m++];
-    atom_y(i)             = buf[m++];
-    atom_z(i)             = buf[m++];
-    int t                 = (int)buf[m++];
-    int id                = unpackAtomId(buf, m);
+    int m     = 0;
+    atom_x(i) = buf[m++];
+    atom_y(i) = buf[m++];
+    atom_z(i) = buf[m++];
+    int t     = (int)buf[m++];
+    int id    = unpackAtomId(buf, m);
     setAtomTypeId(atom, i, t, id);
     atom->Nghost++;
     return m;
@@ -1064,15 +1062,15 @@ int unpackExchange(Atom* atom, int i, MD_FLOAT* buf)
         growAtom(atom);
     }
 
-    int m                 = 0;
-    atom_x(i)             = buf[m++];
-    atom_y(i)             = buf[m++];
-    atom_z(i)             = buf[m++];
-    atom_vx(i)            = buf[m++];
-    atom_vy(i)            = buf[m++];
-    atom_vz(i)            = buf[m++];
-    int t                 = (int)buf[m++];
-    int id                = unpackAtomId(buf, m);
+    int m      = 0;
+    atom_x(i)  = buf[m++];
+    atom_y(i)  = buf[m++];
+    atom_z(i)  = buf[m++];
+    atom_vx(i) = buf[m++];
+    atom_vy(i) = buf[m++];
+    atom_vz(i) = buf[m++];
+    int t      = (int)buf[m++];
+    int id     = unpackAtomId(buf, m);
     setAtomTypeId(atom, i, t, id);
     return m;
 }

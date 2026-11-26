@@ -9,17 +9,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX512}"
 DATA_TYPE="${DATA_TYPE:-DP}"
 
 cd "${ROOT_DIR}"
-
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
 
 get_last_tp() {
   local file="$1"
@@ -109,43 +102,39 @@ run_case() {
 FAILED=0
 
 for scheme in verletlist clusterpair; do
-  if [ "${scheme}" = "verletlist" ]; then
-    OPT_TAG="VL"
-  else
-    OPT_TAG="CP-auto"
+  echo "=== Building ${scheme} ==="
+  make clean >/dev/null 2>&1 || true
+  if ! make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
+       DATA_TYPE="${DATA_TYPE}" ENABLE_OPENMP=true >/dev/null; then
+    echo "SKIP: build failed for ${scheme} (unsupported configuration)."
+    continue
   fi
 
-  for lj_rule in geometric full; do
-    echo "=== Building ${scheme} (LJ_COMB_RULE=${lj_rule}) ==="
-    make clean >/dev/null 2>&1 || true
-    if ! make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
-         DATA_TYPE="${DATA_TYPE}" LJ_COMB_RULE="${lj_rule}" ENABLE_OPENMP=true >/dev/null; then
-      echo "SKIP: build failed for ${scheme}/${lj_rule} (unsupported configuration)."
-      continue
-    fi
+  BIN="$(make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" SIMD="${SIMD}" \
+      DATA_TYPE="${DATA_TYPE}" ENABLE_OPENMP=true print-target)"
+  if [[ ! -x "${BIN}" ]]; then
+    echo "Binary '${BIN}' not found" >&2
+    exit 1
+  fi
 
-    BIN="./MDBench-${OPT_TAG}-${TOOL_TAG}-${DATA_TYPE}-${lj_rule}"
-    if [[ ! -x "${BIN}" ]]; then
-      echo "Binary '${BIN}' not found" >&2
-      exit 1
-    fi
-
+  for lj_rule in geometric matrix; do
     for half in 0 1; do
       echo "--- ${scheme}/${lj_rule}, argon, half=${half} ---"
       if ! run_case "${BIN}" "${scheme}-${lj_rule}-argon-half${half}" "${half}" \
-          -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 200; then
+          -i "${DATA_DIR}/input.gro" -p "${DATA_DIR}/mdbench_params.conf" -n 200 \
+          --lj-comb "${lj_rule}"; then
         FAILED=1
       fi
 
       echo "--- ${scheme}/${lj_rule}, copper-fcc, half=${half} ---"
       if ! run_case "${BIN}" "${scheme}-${lj_rule}-copper-half${half}" "${half}" \
-          -nx 8 -ny 8 -nz 8 -n 200; then
+          -nx 8 -ny 8 -nz 8 -n 200 --lj-comb "${lj_rule}"; then
         FAILED=1
       fi
     done
-
-    rm -f "${BIN}"
   done
+
+  rm -f "${BIN}"
 done
 
 if [[ "${FAILED}" -ne 0 ]]; then

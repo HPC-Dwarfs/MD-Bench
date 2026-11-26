@@ -22,13 +22,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${ROOT_DIR}/data/argon"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-NONE}"
 # Clusterpair requires a SIMD width that maps to a valid cluster N (2, 4, or 8).
 # Default to AVX2 (N=4) when the VL SIMD is NONE.
 SIMD_CP="${SIMD_CP:-AVX2}"
 DATA_TYPE="${DATA_TYPE:-DP}"
-LJ_COMB_RULE="${LJ_COMB_RULE:-geometric}"
+# LJ combination rule of the runs (--lj-comb)
+LJ_COMB="${LJ_COMB:-geometric}"
 
 cd "${ROOT_DIR}"
 
@@ -38,20 +38,17 @@ make_bin() {
     local scheme="$1"
     local simd="$2"
     make clean >/dev/null 2>&1 || true
-    make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" OPT_SCHEME="${scheme}" \
+    make TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" \
          SIMD="${simd}" DATA_TYPE="${DATA_TYPE}" \
-         LJ_COMB_RULE="${LJ_COMB_RULE}" >/dev/null
+         >/dev/null
 }
 
 bin_name() {
-    local prefix="$1"
+    local scheme="$1"
     local simd="$2"
-    local suffix="${3:-}"
-    if [ "${simd}" = "NONE" ]; then
-        echo "./MDBench-${prefix}-${TOOLCHAIN}-${ISA}-${DATA_TYPE}${suffix}"
-    else
-        echo "./MDBench-${prefix}-${TOOLCHAIN}-${ISA}-${simd}-${DATA_TYPE}${suffix}"
-    fi
+    make -s TOOLCHAIN="${TOOLCHAIN}" OPT_SCHEME="${scheme}" \
+         SIMD="${simd}" DATA_TYPE="${DATA_TYPE}" \
+         print-target
 }
 
 get_last_tp() {
@@ -118,16 +115,14 @@ FAIL=0
 
 run_scheme() {
     local scheme="$1"
-    local prefix="$2"
-    local simd="$3"
-    local suffix="${4:-}"
+    local simd="$2"
     local bin
 
     echo ""
     echo "=== Scheme: ${scheme} (SIMD=${simd}) ==="
 
     make_bin "${scheme}" "${simd}"
-    bin="$(bin_name "${prefix}" "${simd}" "${suffix}")"
+    bin="$(bin_name "${scheme}" "${simd}")"
 
     if [[ ! -x "${bin}" ]]; then
         echo "Binary '${bin}' not found or not executable" >&2
@@ -147,9 +142,9 @@ run_scheme() {
     ref_log="$(mktemp "${TMPDIR:-/tmp}/mdbench_ref.XXXXXX")"
     disp_log="$(mktemp "${TMPDIR:-/tmp}/mdbench_disp.XXXXXX")"
 
-    "${bin}" -i "${DATA_DIR}/input.gro" -p "${params_norm_check1}" -n "${FEW_STEPS}" \
+    "${bin}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${params_norm_check1}" -n "${FEW_STEPS}" \
         > "${ref_log}"
-    "${bin}" -i "${DATA_DIR}/input.gro" -p "${params_norm_check1}" -n "${FEW_STEPS}" \
+    "${bin}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${params_norm_check1}" -n "${FEW_STEPS}" \
         --displacement-reneigh > "${disp_log}"
 
     ref_line="$(get_last_tp "${ref_log}")"
@@ -181,7 +176,7 @@ run_scheme() {
     params_disp="$(make_params 0 "${NORMAL_SKIN}")"
     stab_log="$(mktemp "${TMPDIR:-/tmp}/mdbench_stab.XXXXXX")"
 
-    "${bin}" -i "${DATA_DIR}/input.gro" -p "${params_disp}" -n "${NSTEPS}" \
+    "${bin}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${params_disp}" -n "${NSTEPS}" \
         --displacement-reneigh > "${stab_log}"
 
     stab_line="$(get_last_tp "${stab_log}")"
@@ -209,9 +204,9 @@ run_scheme() {
     ref2_log="$(mktemp "${TMPDIR:-/tmp}/mdbench_ref2.XXXXXX")"
     comb_log="$(mktemp "${TMPDIR:-/tmp}/mdbench_comb.XXXXXX")"
 
-    "${bin}" -i "${DATA_DIR}/input.gro" -p "${params_norm}" -n "${NSTEPS}" \
+    "${bin}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${params_norm}" -n "${NSTEPS}" \
         > "${ref2_log}"
-    "${bin}" -i "${DATA_DIR}/input.gro" -p "${params_norm}" -n "${NSTEPS}" \
+    "${bin}" --lj-comb "${LJ_COMB}" -i "${DATA_DIR}/input.gro" -p "${params_norm}" -n "${NSTEPS}" \
         --displacement-reneigh > "${comb_log}"
 
     ref2_line="$(get_last_tp "${ref2_log}")"
@@ -239,8 +234,8 @@ run_scheme() {
     rm -f "${ref2_log}" "${comb_log}" "${params_norm}"
 }
 
-run_scheme "verletlist"  "VL"      "${SIMD}"    "-${LJ_COMB_RULE}"
-run_scheme "clusterpair" "CP-auto" "${SIMD_CP}"    "-${LJ_COMB_RULE}"
+run_scheme "verletlist" "${SIMD}"
+run_scheme "clusterpair" "${SIMD_CP}"
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed."

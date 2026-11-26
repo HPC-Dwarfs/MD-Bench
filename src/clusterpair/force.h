@@ -6,6 +6,7 @@
  */
 #include <atom.h>
 #include <eam.h>
+#include <kernel_variant.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <stats.h>
@@ -22,9 +23,10 @@ extern ComputeForceFunction computeForce;
 enum forcetype { FF_LJ = 0, FF_EAM, FF_LJ_TABLE };
 
 extern void initForce(Parameter*);
-extern double computeForceLJRef(Parameter*, Atom*, Neighbor*, Stats*);
+// One copy per LJ combination rule (computeForceLJRefGeom, ...), see kernel_variant.h
+DECLARE_RULE_VARIANTS(computeForceLJRef)
 #ifdef USE_REFERENCE_KERNEL
-extern double computeForceLJTableRef(Parameter*, Atom*, Neighbor*, Stats*);
+DECLARE_RULE_TABLE_VARIANTS(computeForceLJTableRef)
 #endif
 #ifdef CLUSTERPAIR_KERNEL_4XN
 extern double computeForceLJTable4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
@@ -38,12 +40,14 @@ extern double computeForceLJTable2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Sta
 extern double computeForceLJTableCuda(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableCudaSup(Parameter*, Atom*, Neighbor*, Stats*);
 #endif
-extern double computeForceLJ4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ4xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);
-extern double computeForceLJ2xnnFullNeigh(Parameter*, Atom*, Neighbor*, Stats*);
+// Copies of each kernel for the LJ combination rules, --accurate-recip, --no-prefetch and
+// exclusions, see kernel_variant.h
+DECLARE_SIMD_VARIANTS(computeForceLJ4xnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ4xnFullNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnFullNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnnHalfNeigh)
+DECLARE_SIMD_VARIANTS(computeForceLJ2xnnFullNeigh)
 extern double computeForceEam(Parameter*, Atom*, Neighbor*, Stats*);
 
 #ifdef CUDA_TARGET
@@ -106,8 +110,8 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define KERNEL_NAME "Reference"
 // Plain C, so the cluster size does not depend on the SIMD width (4x4 like the GROMACS
 // reference kernel)
-#define CLUSTER_M 4
-#define CLUSTER_N 4
+#define CLUSTER_M   4
+#define CLUSTER_N   4
 #else
 // Cluster pair kernels
 #ifdef CLUSTERPAIR_KERNEL_AUTO

@@ -13,8 +13,17 @@ Q         ?= @
 
 #DO NOT EDIT BELOW
 include config.mk
+include $(MAKE_DIR)/options.mk
 include $(MAKE_DIR)/include_$(TOOLCHAIN).mk
 include $(MAKE_DIR)/include_LIKWID.mk
+# The cluster-pair SIMD kernels keep SIMD vectors in structs, which SVE allows only for
+# fixed-length vector types (see common/simd/sve_*.h), so fix the SVE vector length there.
+ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+ifneq ($(filter $(strip $(SIMD)),SVE SVE2),)
+SVE_VECTOR_BITS ?= 128
+OPTS += -msve-vector-bits=$(SVE_VECTOR_BITS)
+endif
+endif
 INCLUDES  += -I$(CURDIR)/$(SRC_DIR) -I$(CURDIR)/$(COMMON_DIR)
 VPATH     = $(SRC_DIR) $(COMMON_DIR) $(CUDA_DIR)
 ASM       = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.s,$(wildcard $(SRC_DIR)/*.c))
@@ -42,36 +51,99 @@ endef
 ifneq ($(VARIANT),)
 	.DEFAULT_GOAL := ${TARGET}-$(VARIANT)
     DEFINES += -DVARIANT=$(VARIANT)
+else
+    # The binary (the kernel-variant rule below would otherwise be the first target)
+    .DEFAULT_GOAL := $(TARGET)
 endif
 
-# Flags only for the SIMD force kernels, empty unless the toolchain defines them
-KERNEL_OBJ = $(addprefix $(BUILD_DIR)/,force_lj_4xn.o force_lj_2xnn.o force_lj_2xn.o)
-$(KERNEL_OBJ): CFLAGS += $(KERNEL_CFLAGS)
+# Kernel variants (src/common/kernel_variant.h): a template file is compiled once per
+# variant instead of once on its own, as <file>.<variant>.o. A variant is the LJ rule
+# (single, geom, matrix) and options, joined by '-', each one adds the flags below.
+VARIANT_FLAGS_single     = -DLJ_COMB_RULE=0
+VARIANT_FLAGS_geom       = -DLJ_COMB_RULE=1
+VARIANT_FLAGS_matrix     = -DLJ_COMB_RULE=2
+VARIANT_FLAGS_accurate   = -DACCURATE_RECIPROCAL
+VARIANT_FLAGS_noprefetch = -DKERNEL_NO_PREFETCH
+VARIANT_FLAGS_excl       = -DKERNEL_EXCLUSIONS
+VARIANT_FLAGS_rsq        = -DLJ_TABLE_RSQ
 
-${TARGET}: $(BUILD_DIR) .clangd $(OBJ) $(SRC_DIR)/main.c
+RULES          = single geom matrix
+RULES_EXCL     = $(foreach r,$(RULES),$(r) $(r)-excl)
+RULES_ACCURATE = $(foreach r,$(RULES),$(r) $(r)-accurate)
+# Rule x --lj-table-index
+RULES_TABLE    = $(foreach r,$(RULES),$(r) $(r)-rsq)
+# Rule x --accurate-recip x --no-prefetch x exclusions
+RULES_SIMD     = $(foreach e,$(RULES_ACCURATE),$(foreach p,$(e) $(e)-noprefetch,$(p) $(p)-excl))
+
+# The template files of the scheme and their variants (none: the file is not used)
+ifeq ($(strip $(OPT_SCHEME)),clusterpair)
+TEMPLATE_FILES          = neighbor_build force_lj force_lj_table force_lj_4xn force_lj_2xnn force_lj_2xn
+VARIANTS_neighbor_build = $(RULES)
+VARIANTS_force_lj       = $(RULES)
+VARIANTS_force_lj_table = $(RULES_TABLE)
+ifneq ($(strip $(USE_REFERENCE_KERNEL)),true)
+VARIANTS_force_lj_4xn   = $(RULES_SIMD)
+VARIANTS_force_lj_2xnn  = $(RULES_SIMD)
+VARIANTS_force_lj_2xn   = $(RULES_SIMD)
+endif
+else
+TEMPLATE_FILES          = neighbor_build force_lj force_lj_table force_eam force_lj_simd
+VARIANTS_neighbor_build = $(RULES)
+VARIANTS_force_lj       = $(RULES_EXCL)
+VARIANTS_force_lj_table = $(RULES_TABLE)
+VARIANTS_force_eam      = $(RULES)
+# Empty without a SIMD header (HAVE_SIMD_FORCE in force.h), --force-simd picks it
+VARIANTS_force_lj_simd  = $(RULES_ACCURATE)
+endif
+
+VARIANT_OBJ = $(foreach f,$(TEMPLATE_FILES),$(foreach v,$(VARIANTS_$(f)),$(BUILD_DIR)/$(f).$(v).o))
+OBJ        := $(filter-out $(TEMPLATE_FILES:%=$(BUILD_DIR)/%.o),$(OBJ)) $(VARIANT_OBJ)
+# Flags of a variant: $(call variant_flags,<file>.<variant>)
+variant_flags = $(foreach o,$(subst -, ,$(subst .,,$(suffix $(1)))),$(VARIANT_FLAGS_$(o)))
+
+# Extra flags of the toolchain for the SIMD force kernels (KERNEL_CFLAGS)
+$(filter $(addprefix $(BUILD_DIR)/,$(addsuffix .%,force_lj_4xn force_lj_2xnn force_lj_2xn)),$(VARIANT_OBJ)): CFLAGS += $(KERNEL_CFLAGS)
+
+.SECONDEXPANSION:
+$(VARIANT_OBJ): $(BUILD_DIR)/%.o: $$(basename $$*).c $(MAKE_DIR)/include_$(TOOLCHAIN).mk $$(CONFIG_STAMP)
+	$(info ===>  COMPILE  $@)
+	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $(call variant_flags,$*) $< -o $@
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) $(call variant_flags,$*) -MT $@ -MM $< > $(@:.o=.d)
+
+# Rebuild everything when the compiler or any flag changes (options outside the binary tag)
+CONFIG_STAMP  = $(BUILD_DIR)/config.stamp
+CONFIG_STRING = $(CC) $(LINKER) $(CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) $(OPT_CFLAGS) $(ASFLAGS) $(LFLAGS) $(LIBS)
+ifeq ($(filter clean distclean cleanall format tags info print-target,$(MAKECMDGOALS)),)
+ifneq ($(strip $(CONFIG_STRING)),$(strip $(file <$(CONFIG_STAMP))))
+$(shell mkdir -p $(BUILD_DIR))
+$(file >$(CONFIG_STAMP),$(CONFIG_STRING))
+endif
+endif
+
+${TARGET}: $(BUILD_DIR) .clangd $(OBJ) $(SRC_DIR)/main.c $(CONFIG_STAMP)
 	@echo "===>  LINKING  $(TARGET)"
 	$(Q)${LINKER} $(CPPFLAGS) ${LFLAGS} -o $(TARGET) $(OBJ) $(SRC_DIR)/main.c $(LIBS)
 
-${TARGET}-%: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main-%.c
+${TARGET}-%: $(BUILD_DIR) $(OBJ) $(SRC_DIR)/main-%.c $(CONFIG_STAMP)
 	@echo "===>  LINKING  $(TARGET)-$* "
 	$(Q)${LINKER} $(CPPFLAGS) ${LFLAGS} -o $(TARGET)-$* $(OBJ) $(SRC_DIR)/main-$*.c $(LIBS)
 
-$(BUILD_DIR)/%.o:  %.c $(MAKE_DIR)/include_$(TOOLCHAIN).mk
+$(BUILD_DIR)/%.o:  %.c $(MAKE_DIR)/include_$(TOOLCHAIN).mk $(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
 	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -MT $@ -MM  $< > $(BUILD_DIR)/$*.d
 
 ifeq ($(strip $(TOOLCHAIN)),NVCC)
-$(BUILD_DIR)/%.o:  %.cu
+$(BUILD_DIR)/%.o:  %.cu $(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
 	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $(OPT_CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) $(OPT_CFLAGS) -MT $@ -MM  $< > $(BUILD_DIR)/$*.d
 endif
 
 ifeq ($(strip $(TOOLCHAIN)),HIPCC)
-$(BUILD_DIR)/%.o:  $(BUILD_DIR)/%.hip
+$(BUILD_DIR)/%.o:  $(BUILD_DIR)/%.hip $(CONFIG_STAMP)
 	$(info ===>  COMPILE  $@)
-	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $< -o $@
+	$(Q)$(CC) -c $(CPPFLAGS) $(CFLAGS) $(HIP_DEVICE_CFLAGS) $< -o $@
 	$(Q)$(CC) $(CPPFLAGS) -MT $@ -MM  $< > $(BUILD_DIR)/$*.d
 endif
 
@@ -79,7 +151,7 @@ $(BUILD_DIR)/%.hip: %.cu
 	$(info ===>  GENERATE HIP  $@)
 	$(Q)hipify-perl $< > $@
 
-$(BUILD_DIR)/%.s:  %.c
+$(BUILD_DIR)/%.s:  %.c $(CONFIG_STAMP)
 	$(info ===>  GENERATE ASM  $@)
 	$(Q)$(CC) -S $(ASFLAGS) $(CPPFLAGS) $(CFLAGS) $< -o $@
 
@@ -87,7 +159,7 @@ $(BUILD_DIR)/%.o:  %.s
 	$(info ===>  ASSEMBLE  $@)
 	$(Q)$(AS) $< -o $@
 
-.PHONY: clean distclean cleanall tags format info asm sass test mdbench-tests
+.PHONY: clean distclean cleanall tags format info print-target asm sass test mdbench-tests
 
 clean:
 	$(info ===>  CLEAN)
@@ -107,6 +179,10 @@ distclean: clean
 info:
 	$(info $(CFLAGS))
 	$(Q)$(CC) $(VERSION)
+
+# Path of the binary of a configuration, for scripts: make -s <options> print-target
+print-target:
+	@echo $(abspath $(TARGET))
 
 asm:  $(BUILD_DIR) $(ASM)
 
@@ -177,7 +253,7 @@ test: $(TEST_BIN) $(TARGET)
 	@echo "===>  RUNNING  regression_scheme_equiv (geometric)"
 	@bash tests/regression_scheme_equiv.sh
 	@echo "===>  RUNNING  regression_scheme_equiv (single)"
-	@LJ_COMB_RULE=single bash tests/regression_scheme_equiv.sh
+	@LJ_COMB=single bash tests/regression_scheme_equiv.sh
 	@echo "===>  RUNNING  test_simd_vs_scalar"
 	@bash tests/test_simd_vs_scalar.sh
 	@echo "===>  RUNNING  test_half_neigh"
@@ -194,6 +270,8 @@ test: $(TEST_BIN) $(TARGET)
 	@bash tests/test_main_stub.sh
 	@echo "===>  RUNNING  test_coulomb_exclusions"
 	@bash tests/test_coulomb_exclusions.sh
+	@echo "===>  RUNNING  test_mpi_gmxbench"
+	@bash tests/test_mpi_gmxbench.sh
 	@echo "===>  RUNNING  test_halfshell"
 	@bash tests/test_halfshell.sh
 
@@ -202,13 +280,21 @@ TEST_CP_SRCS     := $(SRC_ROOT)/clusterpair/atom.c $(SRC_ROOT)/clusterpair/neigh
 
 TEST_HEADERS     := $(wildcard $(SRC_ROOT)/clusterpair/*.h $(COMMON_DIR)/*.h $(COMMON_DIR)/simd/*.h)
 
-$(TEST_BIN): tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS) $(TEST_HEADERS)
+# The cluster-pair neighbor-list build variants (one per LJ rule) for the unit tests
+TEST_BUILD_DIR    = $(BUILD_DIR)/tests
+TEST_NEIGHBOR_OBJ = $(RULES:%=$(TEST_BUILD_DIR)/neighbor_build.%.o)
+$(TEST_NEIGHBOR_OBJ): $(TEST_BUILD_DIR)/neighbor_build.%.o: $(SRC_ROOT)/clusterpair/neighbor_build.c $(TEST_HEADERS) $(CONFIG_STAMP)
+	@mkdir -p $(TEST_BUILD_DIR)
+	$(Q)$(CC) -c -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) -DCLUSTER_PAIR -DCLUSTERPAIR_KERNEL_AUTO \
+		$(VARIANT_FLAGS_$*) $< -o $@
+
+$(TEST_BIN): $(CONFIG_STAMP) $(TEST_NEIGHBOR_OBJ) tests/main.c tests/test_runner.h tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c tests/test_integrate.c tests/test_box.c tests/test_thermo.c $(TEST_COMMON_SRCS) $(TEST_CP_SRCS) $(TEST_HEADERS)
 	@mkdir -p $(dir $(TEST_BIN))
 	@echo "===>  BUILDING $(TEST_BIN)"
 	$(Q)$(CC) -I$(CURDIR)/src/clusterpair -I$(CURDIR)/src/common $(CPPFLAGS) $(CFLAGS) -DCLUSTER_PAIR -DCLUSTERPAIR_KERNEL_AUTO \
 		tests/main.c tests/test_parameter.c tests/test_atom.c tests/test_force.c tests/test_neighbor.c \
 		tests/test_integrate.c tests/test_box.c tests/test_thermo.c \
-		$(TEST_COMMON_SRCS) $(TEST_CP_SRCS) \
+		$(TEST_COMMON_SRCS) $(TEST_CP_SRCS) $(TEST_NEIGHBOR_OBJ) \
 		-lm -o $(TEST_BIN)
 
 $(BUILD_DIR):

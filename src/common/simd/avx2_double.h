@@ -205,9 +205,10 @@ static inline MD_SIMD_INT simd_i32_add(MD_SIMD_INT a, MD_SIMD_INT b)
 {
     return _mm_add_epi32(a, b);
 }
+// Low 32 bits of the four products (_mm_mul_epi32 multiplies only lanes 0 and 2)
 static inline MD_SIMD_INT simd_i32_mul(MD_SIMD_INT a, MD_SIMD_INT b)
 {
-    return _mm_mul_epi32(a, b);
+    return _mm_mullo_epi32(a, b);
 }
 static inline MD_SIMD_INT simd_i32_load(const int* m)
 {

@@ -5,9 +5,12 @@
  * license that can be found in the LICENSE file.
  */
 
+// Data and helpers shared by the GPU cluster-pair kernels (gpusimple and supercluster)
 #ifndef __FORCE_LJ_CUDA_COMMON_H_
 #define __FORCE_LJ_CUDA_COMMON_H_
 
+#include <energy_gpu.h>
+#include <kernel_select_gpu.h>
 #include <pair_cuda.h>
 
 #ifdef __HIP_PLATFORM_AMD__
@@ -32,18 +35,19 @@
 #define SHFL_UP_ROW(x, n)   SHFL_UP(x, n)
 #endif
 
-#ifndef GPU_J_SLICES
-#error "GPU_J_SLICES is not defined"
-#endif
-
-// Per-atom parameters
+// Per-atom parameters of the optimized kernels
 typedef struct __align__(4 * sizeof(MD_FLOAT)) {
     MD_FLOAT sqrt_epsilon; // geometric rule
     MD_FLOAT sigma3;       // geometric rule
-    int mol;               // exclusions
-    int type;              // full rule
+    int mol;               // molecule with exclusions, else 0; -1 marks a padding slot
+    int type;              // matrix rule
 } AtomParam;
 
+// Both slots hold atoms (padding slots have mol -1, see packAtomsCuda)
+static __device__ __forceinline__ bool realPair(const AtomParam& pi, const AtomParam& pj)
+{
+    return (pi.mol | pj.mol) >= 0;
+}
 
 extern "C" {
 extern MD_FLOAT* cuda_cl_x;
@@ -63,10 +67,11 @@ extern MD_FLOAT* cuda_cl_sqrt_epsilon;
 extern MD_FLOAT* cuda_cl_sigma3;
 extern MD_FLOAT* cuda_cl_q;
 extern int* cuda_cl_mol;
+extern int* cuda_cl_id;
 extern MD_FLOAT* cuda_cutforcesq;
 extern MD_FLOAT* cuda_sigma6;
 extern MD_FLOAT* cuda_epsilon;
-// Packed data 
+// Packed data
 extern MD_FLOAT4* cuda_cl_xq;
 extern AtomParam* cuda_cl_par;
 extern MD_FLOAT4* cuda_nbfp;
@@ -84,49 +89,91 @@ typedef struct {
     const int* cj;       // gpusimple
     const int2* cj_mask; // super-cluster: {cj, mask}
     int maxneighs;
-    // LJ parameters
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    // LJ parameters: single rule (cutforcesq also for the geometric rule) and the
+    // {cutforcesq, sigma6, epsilon} type-pair table of the matrix rule
     MD_FLOAT cutforcesq, sigma6, epsilon;
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-    MD_FLOAT cutforcesq;
-#else
     const MD_FLOAT4* nbfp;
     int ntypes;
-#endif
     CoulombScalar cs;
+    double* energies; // -energy sums, NULL without
 } NbForceArgs;
 
 NbForceArgs makeNbForceArgs(Parameter* param, Atom* atom, Neighbor* neighbor);
 
 typedef struct {
-    MD_FLOAT cutforcesq; 
-    MD_FLOAT sigma6; 
+    MD_FLOAT cutforcesq;
+    MD_FLOAT sigma6;
     MD_FLOAT epsilon;
 } LjPair;
 
+// LJ parameters of a pair for the combination rule RULE
+template <int RULE>
 static __device__ __forceinline__ LjPair ljPair(
     const NbForceArgs& nb, const AtomParam& pi, const AtomParam& pj)
 {
     LjPair p;
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-    p.cutforcesq = nb.cutforcesq;
-    p.sigma6     = nb.sigma6;
-    p.epsilon    = nb.epsilon;
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-    p.cutforcesq = nb.cutforcesq;
-    p.sigma6     = pi.sigma3 * pj.sigma3;
-    p.epsilon    = pi.sqrt_epsilon * pj.sqrt_epsilon;
-#else
-    const MD_FLOAT4 t = nb.nbfp[pi.type * nb.ntypes + pj.type];
-    p.cutforcesq      = t.x;
-    p.sigma6          = t.y;
-    p.epsilon         = t.z;
-#endif
+    if constexpr (RULE == LJ_COMB_SINGLE) {
+        p.cutforcesq = nb.cutforcesq;
+        p.sigma6     = nb.sigma6;
+        p.epsilon    = nb.epsilon;
+    } else if constexpr (RULE == LJ_COMB_GEOM) {
+        p.cutforcesq = nb.cutforcesq;
+        p.sigma6     = pi.sigma3 * pj.sigma3;
+        p.epsilon    = pi.sqrt_epsilon * pj.sqrt_epsilon;
+    } else {
+        const MD_FLOAT4 t = nb.nbfp[pi.type * nb.ntypes + pj.type];
+        p.cutforcesq      = t.x;
+        p.sigma6          = t.y;
+        p.epsilon         = t.z;
+    }
     return p;
 }
 
+// Force (and with ENERGY the energies added to vlj/vc) of a pair inside the cut-off,
+// qi already includes epsfac
+template <bool ENERGY, bool EXCL, bool ACCURATE>
+static __device__ __forceinline__ MD_FLOAT pairForceCuda(MD_FLOAT rsq,
+    const LjPair& p,
+    MD_FLOAT qi,
+    MD_FLOAT qj,
+    int mol_i,
+    int mol_j,
+    const CoulombScalar& cs,
+    double& vlj,
+    double& vc)
+{
+    if constexpr (ENERGY) {
+        MD_FLOAT e_lj, e_c;
+        pairEnergyScalarAcc(rsq,
+            p.sigma6,
+            p.epsilon,
+            qi,
+            qj,
+            mol_i,
+            mol_j,
+            EXCL,
+            ACCURATE,
+            cs,
+            &e_lj,
+            &e_c);
+        vlj += e_lj;
+        vc += e_c;
+    }
+    return pairForceScalarAcc(rsq,
+        p.sigma6,
+        p.epsilon,
+        qi,
+        qj,
+        mol_i,
+        mol_j,
+        EXCL,
+        ACCURATE,
+        cs);
+}
+
 // Adds fj summed over the 8 lanes cii to atom j of f; lanes cii = 0, 1, 2 add x, y, z
-static __device__ __forceinline__ void addForceJ(MD_FLOAT* f, int j, MD_FLOAT3 fj, int cii)
+static __device__ __forceinline__ void addForceJ(
+    MD_FLOAT* f, int j, MD_FLOAT3 fj, int cii)
 {
     fj.x += SHFL_DOWN_ROW(fj.x, 1);
     fj.y += SHFL_UP_ROW(fj.y, 1);
@@ -151,7 +198,8 @@ static __device__ __forceinline__ void addForceJ(MD_FLOAT* f, int j, MD_FLOAT3 f
 }
 
 // Adds fi summed over the 8 lanes cjj to atom i of f
-static __device__ __forceinline__ void addForceI(MD_FLOAT* f, int i, MD_FLOAT3 fi, int cjj)
+static __device__ __forceinline__ void addForceI(
+    MD_FLOAT* f, int i, MD_FLOAT3 fi, int cjj)
 {
     fi.x += SHFL_DOWN(fi.x, CLUSTER_M);
     fi.y += SHFL_UP(fi.y, CLUSTER_M);
@@ -169,7 +217,8 @@ static __device__ __forceinline__ void addForceI(MD_FLOAT* f, int i, MD_FLOAT3 f
     }
 
 #ifdef __HIP_PLATFORM_AMD__
-    // AMD wave64: add the cjj 4-7 half to cjj 0-3 within the wavefront
+    // AMD wave64: add the cjj 4-7 half to cjj 0-3 within the wavefront. Wave32 (RDNA,
+    // e.g. gfx1030) holds the halves in two wavefronts, so it takes the generic path
     if (warpSize == 64) {
         fi.x += SHFL_DOWN(fi.x, 4 * CLUSTER_M);
         if (cjj < 3) {
@@ -178,13 +227,12 @@ static __device__ __forceinline__ void addForceI(MD_FLOAT* f, int i, MD_FLOAT3 f
         return;
     }
 #endif
-    // One atomic per 32-lane half (NVIDIA, AMD wave32)
     if ((cjj & 3) < 3) {
         atomicAdd(&f[i * 3 + (cjj & 3)], fi.x);
     }
 }
 
-extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par);
+extern "C" void launchPackAtomsCuda(Parameter* param, Atom* atom, int pack_par);
 extern "C" int chooseJSlicesK(
     const Atom* atom, const Neighbor* neighbor, double k_slice, const void* kernel);
 

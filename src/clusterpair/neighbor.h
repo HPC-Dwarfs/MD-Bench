@@ -77,6 +77,8 @@ typedef struct {
     int* numNeighShell;
     int* neighshell;
     int* listshell;
+    // LJ combination rule: the variant of the list build (per-type or global cut-off)
+    int lj_comb_rule;
 } Neighbor;
 
 typedef void (*BuildNeighborFunction)(Atom*, Neighbor*);
@@ -103,7 +105,8 @@ extern void updateSingleAtoms(Parameter*, Atom*);
 #ifdef __cplusplus
 extern "C"
 #endif
-    extern void growNeighborCUDA(Atom*, Neighbor*);
+    extern void
+    growNeighborCUDA(Atom*, Neighbor*);
 #endif
 
 #endif

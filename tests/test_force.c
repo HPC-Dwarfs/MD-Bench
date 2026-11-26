@@ -169,19 +169,16 @@ static double analytic_fpair(double r, double epsilon, double sigma6)
     return 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
 }
 
-/* Replicate the kernel table lookup. Works for both index modes: the kernels
- * use LJ_TABLE_COORD(rsq), i.e. sqrt(rsq)=r for r-indexed and rsq for rsq. */
+// Index variable of the tables built by the tests (--lj-table-index)
+static int test_table_index = LJ_TABLE_INDEX_RSQ;
+
+// Replicate the kernel table lookup, the coordinate is r or r^2 (ljtable.index)
 static double table_fpair(double r, double epsilon, double sigma6)
 {
-    double coord;
-#ifdef LJ_TABLE_RSQ
-    coord = r * r;
-#else
-    coord = r;
-#endif
-    double u = coord * (double)ljtable.inv_h;
-    int m    = (int)u;
-    int nm1  = ljtable.n - 1;
+    double coord = ljtable.index == LJ_TABLE_INDEX_RSQ ? r * r : r;
+    double u     = coord * (double)ljtable.inv_h;
+    int m        = (int)u;
+    int nm1      = ljtable.n - 1;
     if (m > nm1) m = nm1;
     double eps         = u - (double)m;
     const MD_FLOAT* cc = &ljtable.coeff[m * LJ_TABLE_STRIDE];
@@ -196,6 +193,7 @@ static void build_test_table(double cut, int points)
     memset(&param, 0, sizeof(param));
     param.cutforce        = (MD_FLOAT)cut;
     param.lj_table_points = points;
+    param.lj_table_index  = test_table_index;
     initLJTable(&param);
 }
 
@@ -210,11 +208,8 @@ static int test_lj_table_knot_exactness(void)
     const double sigma6  = 1.0;
 
     for (int m = 400; m <= 960; m += 40) {
-#ifdef LJ_TABLE_RSQ
-        double r = sqrt(m * (double)ljtable.h);
-#else
-        double r = m * (double)ljtable.h;
-#endif
+        double x = m * (double)ljtable.h;
+        double r = ljtable.index == LJ_TABLE_INDEX_RSQ ? sqrt(x) : x;
         if (r < 0.9) continue; /* skip the steep, physically-unreached inner region */
         double ftab = table_fpair(r, epsilon, sigma6);
         double fana = analytic_fpair(r, epsilon, sigma6);
@@ -297,21 +292,29 @@ int run_force_tests(void)
     rc = test_lj_geom_combination_formula();
     if (rc) return rc;
 
-    tr_log("  force: tabulated LJ knot exactness");
-    rc = test_lj_table_knot_exactness();
-    if (rc) return rc;
+    // The tabulated LJ tests for both index variables
+    const int indices[] = { LJ_TABLE_INDEX_R, LJ_TABLE_INDEX_RSQ };
+    for (int k = 0; k < 2; k++) {
+        test_table_index = indices[k];
+        tr_log(test_table_index == LJ_TABLE_INDEX_RSQ ? "  force: tabulated LJ, rsq index"
+                                                      : "  force: tabulated LJ, r index");
 
-    tr_log("  force: tabulated LJ interpolation accuracy");
-    rc = test_lj_table_interp_accuracy();
-    if (rc) return rc;
+        tr_log("  force: tabulated LJ knot exactness");
+        rc = test_lj_table_knot_exactness();
+        if (rc) return rc;
 
-    tr_log("  force: tabulated LJ prefactor decomposition");
-    rc = test_lj_table_prefactor_decomposition();
-    if (rc) return rc;
+        tr_log("  force: tabulated LJ interpolation accuracy");
+        rc = test_lj_table_interp_accuracy();
+        if (rc) return rc;
 
-    tr_log("  force: tabulated LJ force at minimum");
-    rc = test_lj_table_force_at_minimum();
-    if (rc) return rc;
+        tr_log("  force: tabulated LJ prefactor decomposition");
+        rc = test_lj_table_prefactor_decomposition();
+        if (rc) return rc;
+
+        tr_log("  force: tabulated LJ force at minimum");
+        rc = test_lj_table_force_at_minimum();
+        if (rc) return rc;
+    }
 
     return 0;
 }

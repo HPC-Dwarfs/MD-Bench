@@ -19,7 +19,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="${ROOT_DIR}/tests/gromacs_nonbonded"
 
 TOOLCHAIN="${TOOLCHAIN:-GCC}"
-ISA="${ISA:-X86}"
 SIMD="${SIMD:-AVX2}"
 PYTHON="${PYTHON:-python3}"
 
@@ -32,12 +31,6 @@ cd "${ROOT_DIR}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/mdbench_halfshell.XXXXXX")"
 trap 'rm -rf "${WORK}"' EXIT
 
-if [ "${SIMD}" = "NONE" ]; then
-  TOOL_TAG="${TOOLCHAIN}-${ISA}"
-else
-  TOOL_TAG="${TOOLCHAIN}-${ISA}-${SIMD}"
-fi
-
 status=0
 # kernel:data type:tolerance (rms error relative to the rms force)
 CONFIGS=("4xN:DP:1e-9")
@@ -47,10 +40,10 @@ case "${SIMD}" in
 esac
 for config in "${CONFIGS[@]}"; do
   IFS=: read -r kernel dtype tol <<<"${config}"
-  make TOOLCHAIN="${TOOLCHAIN}" ISA="${ISA}" SIMD="${SIMD}" DATA_TYPE="${dtype}" \
-       OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}" ACCURATE_RECIPROCAL=true \
-       >/dev/null
-  bin="./MDBench-CP-${kernel}-${TOOL_TAG}-${dtype}-geometric-accrecip"
+  cfg=(TOOLCHAIN="${TOOLCHAIN}" SIMD="${SIMD}" DATA_TYPE="${dtype}"
+       OPT_SCHEME=clusterpair CLUSTER_PAIR_KERNEL="${kernel}")
+  make "${cfg[@]}" >/dev/null
+  bin="$(make -s "${cfg[@]}" print-target)"
   for case in argon gmx; do
     if [ "${case}" = "argon" ]; then
       args=(-i data/argon/input.gro -p data/argon/mdbench_params.conf)
@@ -58,7 +51,7 @@ for config in "${CONFIGS[@]}"; do
       args=(-gmxbench -size 1)
     fi
     for half in 0 1; do
-      OMP_NUM_THREADS=1 "${bin}" "${args[@]}" -half "${half}" --kernel-bench 1 \
+      OMP_NUM_THREADS=1 "${bin}" "${args[@]}" -half "${half}" --kernel-bench 1 --accurate-recip \
           --dump-forces "${WORK}/f_${half}.txt" >/dev/null
     done
     if ! "${PYTHON}" "${DIR}/compare_forces.py" "${WORK}/f_0.txt" "${WORK}/f_1.txt" \

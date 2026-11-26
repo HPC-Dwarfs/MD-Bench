@@ -39,12 +39,16 @@ int* cuda_border_map;
 int* cuda_jclusters_natoms;
 int *cuda_PBCx, *cuda_PBCy, *cuda_PBCz;
 
-
+// LJ data of the combination rules: allocated for every rule (--lj-comb is a runtime
+// option), copied only for the active one
 int* cuda_cl_t;
 MD_FLOAT* cuda_cl_sqrt_epsilon;
 MD_FLOAT* cuda_cl_sigma3;
+// Charges (only with electrostatics), molecules (copied when the system has molecules)
+// and atom ids (negative for padding slots)
 MD_FLOAT* cuda_cl_q;
 int* cuda_cl_mol;
+int* cuda_cl_id;
 
 MD_FLOAT* cuda_cutforcesq;
 MD_FLOAT* cuda_sigma6;
@@ -55,17 +59,20 @@ AtomParam* cuda_cl_par;
 MD_FLOAT4* cuda_nbfp;
 }
 
-// Packs cuda_cl_xq and cuda_cl_par 
+// Packs cuda_cl_xq and, with pack_par, cuda_cl_par for the combination rule rule
 __global__ void packAtomsCuda(const MD_FLOAT* cuda_cl_x,
     const MD_FLOAT* cuda_cl_q,
     const MD_FLOAT* cuda_cl_sqrt_epsilon,
     const MD_FLOAT* cuda_cl_sigma3,
     const int* cuda_cl_mol,
+    const int* cuda_cl_id,
     const int* cuda_cl_t,
     MD_FLOAT4* xq,
     AtomParam* par,
     int nslots,
-    int pack_par)
+    int pack_par,
+    int rule,
+    int excl)
 {
     const int a = blockIdx.x * blockDim.x + threadIdx.x;
     if (a >= nslots) {
@@ -83,19 +90,19 @@ __global__ void packAtomsCuda(const MD_FLOAT* cuda_cl_x,
 
     if (pack_par) {
         AtomParam p = {};
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-        p.sqrt_epsilon = cuda_cl_sqrt_epsilon[a];
-        p.sigma3       = cuda_cl_sigma3[a];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
-        p.type = cuda_cl_t[a];
-#endif
-        p.mol  = moleculeCuda(cuda_cl_mol, a);
+        if (rule == LJ_COMB_GEOM) {
+            p.sqrt_epsilon = cuda_cl_sqrt_epsilon[a];
+            p.sigma3       = cuda_cl_sigma3[a];
+        } else if (rule == LJ_COMB_MATRIX) {
+            p.type = cuda_cl_t[a];
+        }
+        p.mol  = cuda_cl_id[a] < 0 ? -1 : (excl ? cuda_cl_mol[a] : 0);
         par[a] = p;
     }
 }
 
 // Packs all local and ghost atom slots
-extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par)
+extern "C" void launchPackAtomsCuda(Parameter* param, Atom* atom, int pack_par)
 {
     const int nslots = (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_N;
     if (nslots == 0) {
@@ -106,11 +113,14 @@ extern "C" void launchPackAtomsCuda(Atom* atom, int pack_par)
         cuda_cl_sqrt_epsilon,
         cuda_cl_sigma3,
         cuda_cl_mol,
+        cuda_cl_id,
         cuda_cl_t,
         cuda_cl_xq,
         cuda_cl_par,
         nslots,
-        pack_par);
+        pack_par,
+        param->lj_comb_rule,
+        atom->molsize > 1);
     cuda_assert("packAtomsCuda", cudaPeekAtLastError());
 }
 
@@ -126,17 +136,13 @@ NbForceArgs makeNbForceArgs(Parameter* param, Atom* atom, Neighbor* neighbor)
     nb.cj              = cuda_neighbors;
     nb.cj_mask         = NULL;
     nb.maxneighs       = neighbor->maxneighs;
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-    nb.cutforcesq = param->cutforce * param->cutforce;
-    nb.sigma6     = param->sigma6;
-    nb.epsilon    = param->epsilon;
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-    nb.cutforcesq = param->cutforce * param->cutforce;
-#else
-    nb.nbfp   = cuda_nbfp;
-    nb.ntypes = atom->ntypes;
-#endif
-    nb.cs = coulombScalarInit(param);
+    nb.cutforcesq      = param->cutforce * param->cutforce;
+    nb.sigma6          = param->sigma6;
+    nb.epsilon         = param->epsilon;
+    nb.nbfp            = cuda_nbfp;
+    nb.ntypes          = atom->ntypes;
+    nb.cs              = coulombScalarInit(param);
+    nb.energies        = NULL;
     return nb;
 }
 
@@ -148,37 +154,27 @@ extern "C" void initDevice(Parameter* param, Atom* atom, Neighbor* neighbor)
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
     cuda_cl_f = (MD_FLOAT*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT));
-#if LJ_COMB_RULE == LJ_COMB_FULL
     cuda_cl_t = (int*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
-#endif
-#if LJ_COMB_RULE == LJ_COMB_GEOM
     cuda_cl_sqrt_epsilon = (MD_FLOAT*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
     cuda_cl_sigma3 = (MD_FLOAT*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
-#endif
-#if LJ_COMB_RULE == LJ_COMB_FULL
-    // cutforcesq, sigma6 and epsilon per type pair
+    // cutforcesq, sigma6 and epsilon per type pair: separate arrays for the reference
+    // kernels, packed {cutforcesq, sigma6, epsilon} for the optimized ones
     const int ntypes2 = atom->ntypes * atom->ntypes;
-    if (param->ref_kernel) {
-        // Separate arrays for the reference kernels
-        cuda_cutforcesq = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
-        cuda_sigma6     = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
-        cuda_epsilon    = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
-    } else {
-        // Packed {cutforcesq, sigma6, epsilon} for the optimized kernels
-        cuda_nbfp = (MD_FLOAT4*)allocateGPU(ntypes2 * sizeof(MD_FLOAT4));
-    }
-#endif
+    cuda_cutforcesq   = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
+    cuda_sigma6       = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
+    cuda_epsilon      = (MD_FLOAT*)allocateGPU(ntypes2 * sizeof(MD_FLOAT));
+    cuda_nbfp         = (MD_FLOAT4*)allocateGPU(ntypes2 * sizeof(MD_FLOAT4));
 #if COULOMB_RULE != COULOMB_NONE
     cuda_cl_q = (MD_FLOAT*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 #endif
-#if USE_EXCLUSIONS
     cuda_cl_mol = (int*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
-#endif
+    cuda_cl_id = (int*)allocateGPU(
+        atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
     cuda_cl_xq = (MD_FLOAT4*)allocateGPU(
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT4));
     cuda_cl_par = (AtomParam*)allocateGPU(
@@ -213,19 +209,17 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 *
             sizeof(MD_FLOAT));
 
-#if LJ_COMB_RULE == LJ_COMB_FULL
-    memcpyToGPU(cuda_cl_t,
-        atom->cl_t,
-        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
-            sizeof(int));
+    if (param->lj_comb_rule == LJ_COMB_MATRIX) {
+        memcpyToGPU(cuda_cl_t,
+            atom->cl_t,
+            (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+                sizeof(int));
 
-    // cutforcesq, sigma6 and epsilon per type pair
-    const int ntypes2 = atom->ntypes * atom->ntypes;
-    if (param->ref_kernel) {
+        // cutforcesq, sigma6 and epsilon per type pair
+        const int ntypes2 = atom->ntypes * atom->ntypes;
         memcpyToGPU(cuda_cutforcesq, atom->cutforcesq, ntypes2 * sizeof(MD_FLOAT));
         memcpyToGPU(cuda_sigma6, atom->sigma6, ntypes2 * sizeof(MD_FLOAT));
         memcpyToGPU(cuda_epsilon, atom->epsilon, ntypes2 * sizeof(MD_FLOAT));
-    } else {
         MD_FLOAT4* nbfp = (MD_FLOAT4*)malloc(ntypes2 * sizeof(MD_FLOAT4));
         for (int t = 0; t < ntypes2; t++) {
             nbfp[t].x = atom->cutforcesq[t];
@@ -236,30 +230,33 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         memcpyToGPU(cuda_nbfp, nbfp, ntypes2 * sizeof(MD_FLOAT4));
         free(nbfp);
     }
-#endif
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-    memcpyToGPU(cuda_cl_sqrt_epsilon,
-        atom->cl_sqrt_epsilon,
-        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
-            sizeof(MD_FLOAT));
-    memcpyToGPU(cuda_cl_sigma3,
-        atom->cl_sigma3,
-        (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
-            sizeof(MD_FLOAT));
-#endif
+    if (param->lj_comb_rule == LJ_COMB_GEOM) {
+        memcpyToGPU(cuda_cl_sqrt_epsilon,
+            atom->cl_sqrt_epsilon,
+            (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+                sizeof(MD_FLOAT));
+        memcpyToGPU(cuda_cl_sigma3,
+            atom->cl_sigma3,
+            (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+                sizeof(MD_FLOAT));
+    }
 #if COULOMB_RULE != COULOMB_NONE
     memcpyToGPU(cuda_cl_q,
         atom->cl_q,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
             sizeof(MD_FLOAT));
 #endif
-#if USE_EXCLUSIONS
-    memcpyToGPU(cuda_cl_mol,
-        atom->cl_mol,
+    if (atom->molsize > 1) {
+        memcpyToGPU(cuda_cl_mol,
+            atom->cl_mol,
+            (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
+                sizeof(int));
+    }
+    memcpyToGPU(cuda_cl_id,
+        atom->cl_id,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *
             sizeof(int));
-#endif
-    launchPackAtomsCuda(atom, 1);
+    launchPackAtomsCuda(param, atom, 1);
 
     for (int ci = 0; ci < atom->Nclusters_local * SCLUSTER_SIZE; ci++) {
         natoms[ci] = atom->iclusters[ci].natoms;
@@ -317,28 +314,18 @@ extern "C" void cudaDeviceFree(Parameter* param)
     GPUfree(cuda_cl_x);
     GPUfree(cuda_cl_v);
     GPUfree(cuda_cl_f);
-#if LJ_COMB_RULE == LJ_COMB_FULL
     GPUfree(cuda_cl_t);
-#endif
-#if LJ_COMB_RULE == LJ_COMB_GEOM
     GPUfree(cuda_cl_sqrt_epsilon);
     GPUfree(cuda_cl_sigma3);
-#endif
-#if LJ_COMB_RULE == LJ_COMB_FULL
-    if (param->ref_kernel) {
-        GPUfree(cuda_cutforcesq);
-        GPUfree(cuda_sigma6);
-        GPUfree(cuda_epsilon);
-    } else {
-        GPUfree(cuda_nbfp);
-    }
-#endif
+    GPUfree(cuda_cutforcesq);
+    GPUfree(cuda_sigma6);
+    GPUfree(cuda_epsilon);
+    GPUfree(cuda_nbfp);
 #if COULOMB_RULE != COULOMB_NONE
     GPUfree(cuda_cl_q);
 #endif
-#if USE_EXCLUSIONS
     GPUfree(cuda_cl_mol);
-#endif
+    GPUfree(cuda_cl_id);
     GPUfree(cuda_cl_xq);
     GPUfree(cuda_cl_par);
     GPUfree(cuda_numneigh);
@@ -415,24 +402,20 @@ extern "C" void growClustersCUDA(Atom* atom)
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
         ngatoms = (int*)allocateHostPinned(
             atom->Nclusters_max * SCLUSTER_SIZE * sizeof(int));
-#if LJ_COMB_RULE == LJ_COMB_FULL
         cuda_cl_t = (int*)reallocateGPU(cuda_cl_t,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
-#endif
-#if LJ_COMB_RULE == LJ_COMB_GEOM
         cuda_cl_sqrt_epsilon = (MD_FLOAT*)reallocateGPU(cuda_cl_sqrt_epsilon,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
         cuda_cl_sigma3       = (MD_FLOAT*)reallocateGPU(cuda_cl_sigma3,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
-#endif
 #if COULOMB_RULE != COULOMB_NONE
         cuda_cl_q = (MD_FLOAT*)reallocateGPU(cuda_cl_q,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT));
 #endif
-#if USE_EXCLUSIONS
         cuda_cl_mol = (int*)reallocateGPU(cuda_cl_mol,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
-#endif
+        cuda_cl_id  = (int*)reallocateGPU(cuda_cl_id,
+            atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(int));
         cuda_cl_xq  = (MD_FLOAT4*)reallocateGPU(cuda_cl_xq,
             atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * sizeof(MD_FLOAT4));
         cuda_cl_par = (AtomParam*)reallocateGPU(cuda_cl_par,
@@ -506,8 +489,9 @@ extern "C" int chooseJSlicesK(
     static int nsm = 0;
     if (nsm == 0) {
         int dev = 0;
-        cudaGetDevice(&dev);
-        cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev);
+        cuda_assert("cudaGetDevice", cudaGetDevice(&dev));
+        cuda_assert("cudaDeviceGetAttribute",
+            cudaDeviceGetAttribute(&nsm, cudaDevAttrMultiProcessorCount, dev));
     }
     const int blocks_per_sm = residentBlocksPerSM(kernel);
 

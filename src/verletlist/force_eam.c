@@ -10,13 +10,15 @@
 #include <allocate.h>
 #include <atom.h>
 #include <eam.h>
+#include <kernel_variant.h>
 #include <neighbor.h>
 #include <parameter.h>
 #include <stats.h>
 #include <timing.h>
 #include <util.h>
 
-double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
+double RULE_VARIANT_NAME(
+    computeForceEam)(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     if (eam.nmax < atom->Nmax) {
         eam.nmax = atom->Nmax;
@@ -222,9 +224,9 @@ double computeForceEam(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* 
                                          rhor_spline[m * 7 + 1]) *
                                          p +
                                      rhor_spline[m * 7 + 2];
-                    MD_FLOAT z2p   = (z2r_spline[m * 7 + 0] * p + z2r_spline[m * 7 + 1]) *
-                                         p +
-                                     z2r_spline[m * 7 + 2];
+                    MD_FLOAT z2p = (z2r_spline[m * 7 + 0] * p + z2r_spline[m * 7 + 1]) *
+                                       p +
+                                   z2r_spline[m * 7 + 2];
                     MD_FLOAT z2 = ((z2r_spline[m * 7 + 3] * p + z2r_spline[m * 7 + 4]) *
                                           p +
                                       z2r_spline[m * 7 + 5]) *

@@ -7,6 +7,7 @@
 #include <math.h>
 
 #include <atom.h>
+#include <kernel_variant.h>
 #include <likwid-marker.h>
 #include <ljtable.h>
 #include <neighbor.h>
@@ -21,7 +22,7 @@
 // the per-pair prefactors (epsilon*sigma^12) and (epsilon*sigma^6). See
 // src/common/ljtable.{h,c} for the table layout.
 
-double computeForceLJTableFullNeigh(
+double TABLE_VARIANT_NAME(computeForceLJTableFullNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTableFullNeigh begin\n");
@@ -87,7 +88,7 @@ double computeForceLJTableFullNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = sqrt_epsilon_ptr[i];
             const MD_FLOAT sigma3_i   = sigma3_ptr[i];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
             const int type_i = atom->type[i];
 #endif
 
@@ -102,7 +103,7 @@ double computeForceLJTableFullNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * sigma3_ptr[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * sqrt_epsilon_ptr[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -142,7 +143,7 @@ double computeForceLJTableFullNeigh(
     return timeStop - timeStart;
 }
 
-double computeForceLJTableHalfNeigh(
+double TABLE_VARIANT_NAME(computeForceLJTableHalfNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTableHalfNeigh begin\n");
@@ -207,7 +208,7 @@ double computeForceLJTableHalfNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = sqrt_epsilon_ptr[i];
             const MD_FLOAT sigma3_i   = sigma3_ptr[i];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
             const int type_i = atom->type[i];
 #endif
 
@@ -222,7 +223,7 @@ double computeForceLJTableHalfNeigh(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * sigma3_ptr[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * sqrt_epsilon_ptr[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

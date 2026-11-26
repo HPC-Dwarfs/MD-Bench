@@ -14,14 +14,18 @@ ComputeForceFunction computeForce;
 
 void initForce(Parameter* param)
 {
-#if COULOMB_RULE != COULOMB_NONE || USE_EXCLUSIONS
-    // The EAM and tabulated kernels have no electrostatics or exclusions
+#if COULOMB_RULE != COULOMB_NONE
+    // The EAM and tabulated kernels have no electrostatics
     if (param->force_field != FF_LJ) {
-        fprintf(stderr,
-            "Error: electrostatics and exclusions are only supported with -f lj!\n");
+        fprintf(stderr, "Error: electrostatics are only supported with -f lj!\n");
         exit(EXIT_FAILURE);
     }
 #endif
+    // Energies (-energy) are computed by the LJ kernels only
+    if (param->compute_energy && param->force_field != FF_LJ) {
+        fprintf(stderr, "Error: -energy is only supported with -f lj!\n");
+        exit(EXIT_FAILURE);
+    }
 #ifndef CLUSTERPAIR_KERNEL_GPU
     if (param->ref_kernel) {
         fprintf(stderr,
@@ -35,24 +39,24 @@ void initForce(Parameter* param)
         break;
     case FF_LJ:
 #if defined(CLUSTERPAIR_KERNEL_REF)
-        computeForce = computeForceLJRef;
+        computeForce = SELECT_RULE_VARIANT(param, computeForceLJRef);
 #elif defined(CLUSTERPAIR_KERNEL_4XN)
         if (param->half_neigh || param->method) {
-            computeForce = computeForceLJ4xnHalfNeigh;
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ4xnHalfNeigh);
         } else {
-            computeForce = computeForceLJ4xnFullNeigh;
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ4xnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XNN)
         if (param->half_neigh || param->method) {
-            computeForce = computeForceLJ2xnnHalfNeigh;
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnnHalfNeigh);
         } else {
-            computeForce = computeForceLJ2xnnFullNeigh;
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_2XN)
         if (param->half_neigh) {
-            computeForce = computeForceLJ2xnHalfNeigh;
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnHalfNeigh);
         } else {
-            computeForce = computeForceLJ2xnFullNeigh;
+            computeForce = SELECT_SIMD_VARIANT(param, computeForceLJ2xnFullNeigh);
         }
 #elif defined(CLUSTERPAIR_KERNEL_GPU)
         if (param->super_clustering) {
@@ -66,7 +70,7 @@ void initForce(Parameter* param)
     case FF_LJ_TABLE:
 // #if defined(CLUSTERPAIR_KERNEL_REF)
 #if defined(CLUSTERPAIR_KERNEL_REF)
-        computeForce = computeForceLJTableRef;
+        computeForce = SELECT_RULE_TABLE_VARIANT(param, computeForceLJTableRef);
 #else
         fprintf(stderr,
             "Error: Tabulated force fields for SIMD/GPU cases not yet implemented!\n");

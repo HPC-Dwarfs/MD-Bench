@@ -1,10 +1,11 @@
 #!/bin/bash
 # Test script for LJ combination rules with output verification
 #
+# The rule is a runtime option (--lj-comb), one binary per scheme and SIMD runs all three.
 # Tests:
 # 1. All configurations build and report correct LJ rule
 # 2. Same configuration produces consistent output across runs
-# 3. Single rule with 1 type == Geometric/Full rules (same physics)
+# 3. Single rule with 1 type == Geometric/Matrix rules (same physics)
 
 set -e
 cd "$(dirname "$0")/.."
@@ -22,13 +23,14 @@ build_and_run() {
     local lj_rule="$3"
     local timesteps="${4:-10}"
 
-    rm -rf ./build ./MDBench-*
-    if ! make -j4 TOOLCHAIN=GCC ISA=X86 SIMD=$simd DATA_TYPE=DP OPT_SCHEME=$opt_scheme LJ_COMB_RULE=$lj_rule >/dev/null 2>&1; then
+    local cfg=(TOOLCHAIN=GCC SIMD=$simd DATA_TYPE=DP OPT_SCHEME=$opt_scheme)
+    if ! make -j4 "${cfg[@]}" >/dev/null 2>&1; then
         return 1
     fi
 
-    local binary=$(ls MDBench-* 2>/dev/null | head -1)
-    ./"$binary" -n $timesteps 2>&1
+    local binary
+    binary=$(make -s "${cfg[@]}" print-target)
+    "$binary" -n $timesteps --lj-comb "$lj_rule" 2>&1
 }
 
 extract_final_temp() {
@@ -68,11 +70,11 @@ test_config() {
     if [ $build_result -ne 0 ]; then
         if [ "$expect_fail" = "yes" ]; then
             echo "PASS (expected compile error)"
-            ((PASS++))
+            PASS=$((PASS + 1))
             return 0
         else
             echo "FAIL (build failed)"
-            ((FAIL++))
+            FAIL=$((FAIL + 1))
             return 1
         fi
     fi
@@ -81,7 +83,7 @@ test_config() {
     local reported=$(echo "$output" | grep "LJ combination rule:" | awk '{print $4}')
     if [ "$reported" != "$lj_rule" ]; then
         echo "FAIL (rule: expected '$lj_rule', got '$reported')"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
         return 1
     fi
 
@@ -91,7 +93,7 @@ test_config() {
 
     if [ -z "$temp" ] || [ -z "$pres" ]; then
         echo "FAIL (no output values)"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
         return 1
     fi
 
@@ -100,7 +102,7 @@ test_config() {
     PRES_REF["$name"]="$pres"
 
     echo "PASS (T=$temp, P=$pres)"
-    ((PASS++))
+    PASS=$((PASS + 1))
     return 0
 }
 
@@ -123,10 +125,10 @@ test_output_consistency() {
 
     if compare_floats "$t1" "$t2" 1e-6 && compare_floats "$p1" "$p2" 1e-6; then
         echo "PASS"
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
         echo "FAIL (T: $t1 vs $t2, P: $p1 vs $p2)"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
     fi
 }
 
@@ -153,10 +155,10 @@ test_output_consistency_tol() {
 
     if compare_floats "$t1" "$t2" "$tol" && compare_floats "$p1" "$p2" "$tol"; then
         echo "PASS"
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
         echo "FAIL (T: $t1 vs $t2, P: $p1 vs $p2)"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
     fi
 }
 
@@ -171,35 +173,35 @@ echo ""
 echo "--- Verletlist AVX512 ---"
 test_config verletlist AVX512 single
 test_config verletlist AVX512 geometric
-test_config verletlist AVX512 full yes
+test_config verletlist AVX512 matrix
 
 echo ""
 echo "--- Verletlist AVX2 ---"
 test_config verletlist AVX2 single
 test_config verletlist AVX2 geometric
-test_config verletlist AVX2 full yes
+test_config verletlist AVX2 matrix
 
 echo ""
 echo "--- Verletlist Scalar ---"
 test_config verletlist NONE single
 test_config verletlist NONE geometric
-test_config verletlist NONE full
+test_config verletlist NONE matrix
 
 echo ""
 echo "--- Clusterpair AVX512 ---"
 test_config clusterpair AVX512 single
 test_config clusterpair AVX512 geometric
-test_config clusterpair AVX512 full
+test_config clusterpair AVX512 matrix
 
 echo ""
 echo "--- Clusterpair AVX2 ---"
 test_config clusterpair AVX2 single
 test_config clusterpair AVX2 geometric
-test_config clusterpair AVX2 full
+test_config clusterpair AVX2 matrix
 
 echo ""
 echo "=== Output Consistency Tests ==="
-echo "(With 1 atom type, single/geometric/full should produce identical results)"
+echo "(With 1 atom type, single/geometric/matrix should produce identical results)"
 echo ""
 
 # Same scheme, different SIMD width should match
@@ -215,8 +217,8 @@ test_output_consistency "verletlist-AVX2-geometric" "verletlist-NONE-geometric" 
 # With 1 atom type, all rules should match (same physics)
 test_output_consistency "verletlist-NONE-single" "verletlist-NONE-geometric" \
     "VL scalar: single vs geometric"
-test_output_consistency "verletlist-NONE-geometric" "verletlist-NONE-full" \
-    "VL scalar: geometric vs full"
+test_output_consistency "verletlist-NONE-geometric" "verletlist-NONE-matrix" \
+    "VL scalar: geometric vs matrix"
 
 # Clusterpair consistency
 test_output_consistency "clusterpair-AVX512-single" "clusterpair-AVX2-single" \

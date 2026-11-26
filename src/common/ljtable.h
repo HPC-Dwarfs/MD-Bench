@@ -26,8 +26,9 @@
 // type-pair and every LJ_COMB_RULE mode (the prefactors carry the per-pair
 // epsilon/sigma6 the kernels already compute).
 //
-// The table is indexed by x = r (default, matches GROMACS) or, when built
-// with -DLJ_TABLE_RSQ, by x = r^2 (avoids the sqrt). The grid is uniform in
+// The table is indexed by x = r^2 (--lj-table-index rsq, default, avoids the sqrt)
+// or by x = r (r, matches GROMACS); the kernels are compiled once per index
+// (LJ_TABLE_RSQ, kernel_variant.h). The grid is uniform in
 // x with spacing h; within interval m, eps = (x - x_m)*inv_h in [0,1) and
 //   shape = c0 + eps*(c1 + eps*(c2 + eps*c3))
 // (cubic Hermite, A0..A3 stored per shape). Each knot stores the 8 coeffs of
@@ -35,18 +36,16 @@
 
 #define LJ_TABLE_STRIDE 8 // cubic coeffs per knot (4 repulsion + 4 dispersion)
 
+// Index coordinate of a pair in the CPU kernel copies
 #ifdef LJ_TABLE_RSQ
-#define LJ_TABLE_COORD(rsq)          (rsq)
-#define LJ_TABLE_COORD_SIMD(rsq_vec) (rsq_vec)
-#define LJ_TABLE_INDEX_NAME          "rsq"
+#define LJ_TABLE_COORD(rsq) (rsq)
 #else
-#define LJ_TABLE_COORD(rsq)          (sqrt(rsq))
-#define LJ_TABLE_COORD_SIMD(rsq_vec) simd_real_sqrt(rsq_vec)
-#define LJ_TABLE_INDEX_NAME          "r"
+#define LJ_TABLE_COORD(rsq) (sqrt(rsq))
 #endif
 
 typedef struct {
     int n;             // number of intervals (knots = n + 1)
+    int index;         // index variable (LJ_TABLE_INDEX_R or LJ_TABLE_INDEX_RSQ)
     MD_FLOAT cut;      // tabulated up to cutforce
     MD_FLOAT h;        // grid spacing in the index variable (r or r^2)
     MD_FLOAT inv_h;    // 1 / h

@@ -107,43 +107,44 @@ void memsetGPU(void* d_ptr, int value, size_t bytesize)
 }
 
 // Host-side buffers that get cudaMemcpy'd to/from the GPU every reneighbor
-// step (see device.h). With USE_PINNED_MEMORY, use page-locked memory so
-// transfers are faster and immune to the OS migrating/unmapping pages that
-// go untouched by the CPU between reneighbor steps (observed as multi-second
-// stalls on NUMA-balanced systems). Without it, fall back to plain
+// step (see device.h). By default use page-locked memory so transfers are
+// faster and immune to the OS migrating/unmapping pages that go untouched by the
+// CPU between reneighbor steps (observed as multi-second stalls on NUMA-balanced
+// systems). With --no-pinned-memory, fall back to plain
 // allocate()/reallocate()/free(), same as everything else on the host side.
+static int pinned_memory = 1;
+
+// Must not change once a buffer is allocated, freeHostPinned() relies on it
+void setHostPinnedMemory(int enable) { pinned_memory = enable; }
+
 void* allocateHostPinned(size_t bytesize)
 {
-#ifdef USE_PINNED_MEMORY
+    if (!pinned_memory) {
+        return allocate(ALIGNMENT, bytesize);
+    }
     void* ptr;
     cuda_assert("allocateHostPinned", GPU_MALLOC_HOST((void**)&ptr, bytesize));
     return ptr;
-#else
-    return allocate(ALIGNMENT, bytesize);
-#endif
 }
 
 void* reallocateHostPinned(void* ptr, size_t new_bytesize, size_t old_bytesize)
 {
-#ifdef USE_PINNED_MEMORY
+    if (!pinned_memory) {
+        return reallocate(ptr, ALIGNMENT, new_bytesize, old_bytesize);
+    }
     void* new_ptr = allocateHostPinned(new_bytesize);
     if (ptr != NULL) {
         memcpy(new_ptr, ptr, old_bytesize);
         cuda_assert("reallocateHostPinned", GPU_FREE_HOST(ptr));
     }
     return new_ptr;
-#else
-    return reallocate(ptr, ALIGNMENT, new_bytesize, old_bytesize);
-#endif
 }
 
 void freeHostPinned(void* ptr)
 {
-#ifdef USE_PINNED_MEMORY
-    if (ptr != NULL) {
+    if (!pinned_memory) {
+        free(ptr);
+    } else if (ptr != NULL) {
         cuda_assert("freeHostPinned", GPU_FREE_HOST(ptr));
     }
-#else
-    free(ptr);
-#endif
 }

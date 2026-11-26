@@ -12,6 +12,12 @@
  * option; with ACCURATE_RECIPROCAL they are refined with Newton-Raphson steps to the
  * working precision, which makes the forces comparable with codes that do the same
  * (GROMACS iterates the estimates to full precision).
+ *
+ * Targets whose simd_real_reciprocal is an exact division (SVE, and the scalar SIMD
+ * emulation) define SIMD_RECIPROCAL_EXACT; there both variants use it unrefined.
+ *
+ * The copy of the kernels with ACCURATE_RECIPROCAL (see kernel_variant.h) runs with
+ * --accurate-recip.
  */
 #ifndef __SIMD_MATH_H_
 #define __SIMD_MATH_H_
@@ -21,6 +27,9 @@
 
 static inline MD_SIMD_FLOAT simd_real_reciprocal_accurate(MD_SIMD_FLOAT a)
 {
+#ifdef SIMD_RECIPROCAL_EXACT
+    return simd_real_reciprocal(a);
+#else
     const MD_SIMD_FLOAT two = simd_real_broadcast(2.0);
     MD_SIMD_FLOAT x         = simd_real_reciprocal(a);
     x                       = simd_real_mul(x, simd_real_sub(two, simd_real_mul(a, x)));
@@ -28,10 +37,11 @@ static inline MD_SIMD_FLOAT simd_real_reciprocal_accurate(MD_SIMD_FLOAT a)
     x = simd_real_mul(x, simd_real_sub(two, simd_real_mul(a, x)));
 #endif
     return x;
+#endif
 }
 
-/* Estimate of 1/sqrt(a). Targets without a hardware estimate use the exact sqrt and
- * reciprocal. */
+/* Estimate of 1/sqrt(a). Targets without a hardware estimate (and the scalar SIMD
+ * emulation of USE_SCALAR_KERNEL) use the exact sqrt and reciprocal. */
 #if defined(USE_SCALAR_KERNEL)
 #define SIMD_RSQRT_ESTIMATE_BITS 0
 #elif defined(__ISA_AVX512__) && PRECISION == 1

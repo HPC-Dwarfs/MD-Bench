@@ -184,6 +184,7 @@ static __device__ __forceinline__ void loadSciToShared(
     __syncthreads();
 }
 
+template <int RULE, bool ENERGY, bool EXCL, bool ACCURATE>
 __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
 {
     __shared__ MD_FLOAT4 sh_xq[SCLUSTER_SIZE * CLUSTER_M];
@@ -196,6 +197,8 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
     MD_FLOAT3 fcj_buf;
     MD_FLOAT* sci_f = &nb.f[SCI_VECTOR3_BASE_INDEX(sci)];
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
+    double vlj = 0.0;
+    double vc  = 0.0;
 
 #pragma unroll
     for (int i = 0; i < SCLUSTER_SIZE; i++) {
@@ -230,17 +233,12 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
                 MD_FLOAT dely      = xi.y - xj.y;
                 MD_FLOAT delz      = xi.z - xj.z;
                 MD_FLOAT rsq       = delx * delx + dely * dely + delz * delz;
-                const LjPair p     = ljPair(nb, pi, pj);
+                const LjPair p     = ljPair<RULE>(nb, pi, pj);
 
-                if ((rsq < p.cutforcesq) & ((sci_ci != diag_ci) | lowerPair)) {
-                    MD_FLOAT force = pairForceScalar(rsq,
-                        p.sigma6,
-                        p.epsilon,
-                        xi.w,
-                        xj.w,
-                        pi.mol,
-                        pj.mol,
-                        nb.cs);
+                if ((rsq < p.cutforcesq) & ((sci_ci != diag_ci) | lowerPair) &
+                    realPair(pi, pj)) {
+                    MD_FLOAT force = pairForceCuda<ENERGY, EXCL, ACCURATE>(
+                        rsq, p, xi.w, xj.w, pi.mol, pj.mol, nb.cs, vlj, vc);
                     MD_FLOAT fx    = delx * force;
                     MD_FLOAT fy    = dely * force;
                     MD_FLOAT fz    = delz * force;
@@ -264,8 +262,13 @@ __global__ void computeForceLJCudaSup_halfwarp(const NbForceArgs nb)
         const int ai = sci_ci * CLUSTER_M + cii;
         addForceI(sci_f, ai, fbuf[sci_ci], cjj);
     }
+
+    if constexpr (ENERGY) {
+        blockEnergiesAdd<CLUSTER_M * CLUSTER_N>(vlj, vc, nb.energies);
+    }
 }
 
+template <int RULE, bool ENERGY, bool EXCL, bool ACCURATE>
 __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
 {
     __shared__ MD_FLOAT4 sh_xq[SCLUSTER_SIZE * CLUSTER_M];
@@ -277,6 +280,8 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
     const int cjj     = threadIdx.y;
     MD_FLOAT* sci_f = &nb.f[SCI_VECTOR3_BASE_INDEX(sci)];
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
+    double vlj = 0.0;
+    double vc  = 0.0;
 
 #pragma unroll
     for (int i = 0; i < SCLUSTER_SIZE; i++) {
@@ -309,17 +314,12 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
                 MD_FLOAT dely      = xi.y - xj.y;
                 MD_FLOAT delz      = xi.z - xj.z;
                 MD_FLOAT rsq       = delx * delx + dely * dely + delz * delz;
-                const LjPair p     = ljPair(nb, pi, pj);
+                const LjPair p     = ljPair<RULE>(nb, pi, pj);
 
-                if ((rsq < p.cutforcesq) & ((sci_ci != diag_ci) | offDiag)) {
-                    MD_FLOAT force = pairForceScalar(rsq,
-                        p.sigma6,
-                        p.epsilon,
-                        xi.w,
-                        xj.w,
-                        pi.mol,
-                        pj.mol,
-                        nb.cs);
+                if ((rsq < p.cutforcesq) & ((sci_ci != diag_ci) | offDiag) &
+                    realPair(pi, pj)) {
+                    MD_FLOAT force = pairForceCuda<ENERGY, EXCL, ACCURATE>(
+                        rsq, p, xi.w, xj.w, pi.mol, pj.mol, nb.cs, vlj, vc);
 
                     fbuf[sci_ci].x += delx * force;
                     fbuf[sci_ci].y += dely * force;
@@ -333,6 +333,10 @@ __global__ void computeForceLJCudaSup_fullwarp(const NbForceArgs nb)
     for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
         const int ai = sci_ci * CLUSTER_M + cii;
         addForceI(sci_f, ai, fbuf[sci_ci], cjj);
+    }
+
+    if constexpr (ENERGY) {
+        blockEnergiesAdd<CLUSTER_M * CLUSTER_N>(vlj, vc, nb.energies);
     }
 }
 
@@ -431,22 +435,17 @@ extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param)
     cuda_assert("cudaReverseGhostForcesSup", cudaDeviceSynchronize());
 }
 
-static int chooseJSlices(const Atom* atom, const Neighbor* neighbor)
+// j-slices of the force kernel, --gpu-j-slices > 0 fixes them
+static int chooseJSlices(const Parameter* param,
+    const Atom* atom,
+    const Neighbor* neighbor,
+    const void* kernel)
 {
-#if GPU_J_SLICES > 0
-    return GPU_J_SLICES;
-#else
+    if (param->gpu_j_slices > 0) {
+        return param->gpu_j_slices;
+    }
     const double k_half = 3.05, k_full = 2.5;
-    return neighbor->half_neigh
-               ? chooseJSlicesK(atom,
-                     neighbor,
-                     k_half,
-                     (const void*)computeForceLJCudaSup_halfwarp)
-               : chooseJSlicesK(atom,
-                     neighbor,
-                     k_full,
-                     (const void*)computeForceLJCudaSup_fullwarp);
-#endif
+    return chooseJSlicesK(atom, neighbor, neighbor->half_neigh ? k_half : k_full, kernel);
 }
 
 extern "C" double computeForceLJCudaSup(
@@ -455,25 +454,31 @@ extern "C" double computeForceLJCudaSup(
     DEBUG_MESSAGE("computeForceLJCudaSup start\r\n");
 
     NbForceArgs nb = makeNbForceArgs(param, atom, neighbor);
-    nb.cj_mask = sup_nbl;
+    nb.cj_mask     = sup_nbl;
+    nb.energies    = deviceEnergies(param);
 
     memsetGPU(cuda_cl_f,
         0,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 *
             sizeof(MD_FLOAT));
-    dim3 block_size = dim3(CLUSTER_N, CLUSTER_M, 1);
-    dim3 grid_size  = dim3(atom->Nclusters_local, 1, 1);
-    double S        = getTimeStamp();
+    dim3 block_size     = dim3(CLUSTER_N, CLUSTER_M, 1);
+    dim3 grid_size      = dim3(atom->Nclusters_local, 1, 1);
+    const bool excl     = atom->molsize > 1; // molecular exclusions
+    const int rule      = param->lj_comb_rule;
+    const bool energy   = param->compute_energy;
+    const bool accurate = param->accurate_reciprocal;
+    auto kernel         = neighbor->half_neigh
+                              ? SELECT_GPU_KERNEL(
+                            computeForceLJCudaSup_halfwarp, rule, energy, excl, accurate)
+                              : SELECT_GPU_KERNEL(
+                            computeForceLJCudaSup_fullwarp, rule, energy, excl, accurate);
+    double S = getTimeStamp();
     LIKWID_MARKER_START("force");
 
-    launchPackAtomsCuda(atom, 0);
+    launchPackAtomsCuda(param, atom, 0);
 
-    grid_size.y = chooseJSlices(atom, neighbor);
-    if (neighbor->half_neigh) {
-        computeForceLJCudaSup_halfwarp<<<grid_size, block_size>>>(nb);
-    } else {
-        computeForceLJCudaSup_fullwarp<<<grid_size, block_size>>>(nb);
-    }
+    grid_size.y = chooseJSlices(param, atom, neighbor, (const void*)kernel);
+    kernel<<<grid_size, block_size>>>(nb);
 
     cuda_assert("computeForceLJCudaSup", cudaPeekAtLastError());
     cuda_assert("computeForceLJCudaSup", cudaDeviceSynchronize());
@@ -488,11 +493,20 @@ extern "C" double computeForceLJCudaSup(
 #endif
 
     double E = getTimeStamp();
+    // Half lists have every pair once (ghost forces are folded back), full lists twice
+    storeDeviceEnergies(param,
+        atom->Nlocal,
+        atom->type,
+        atom->q_per_type,
+        nb.energies,
+        neighbor->half_neigh ? 1.0 : 0.5);
     DEBUG_MESSAGE("computeForceLJCudaSup stop\r\n");
     return E - S;
 }
 
-// Reference super-cluster force kernel
+// Reference super-cluster force kernel (-ref): no packing, slicing or warp reductions,
+// all forces with atomicAdd
+template <int RULE, bool ENERGY, bool EXCL, bool ACCURATE>
 __global__ void computeForceLJCudaSupRef_warp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* cuda_cl_f,
     int Nclusters_local,
@@ -504,23 +518,19 @@ __global__ void computeForceLJCudaSupRef_warp(MD_FLOAT* cuda_cl_x,
     int half,
     MD_FLOAT* cuda_cl_q,
     int* cuda_cl_mol,
+    int* cuda_cl_id,
     CoulombScalar cs,
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
+    double* energies,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
-    MD_FLOAT epsilon
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-    MD_FLOAT cutforcesq,
+    MD_FLOAT epsilon,
     MD_FLOAT* cuda_cl_sqrt_epsilon,
-    MD_FLOAT* cuda_cl_sigma3
-#else
+    MD_FLOAT* cuda_cl_sigma3,
     int* cuda_cl_t,
     MD_FLOAT* atom_cutforcesq,
     MD_FLOAT* atom_sigma6,
     MD_FLOAT* atom_epsilon,
-    int ntypes
-#endif
-)
+    int ntypes)
 {
     __shared__ MD_FLOAT4 sh_sci_x[SCLUSTER_SIZE * CLUSTER_M];
     int sci         = blockIdx.x;
@@ -530,6 +540,8 @@ __global__ void computeForceLJCudaSupRef_warp(MD_FLOAT* cuda_cl_x,
     MD_FLOAT* sci_f = &cuda_cl_f[SCI_VECTOR3_BASE_INDEX(sci)];
     int tid         = cjj * CLUSTER_M + cii;
     MD_FLOAT3 fbuf[SCLUSTER_SIZE];
+    double vlj = 0.0;
+    double vc  = 0.0;
 #pragma unroll
     for (int i = 0; i < SCLUSTER_SIZE; i++) {
         fbuf[i].x = (MD_FLOAT)0.0;
@@ -559,48 +571,51 @@ __global__ void computeForceLJCudaSupRef_warp(MD_FLOAT* cuda_cl_x,
         MD_FLOAT yjtmp     = cj_x[CL_Y_INDEX(cjj)];
         MD_FLOAT zjtmp     = cj_x[CL_Z_INDEX(cjj)];
         MD_FLOAT* cj_f     = &cuda_cl_f[CJ_VECTOR3_BASE_INDEX(cj)];
-        const int j        = CJ_SCALAR_BASE_INDEX(cj) + cjj; 
+        const int j        = CJ_SCALAR_BASE_INDEX(cj) + cjj;
 
 #pragma unroll
         for (int sci_ci = 0; sci_ci < SCLUSTER_SIZE; sci_ci++) {
             const int ci = sci * SCLUSTER_SIZE + sci_ci;
+            const int ai = sci_ci * CLUSTER_M + cii;
+            const int i  = SCI_SCALAR_BASE_INDEX(sci) + ai;
             bool skip    = !((imask >> sci_ci) & 1u);
             if (half) {
                 skip = skip || (ci > order_cj) || (ci == order_cj && cii >= cjj);
             } else {
                 skip = skip || (ci == cj && cii == cjj);
             }
+            skip = skip || cuda_cl_id[i] < 0 || cuda_cl_id[j] < 0;
 
             if (!skip) {
-                int ai        = sci_ci * CLUSTER_M + cii;
-                const int i   = SCI_SCALAR_BASE_INDEX(sci) + ai;
                 MD_FLOAT delx = sh_sci_x[ai].x - xjtmp;
                 MD_FLOAT dely = sh_sci_x[ai].y - yjtmp;
                 MD_FLOAT delz = sh_sci_x[ai].z - zjtmp;
                 MD_FLOAT rsq  = delx * delx + dely * dely + delz * delz;
 
-#if LJ_COMB_RULE == LJ_COMB_GEOM
-                MD_FLOAT sigma6  = cuda_cl_sigma3[i] * cuda_cl_sigma3[j];
-                MD_FLOAT epsilon = cuda_cl_sqrt_epsilon[i] * cuda_cl_sqrt_epsilon[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
-                int type_index      = cuda_cl_t[i] * ntypes + cuda_cl_t[j];
-                MD_FLOAT cutforcesq = atom_cutforcesq[type_index];
-                MD_FLOAT sigma6     = atom_sigma6[type_index];
-                MD_FLOAT epsilon    = atom_epsilon[type_index];
-#endif
+                LjPair p = { cutforcesq, sigma6, epsilon };
+                if constexpr (RULE == LJ_COMB_GEOM) {
+                    p.sigma6  = cuda_cl_sigma3[i] * cuda_cl_sigma3[j];
+                    p.epsilon = cuda_cl_sqrt_epsilon[i] * cuda_cl_sqrt_epsilon[j];
+                } else if constexpr (RULE == LJ_COMB_MATRIX) {
+                    int type_index = cuda_cl_t[i] * ntypes + cuda_cl_t[j];
+                    p.cutforcesq   = atom_cutforcesq[type_index];
+                    p.sigma6       = atom_sigma6[type_index];
+                    p.epsilon      = atom_epsilon[type_index];
+                }
 
-                if (rsq < cutforcesq) {
-                    MD_FLOAT force = pairForceScalar(rsq,
-                        sigma6,
-                        epsilon,
+                if (rsq < p.cutforcesq) {
+                    MD_FLOAT force = pairForceCuda<ENERGY, EXCL, ACCURATE>(rsq,
+                        p,
                         cs.epsfac * chargeCuda(cuda_cl_q, i),
                         chargeCuda(cuda_cl_q, j),
-                        moleculeCuda(cuda_cl_mol, i),
-                        moleculeCuda(cuda_cl_mol, j),
-                        cs);
-                    MD_FLOAT fx    = delx * force;
-                    MD_FLOAT fy    = dely * force;
-                    MD_FLOAT fz    = delz * force;
+                        moleculeCuda<EXCL>(cuda_cl_mol, i),
+                        moleculeCuda<EXCL>(cuda_cl_mol, j),
+                        cs,
+                        vlj,
+                        vc);
+                    MD_FLOAT fx = delx * force;
+                    MD_FLOAT fy = dely * force;
+                    MD_FLOAT fz = delz * force;
 
                     fbuf[sci_ci].x += fx;
                     fbuf[sci_ci].y += fy;
@@ -623,6 +638,10 @@ __global__ void computeForceLJCudaSupRef_warp(MD_FLOAT* cuda_cl_x,
         atomicAdd(&sci_f[CL_Y_INDEX_3D(ai)], fbuf[sci_ci].y);
         atomicAdd(&sci_f[CL_Z_INDEX_3D(ai)], fbuf[sci_ci].z);
     }
+
+    if constexpr (ENERGY) {
+        blockEnergiesAdd<CLUSTER_M * CLUSTER_N>(vlj, vc, energies);
+    }
 }
 
 extern "C" double computeForceLJCudaSupRef(
@@ -630,25 +649,25 @@ extern "C" double computeForceLJCudaSupRef(
 {
     DEBUG_MESSAGE("computeForceLJCudaSupRef start\r\n");
 
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
-    MD_FLOAT sigma6     = param->sigma6;
-    MD_FLOAT epsilon    = param->epsilon;
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-    MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
-#endif
     const CoulombScalar cs = coulombScalarInit(param);
 
     memsetGPU(cuda_cl_f,
         0,
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 *
             sizeof(MD_FLOAT));
-    dim3 block_size = dim3(CLUSTER_N, CLUSTER_M, 1);
-    dim3 grid_size  = dim3(atom->Nclusters_local, 1, 1);
-    double S        = getTimeStamp();
+    dim3 block_size     = dim3(CLUSTER_N, CLUSTER_M, 1);
+    dim3 grid_size      = dim3(atom->Nclusters_local, 1, 1);
+    double* energies    = deviceEnergies(param);
+    const bool excl     = atom->molsize > 1; // molecular exclusions
+    const int rule      = param->lj_comb_rule;
+    const bool energy   = param->compute_energy;
+    const bool accurate = param->accurate_reciprocal;
+    auto kernel         = SELECT_GPU_KERNEL(
+        computeForceLJCudaSupRef_warp, rule, energy, excl, accurate);
+    double S = getTimeStamp();
     LIKWID_MARKER_START("force");
 
-    computeForceLJCudaSupRef_warp<<<grid_size, block_size>>>(cuda_cl_x,
+    kernel<<<grid_size, block_size>>>(cuda_cl_x,
         cuda_cl_f,
         atom->Nclusters_local,
         cuda_numneigh_inner,
@@ -659,23 +678,19 @@ extern "C" double computeForceLJCudaSupRef(
         neighbor->half_neigh,
         cuda_cl_q,
         cuda_cl_mol,
+        cuda_cl_id,
         cs,
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-        cutforcesq,
-        sigma6,
-        epsilon
-#elif LJ_COMB_RULE == LJ_COMB_GEOM
-        cutforcesq,
+        energies,
+        param->cutforce * param->cutforce,
+        param->sigma6,
+        param->epsilon,
         cuda_cl_sqrt_epsilon,
-        cuda_cl_sigma3
-#else
+        cuda_cl_sigma3,
         cuda_cl_t,
         cuda_cutforcesq,
         cuda_sigma6,
         cuda_epsilon,
-        atom->ntypes
-#endif
-    );
+        atom->ntypes);
 
     cuda_assert("computeForceLJCudaSupRef", cudaPeekAtLastError());
     cuda_assert("computeForceLJCudaSupRef", cudaDeviceSynchronize());
@@ -690,6 +705,12 @@ extern "C" double computeForceLJCudaSupRef(
 #endif
 
     double E = getTimeStamp();
+    storeDeviceEnergies(param,
+        atom->Nlocal,
+        atom->type,
+        atom->q_per_type,
+        energies,
+        neighbor->half_neigh ? 1.0 : 0.5);
     DEBUG_MESSAGE("computeForceLJCudaSupRef stop\r\n");
     return E - S;
 }

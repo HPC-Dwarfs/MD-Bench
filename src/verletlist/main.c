@@ -23,9 +23,12 @@
 #include <allocate.h>
 #include <atom.h>
 #include <balance.h>
+#include <cmdline.h>
 #include <comm.h>
 #include <device.h>
 #include <eam.h>
+#include <energy.h>
+#include <ewald_table.h>
 #include <force.h>
 #include <grid.h>
 #include <integrate.h>
@@ -43,8 +46,6 @@
 
 extern void copyDataToCUDADevice(Atom*);
 extern void copyDataFromCUDADevice(Atom*);
-
-#define HLINE "-----------------------------------------------------------------------\n"
 
 double setup(Parameter* param,
     Eam* eam,
@@ -75,10 +76,6 @@ double setup(Parameter* param,
 
     if (param->input_file == NULL) {
         if (param->gmxbenchmark) {
-#if LJ_COMB_RULE == LJ_COMB_SINGLE
-            fprintf(stderr, "-gmxbench needs LJ_COMB_RULE=geometric or full\n");
-            exit(EXIT_FAILURE);
-#endif
             readAtomGmx(atom, param);
         } else {
             createAtom(atom, param);
@@ -88,8 +85,17 @@ double setup(Parameter* param,
     }
     // Before the atoms are distributed over the MPI ranks, so the ids are global
     initAtomIds(atom);
-#if COULOMB_RULE == COULOMB_EWALD
+    // --lj-comb auto and the check of the rule need the atom types
+    resolveLJCombRule(param,
+        atom->ntypes,
+        atom->sqrt_epsilon_per_type,
+        atom->sigma3_per_type);
+    neighbor->lj_comb_rule = param->lj_comb_rule;
+#if COULOMB_IS_EWALD
     param->ewald_beta = computeEwaldCoefficient(param->cutforce, param->ewald_rtol);
+#endif
+#if COULOMB_RULE == COULOMB_EWALD_TABLE
+    initEwaldTable(param);
 #endif
 
 #ifndef _MPI
@@ -120,17 +126,21 @@ double setup(Parameter* param,
         adjustThermo(param, atom);
     }
 
-#if defined(SORT_ATOMS) && !defined(CUDA_TARGET)
-    atom->Nghost = 0;
-    sortAtom(atom);
+#ifndef CUDA_TARGET
+    if (param->resort_every > 0) {
+        atom->Nghost = 0;
+        sortAtom(atom);
+    }
 #endif
 
     // initDevice must precede setupPbc: the CUDA setupPbc reads positions on
     // the device, so the initial H2D upload has to happen first.
     initDevice(param, atom, neighbor);
-#if defined(SORT_ATOMS) && defined(CUDA_TARGET) && !defined(_MPI)
-    // Sort the local atoms on the device, before the ghosts are made
-    sortAtomsCUDA(atom);
+#if defined(CUDA_TARGET) && !defined(_MPI)
+    // Spatial order of the local atoms (--sort-every), before the ghosts are made
+    if (param->resort_every != 0) {
+        sortAtomsCUDA(atom);
+    }
 #endif
     setupPbc(atom, param);
 
@@ -156,11 +166,15 @@ double reneighbour(
     timeStart = getTimeStamp();
     LIKWID_MARKER_START("reneighbour");
     // updateAtomsPbc(atom, param, true); function called at updateAtoms
-#if defined(SORT_ATOMS) && defined(CUDA_TARGET) && !defined(_MPI)
-    // Sort the local atoms on the device, before the ghosts are made
-    stepStart = getTimeStamp();
-    sortAtomsCUDA(atom);
-    timer[NEIGH_SORT] += getTimeStamp() - stepStart;
+#if defined(CUDA_TARGET) && !defined(_MPI)
+    // Spatial order of the local atoms (--sort-every: at every build or every
+    // resort_every steps), before the ghosts are made
+    if (param->resort_every < 0 ||
+        (param->resort_every > 0 && (n + 1) % param->resort_every == 0)) {
+        stepStart = getTimeStamp();
+        sortAtomsCUDA(atom);
+        timer[NEIGH_SORT] += getTimeStamp() - stepStart;
+    }
 #endif
     stepStart = getTimeStamp();
 #ifdef _MPI
@@ -262,6 +276,9 @@ void writeInput(Parameter* param, Atom* atom)
 // Writes the forces of the local atoms, ordered by their original index
 static void dumpForces(Parameter* param, Atom* atom)
 {
+    // Collective with MPI, before the non-root processes return
+    double elj, ecoul;
+    globalEnergies(param, &elj, &ecoul);
 #ifdef CUDA_TARGET
     // The forces are on the device
     copyForceFromGPU(atom);
@@ -303,6 +320,10 @@ static void dumpForces(Parameter* param, Atom* atom)
     }
 
     fprintf(fp, "# natoms %d\n", atom->Natoms);
+    if (param->compute_energy) {
+        fprintf(fp, "# energy_lj %.15g\n", elj);
+        fprintf(fp, "# energy_coulomb %.15g\n", ecoul);
+    }
     for (int i = 0; i < atom->Natoms; i++) {
         fprintf(fp, "%d %.9g %.9g %.9g\n", i, f[i * 3 + 0], f[i * 3 + 1], f[i * 3 + 2]);
     }
@@ -328,32 +349,41 @@ static void runKernelBench(Parameter* param, Atom* atom, Neighbor* neighbor, Sta
     const double useful   = atom->Natoms * 0.5 * (pairsCut + 1.0);
     const double perIter  = time / param->kernel_bench;
 
+    long long pairs = 0;
 #ifdef CUDA_TARGET
-    int* inner_counts = (int*)allocate(ALIGNMENT,
-        MAX(1, atom->Nlocal) * sizeof(int));
-    memcpyFromGPU(inner_counts, neighbor->d_neighbor.numneigh_inner,
+    // GPU builds keep the neighbor counts on the device only
+    int* numneigh = (int*)malloc(atom->Nlocal * sizeof(int));
+    memcpyFromGPU(numneigh,
+        neighbor->d_neighbor.numneigh_inner,
         atom->Nlocal * sizeof(int));
 #else
-    const int* inner_counts = neighbor->numneigh_inner;
+    const int* numneigh = neighbor->numneigh_inner;
 #endif
-    long long pairs = 0;
     for (int i = 0; i < atom->Nlocal; i++) {
-        pairs += inner_counts[i];
+        pairs += numneigh[i];
     }
 #ifdef CUDA_TARGET
-    free(inner_counts);
+    free(numneigh);
 #endif
 
     fprintf(stdout, "\nKERNEL BENCHMARK\n");
     fprintf(stdout, "  Atoms:                 %d\n", atom->Natoms);
     fprintf(stdout, "  Cut-off:               %g\n", rc);
-    fprintf(stdout, "  Neighbor lists:        %s\n", neighbor->half_neigh ? "half" : "full");
+    fprintf(stdout,
+        "  Neighbor lists:        %s\n",
+        neighbor->half_neigh ? "half" : "full");
     fprintf(stdout, "  Atom pairs in list:    %lld\n", pairs);
     fprintf(stdout, "  Iterations:            %d\n", param->kernel_bench);
     fprintf(stdout, "  Time per iteration:    %.3f us\n", perIter * 1e6);
     fprintf(stdout, "  Useful pairs per iter: %.0f\n", useful);
     fprintf(stdout, "  Computed pairs/us:     %.3f\n", (double)pairs / (perIter * 1e6));
     fprintf(stdout, "  Useful pairs/us:       %.3f\n", useful / (perIter * 1e6));
+    if (param->compute_energy) {
+        double elj, ecoul;
+        globalEnergies(param, &elj, &ecoul);
+        fprintf(stdout, "  Energy LJ:             %.15g\n", elj);
+        fprintf(stdout, "  Energy Coulomb:        %.15g\n", ecoul);
+    }
 }
 
 int main(int argc, char** argv)
@@ -374,203 +404,10 @@ int main(int argc, char** argv)
         // LIKWID_MARKER_REGISTER("pbc");
     }
 
-    int cutoffGiven = 0, skinGiven = 0;
     initComm(&argc, &argv, &comm);
     initParameter(&param);
-    for (int i = 0; i < argc; i++) {
-        if ((strcmp(argv[i], "-p") == 0) || strcmp(argv[i], "--params") == 0) {
-            readParameter(&param, argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-f") == 0)) {
-            if ((param.force_field = str2ff(argv[++i])) < 0) {
-                fprintf(stderr, "Invalid force field!\n");
-                exit(-1);
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-i") == 0)) {
-            param.input_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-e") == 0)) {
-            param.eam_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-n") == 0) || (strcmp(argv[i], "--nsteps") == 0)) {
-            param.ntimes = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-nx") == 0)) {
-            param.nx = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-ny") == 0)) {
-            param.ny = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-nz") == 0)) {
-            param.nz = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-half") == 0)) {
-            param.half_neigh = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-method") == 0)) {
-            param.method = atoi(argv[++i]);
-            if (param.method > 3 || param.method < 0) {
-                fprintf_once(comm.myproc, stderr, "Method does not exist!\n");
-                endComm(&comm);
-                exit(0);
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-bal") == 0)) {
-            param.balance = atoi(argv[++i]);
-            if (param.balance > 3 || param.balance < 0) {
-                fprintf_once(comm.myproc, stderr, "Load Balance does not exist!\n");
-                endComm(&comm);
-                exit(0);
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-r") == 0) || (strcmp(argv[i], "--radius") == 0)) {
-            param.cutforce = atof(argv[++i]);
-            cutoffGiven    = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-s") == 0) || (strcmp(argv[i], "--skin") == 0)) {
-            param.skin = atof(argv[++i]);
-            skinGiven  = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-gmxbench") == 0)) {
-            param.gmxbenchmark = true;
-            if (param.input_file != NULL) {
-                free(param.input_file);
-                param.input_file = NULL;
-            }
-            continue;
-        }
-        if ((strcmp(argv[i], "-size") == 0)) {
-            param.size = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--kernel-bench") == 0)) {
-            param.kernel_bench = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--dump-forces") == 0)) {
-            param.dump_forces_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--freq") == 0)) {
-            param.proc_freq = atof(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--vtk") == 0)) {
-            param.vtk_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-w") == 0)) {
-            param.write_atom_file = strdup(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "--ntypes") == 0)) {
-            param.ntypes = atoi(argv[++i]);
-            continue;
-        }
-        if ((strcmp(argv[i], "-setup") == 0)) {
-            param.setup = atoi(argv[++i]);
-            continue;
-        }
-
-        if (strcmp(argv[i], "--displacement-reneigh") == 0) {
-            param.displacement_reneigh = 1;
-            continue;
-        }
-        if (strcmp(argv[i], "-ref") == 0) {
-            param.ref_kernel = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-v") == 0) || (strcmp(argv[i], "--verbose") == 0)) {
-            param.verbose = 1;
-            continue;
-        }
-        if ((strcmp(argv[i], "-h") == 0) || (strcmp(argv[i], "--help") == 0)) {
-            if (comm.myproc == 0) {
-                printf("MD Bench: A performance-oriented prototyping harness for MD "
-                       "algorithms\n");
-                printf(HLINE);
-                printf("-p / --params <string>:     file to read parameters from (can be "
-                       "specified more than once)\n");
-                printf("-f <string>:                force field (lj or eam), "
-                       "default lj\n");
-                printf("-i <string>:                input file with atom positions "
-                       "(dump)\n");
-                printf("-e <string>:                input file for EAM\n");
-                printf("-n / --nsteps <int>:        set number of timesteps for "
-                       "simulation\n");
-                printf("-nx/-ny/-nz <int>:          set linear dimension of systembox in "
-                       "x/y/z direction\n");
-                printf("-half <int>:                use half (1) or full (0) neighbor "
-                       "lists\n");
-                printf("-r / --radius <real>:       set cutoff radius\n");
-                printf("-s / --skin <real>:         set skin (verlet buffer)\n");
-                printf("-w <file>:                  write input atoms to file\n");
-                printf("--ntypes <int>:             set number of atom types\n");
-                printf("--freq <real>:              processor frequency (GHz)\n");
-                printf("--vtk <string>:             VTK file for visualization\n");
-                printf(
-                    "--displacement-reneigh:     rebuild neighbor list based on atom "
-                    "displacement (skin/2 threshold); use --reneigh-every 0 to disable "
-                    "fixed-interval rebuild\n");
-                printf("-gmxbench:                  use the water system of the GROMACS "
-                       "non-bonded benchmark (cut-off 1.0 and no skin unless -r/-s are "
-                       "given)\n");
-                printf("-size <int>:                replicate the -gmxbench system this many "
-                       "times (power of two)\n");
-                printf("-ref:                       GPU builds: use the reference force "
-                       "kernel (one thread per atom, no packing, slicing or warp "
-                       "reductions, all forces with atomicAdd) instead of the optimized "
-                       "one\n");
-                printf("--kernel-bench <int>:       after setup, only run the force kernel "
-                       "this many times on the fixed neighbor lists and report its time\n");
-                printf("--dump-forces <file>:       write the forces of a single kernel pass "
-                       "(atom id, fx, fy, fz) to a text file\n");
-                printf("-v / --verbose:             print a per-routine timing breakdown "
-                       "in the performance report\n");
-                printf(HLINE);
-            }
-
-            exit(EXIT_SUCCESS);
-        }
-    }
-
-    if (param.balance > 0 && param.method == 1) {
-        if (comm.myproc == 0)
-            fprintf(stderr, "Half Shell is not supported by load balance!\n");
-        fprintf_once(comm.myproc,
-            stderr,
-            "Half Shell is not supported by load balance!\n");
-        endComm(&comm);
-        exit(0);
-    }
-
-    if (param.gmxbenchmark) {
-        // The GROMACS benchmark builds its pair list with exactly the interaction
-        // cut-off (no buffer)
-        if (!cutoffGiven) {
-            param.cutforce = 1.0;
-        }
-        if (!skinGiven) {
-            param.skin = 0.0;
-        }
-    }
-
-    param.cutneigh = param.cutforce + param.skin + param.outer_skin;
-    timer[SETUP]   = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
+    parseCommandLine(argc, argv, &param, &comm);
+    timer[SETUP] = setup(&param, &eam, &atom, &neighbor, &stats, &comm, &grid);
     if (param.displacement_reneigh) {
         storeReferencePositions(&atom);
     }
@@ -634,8 +471,8 @@ int main(int argc, char** argv)
         printvtk(param.vtk_file, &comm, &atom, &param, 0);
     }
     for (int n = 0; n < param.ntimes; n++) {
-#if defined(SORT_ATOMS) && !defined(CUDA_TARGET)
-        bool resort = (n + 1) % param.resort_every == 0;
+        bool resort = param.resort_every > 0 && (n + 1) % param.resort_every == 0;
+#ifndef CUDA_TARGET
         if (resort) {
             double sortStart = getTimeStamp();
             DEBUG_MESSAGE("Resorting atoms\n");
@@ -647,7 +484,9 @@ int main(int argc, char** argv)
         }
 #endif
 
-        bool reneigh = (param.reneigh_every > 0 && (n + 1) % param.reneigh_every == 0);
+        // Sorting permutes the atoms and drops the ghosts: the lists have to be rebuilt
+        bool reneigh = resort ||
+                       (param.reneigh_every > 0 && (n + 1) % param.reneigh_every == 0);
         if (!reneigh && param.displacement_reneigh) {
             double checkStart = getTimeStamp();
             reneigh           = needsReneigh(&atom, &param);
