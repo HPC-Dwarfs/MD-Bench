@@ -423,18 +423,17 @@ extern "C" void pruneNeighborCUDASimple(Parameter* param, Atom* atom, Neighbor* 
     DEBUG_MESSAGE("pruneNeighborCUDA end\n");
 }
 
-// j-slices of the force kernel, GPU_J_SLICES > 0 fixes them
-static int chooseJSlices(const Atom* atom, const Neighbor* neighbor, const void* kernel)
+// j-slices of the force kernel, --gpu-j-slices > 0 fixes them
+static int chooseJSlices(const Parameter* param,
+    const Atom* atom,
+    const Neighbor* neighbor,
+    const void* kernel)
 {
-#if GPU_J_SLICES > 0
-    (void)atom;
-    (void)neighbor;
-    (void)kernel;
-    return GPU_J_SLICES;
-#else
+    if (param->gpu_j_slices > 0) {
+        return param->gpu_j_slices;
+    }
     const double k_half = 3.3, k_full = 2.5;
     return chooseJSlicesK(atom, neighbor, neighbor->half_neigh ? k_half : k_full, kernel);
-#endif
 }
 
 extern "C" double computeForceLJCuda(
@@ -465,7 +464,7 @@ extern "C" double computeForceLJCuda(
 
     launchPackAtomsCuda(param, atom, 0);
 
-    grid_size.y = chooseJSlices(atom, neighbor, (const void*)kernel);
+    grid_size.y = chooseJSlices(param, atom, neighbor, (const void*)kernel);
     kernel<<<grid_size, block_size>>>(nb);
 
     cuda_assert("computeForceLJ_cuda", cudaPeekAtLastError());

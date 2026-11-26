@@ -121,7 +121,7 @@ endif
 
 # Former build options that are runtime options now (an error when set in config.mk or on
 # the command line)
-RUNTIME_OPTIONS = SORT_ATOMS:--sort-every ACCURATE_RECIPROCAL:--accurate-recip KERNEL_PREFETCH:--no-prefetch LJ_COMB_RULE:--lj-comb USE_SIMD_KERNEL:--force-simd SIMD_COMPRESS:--force-simd USE_SIMD_NEIGHBOR:--neighbor-simd
+RUNTIME_OPTIONS = SORT_ATOMS:--sort-every ACCURATE_RECIPROCAL:--accurate-recip KERNEL_PREFETCH:--no-prefetch LJ_COMB_RULE:--lj-comb LJ_TABLE_INDEX:--lj-table-index GPU_J_SLICES:--gpu-j-slices SUPERCLUSTER_J_SLICES:--gpu-j-slices USE_PINNED_MEMORY:--no-pinned-memory USE_SIMD_KERNEL:--force-simd SIMD_COMPRESS:--force-simd USE_SIMD_NEIGHBOR:--neighbor-simd
 ifeq ($(origin EXCLUSIONS),command line)
     $(error EXCLUSIONS is gone, the molecular exclusions are on when the system has molecules (-gmxbench))
 endif
@@ -141,12 +141,6 @@ else ifeq ($(strip $(COULOMB_RULE)),ewald_table)
     DEFINES += -DCOULOMB_RULE=3
 else
     $(error Invalid COULOMB_RULE, must be one of: none, rf, ewald, ewald_table)
-endif
-
-ifeq ($(strip $(LJ_TABLE_INDEX)),rsq)
-    DEFINES += -DLJ_TABLE_RSQ
-else ifneq ($(strip $(LJ_TABLE_INDEX)),r)
-    $(error Invalid LJ_TABLE_INDEX, must be one of: r, rsq)
 endif
 
 ifeq ($(strip $(ASM_SYNTAX)),intel)
@@ -171,10 +165,6 @@ endif
 
 ifeq ($(strip $(XTC_OUTPUT)),true)
     DEFINES += -DXTC_OUTPUT
-endif
-
-ifeq ($(strip $(USE_PINNED_MEMORY)),true)
-    DEFINES += -DUSE_PINNED_MEMORY
 endif
 
 ifeq ($(strip $(CLUSTER_RSQ_CLAMP)),false)
@@ -235,17 +225,6 @@ ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     DEFINES += -DCLUSTER_PAIR
 endif
 
-ifneq ($(filter command line file override,$(origin SUPERCLUSTER_J_SLICES)),)
-    $(error SUPERCLUSTER_J_SLICES is renamed to GPU_J_SLICES (auto or a positive integer))
-endif
-# auto is passed as 0 (#if can only compare numbers)
-ifeq ($(strip $(GPU_J_SLICES)),auto)
-    DEFINES += -DGPU_J_SLICES=0
-else ifeq ($(shell echo '$(strip $(GPU_J_SLICES))' | grep -xE '[1-9][0-9]*'),)
-    $(error GPU_J_SLICES must be auto or a positive integer, got '$(GPU_J_SLICES)')
-else
-    DEFINES += -DGPU_J_SLICES=$(strip $(GPU_J_SLICES))
-endif
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL

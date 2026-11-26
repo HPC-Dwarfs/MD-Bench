@@ -112,6 +112,27 @@ const char* simdmode2str(int mode)
     }
 }
 
+int str2ljtableindex(const char* name)
+{
+    if (strcmp(name, "r") == 0) return LJ_TABLE_INDEX_R;
+    if (strcmp(name, "rsq") == 0) return LJ_TABLE_INDEX_RSQ;
+    return -1;
+}
+
+const char* ljtableindex2str(int index)
+{
+    return index == LJ_TABLE_INDEX_RSQ ? "rsq" : "r";
+}
+
+// auto (0) or a positive number of j-slices, -1 for anything else
+int str2jslices(const char* value)
+{
+    if (strcmp(value, "auto") == 0) return 0;
+    char* end;
+    long n = strtol(value, &end, 10);
+    return (end != value && *end == '\0' && n > 0 && n <= 65535) ? (int)n : -1;
+}
+
 /* Resolves --lj-comb auto and checks the rule against the atom types. The type-pair
  * matrix is always the geometric combination of the per-type parameters, so geometric and
  * matrix give the same forces; single needs every type to have the global epsilon and
@@ -219,6 +240,9 @@ void initParameter(Parameter* param)
     param->kernel_prefetch     = 1;
     param->force_simd          = SIMD_MODE_AUTOVEC;
     param->neighbor_simd       = SIMD_MODE_AUTOVEC;
+    param->lj_table_index      = LJ_TABLE_INDEX_RSQ;
+    param->gpu_j_slices        = 0;
+    param->pinned_memory       = 1;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
@@ -363,6 +387,9 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_INT(kernel_prefetch);
             PARSE_PARAM(force_simd, str2simdmode);
             PARSE_PARAM(neighbor_simd, str2simdmode);
+            PARSE_PARAM(lj_table_index, str2ljtableindex);
+            PARSE_PARAM(gpu_j_slices, str2jslices);
+            PARSE_INT(pinned_memory);
             PARSE_INT(ref_kernel);
         }
     }
@@ -376,6 +403,14 @@ void readParameter(Parameter* param, const char* filename)
         fprintf(stderr,
             "Error: force_simd and neighbor_simd must be one of autovec, intrinsics or "
             "intrinsics-compress\n");
+        exit(-1);
+    }
+    if (param->lj_table_index < 0) {
+        fprintf(stderr, "Error: lj_table_index must be r or rsq\n");
+        exit(-1);
+    }
+    if (param->gpu_j_slices < 0) {
+        fprintf(stderr, "Error: gpu_j_slices must be auto or a positive integer\n");
         exit(-1);
     }
 
@@ -470,6 +505,16 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Force kernel version:              %s\n",
         param->ref_kernel ? "ref" : "optimized");
+    if (param->gpu_j_slices > 0) {
+        fprintf(stdout,
+            "    GPU j-slices:                      %d\n",
+            param->gpu_j_slices);
+    } else {
+        fprintf(stdout, "    GPU j-slices:                      auto\n");
+    }
+    fprintf(stdout,
+        "    Pinned host memory:                %s\n",
+        param->pinned_memory ? "yes" : "no");
 #else
     fprintf(stdout, "    SIMD/Architecture:                 %s\n", SIMD_INTRINSICS);
 #endif

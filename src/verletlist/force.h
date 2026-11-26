@@ -24,8 +24,8 @@ extern void initForce(Parameter*);
 // kernel_variant.h
 DECLARE_RULE_EXCL_VARIANTS(computeForceLJHalfNeigh)
 DECLARE_RULE_EXCL_VARIANTS(computeForceLJFullNeigh)
-DECLARE_RULE_VARIANTS(computeForceLJTableHalfNeigh)
-DECLARE_RULE_VARIANTS(computeForceLJTableFullNeigh)
+DECLARE_RULE_TABLE_VARIANTS(computeForceLJTableHalfNeigh)
+DECLARE_RULE_TABLE_VARIANTS(computeForceLJTableFullNeigh)
 DECLARE_RULE_VARIANTS(computeForceEam)
 
 // The intrinsics kernels (--force-simd) need a SIMD header (src/common/simd/), none for

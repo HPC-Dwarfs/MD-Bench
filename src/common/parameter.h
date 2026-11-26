@@ -71,6 +71,10 @@ typedef struct {
 #define SIMD_MODE_INTRINSICS          1 // Hand-written SIMD intrinsics
 #define SIMD_MODE_INTRINSICS_COMPRESS 2 // Intrinsics, compressed cut-off lanes (force)
 
+// Index variable of the tabulated LJ forces, param->lj_table_index (--lj-table-index)
+#define LJ_TABLE_INDEX_R   0 // Uniform grid in r (matches GROMACS), a sqrt per pair
+#define LJ_TABLE_INDEX_RSQ 1 // Uniform grid in r^2, no sqrt
+
 // Coulomb treatment compile-time macros
 // Use -DCOULOMB_RULE=<value> at compile time
 #define COULOMB_NONE        0 // No electrostatics (LJ only)
@@ -186,6 +190,12 @@ typedef struct {
     // Verlet-list CPU force kernel and neighbor-list build (SIMD_MODE_*)
     int force_simd;
     int neighbor_simd;
+    // Index variable of the tabulated LJ forces (LJ_TABLE_INDEX_*)
+    int lj_table_index;
+    // j-slices (grid.y) of the GPU force kernels, 0 chooses them per force call (auto)
+    int gpu_j_slices;
+    // Pinned host memory for the buffers transferred to/from the GPU
+    int pinned_memory;
 } Parameter;
 
 void initParameter(Parameter*);
@@ -196,6 +206,9 @@ int str2ljcomb(const char*);
 const char* ljcomb2str(int);
 int str2simdmode(const char*);
 const char* simdmode2str(int);
+int str2ljtableindex(const char*);
+const char* ljtableindex2str(int);
+int str2jslices(const char*);
 void resolveLJCombRule(Parameter*,
     int ntypes,
     const MD_FLOAT* sqrt_epsilon_per_type,

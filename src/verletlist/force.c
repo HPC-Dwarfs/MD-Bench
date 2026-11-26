@@ -79,9 +79,9 @@ void initForce(Parameter* param)
         computeForce = computeForceLJTableCUDA;
 #else
         if (param->half_neigh || param->method) {
-            computeForce = SELECT_RULE_VARIANT(param, computeForceLJTableHalfNeigh);
+            computeForce = SELECT_RULE_TABLE_VARIANT(param, computeForceLJTableHalfNeigh);
         } else {
-            computeForce = SELECT_RULE_VARIANT(param, computeForceLJTableFullNeigh);
+            computeForce = SELECT_RULE_TABLE_VARIANT(param, computeForceLJTableFullNeigh);
         }
 #endif
         break;

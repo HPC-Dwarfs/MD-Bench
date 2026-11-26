@@ -114,15 +114,13 @@ into `DEFINES` and the binary tag:
 - Former build options that are runtime options now: `LJ_COMB_RULE` -> `--lj-comb`,
   `ACCURATE_RECIPROCAL` -> `--accurate-recip`, `KERNEL_PREFETCH=false` -> `--no-prefetch`,
   `SORT_ATOMS` -> `--sort-every <n>`, `USE_SIMD_KERNEL`/`SIMD_COMPRESS` -> `--force-simd`,
-  `USE_SIMD_NEIGHBOR` -> `--neighbor-simd`; `EXCLUSIONS` is inferred from the system
+  `USE_SIMD_NEIGHBOR` -> `--neighbor-simd`, `LJ_TABLE_INDEX` -> `--lj-table-index`,
+  `GPU_J_SLICES` -> `--gpu-j-slices`, `USE_PINNED_MEMORY` -> `--no-pinned-memory`; `EXCLUSIONS` is inferred from the system
   (`molsize > 1`) and `ISA` from `SIMD`; make stops with a hint when any of them is set on
   the command line or in `config.mk`
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds; **required, no default**. Common values: `gfx90a` (MI250X), `gfx940` (MI300A), `gfx942` (MI300X), `gfx1030` (RX 6800 XT)
-- `LJ_TABLE_INDEX`: Indexing mode for tabulated LJ kernels (`r` or `rsq`); `rsq` avoids a sqrt and is load-bound
 - `CLUSTER_PAIR_KERNEL`: Kernel variant for the clusterpair scheme (auto/4xN/2xNN/2xN/gpusimple/supercluster)
 - `ASM_SYNTAX`: Assembly syntax for generated `.s` files on X86 (`intel`/`att`), passed to the compiler as `-masm=`; ignored on ARM
-- `USE_PINNED_MEMORY`: Use pinned (page-locked) host memory for buffers that are `cudaMemcpy`'d to/from the GPU every reneighbor step, for faster/more predictable transfers (default true; CUDA/HIP builds only)
-- `GPU_J_SLICES`: Number of thread-block slices (grid.y) the GPU grid is split into along the j-neighbor lists of the optimized GPU kernels (gpusimple, supercluster, verlet list); auto (default) chooses them per force call from the occupancy and the list sizes, a positive integer fixes them
 - `ENABLE_LIKWID`: Enable LIKWID performance counter instrumentation
 
 Example build commands:
@@ -239,10 +237,12 @@ one static pattern rule adds the `VARIANT_FLAGS_<option>` of the variant).
 - cluster-pair SIMD kernels (`force_lj_4xn/2xnn/2xn.c`; only the selected shape has code):
   rule x `--accurate-recip` x `--no-prefetch` x exclusions (24)
 - cluster-pair `force_lj.c` (reference kernel, eight-shell ghost routine
-  `computeForceGhostShell<Rule>`), `force_lj_table.c`, `neighbor_build.c` (the list build
+  `computeForceGhostShell<Rule>`), `neighbor_build.c` (the list build
   `buildNeighborCPU<Rule>`): per rule
+- `force_lj_table.c` of both schemes: rule x `--lj-table-index` (`LJ_TABLE_RSQ`, suffix
+  `Rsq`, `TABLE_VARIANT_NAME`); the GPU table kernel has a `bool RSQ` template parameter
 - verlet-list `force_lj.c`: rule x exclusions; `force_lj_simd.c` (empty without a SIMD
-  header, `HAVE_SIMD_FORCE` in `force.h`): rule x `--accurate-recip`; `force_lj_table.c`, `force_eam.c`,
+  header, `HAVE_SIMD_FORCE` in `force.h`): rule x `--accurate-recip`; `force_eam.c`,
   `neighbor_build.c` (`buildNeighborLists<Rule>`, `buildNeighborListsSimd<Rule>` with
   `HAVE_SIMD_NEIGHBOR` in `neighbor_internal.h`, `neighborGhost<Rule>`): per rule
 The neighbor templates hold the original code with its `#if LJ_COMB_RULE` blocks; the

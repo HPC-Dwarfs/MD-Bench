@@ -22,7 +22,7 @@
 void RULE_VARIANT_NAME(computeForceGhostShell)(Parameter*, Atom*, Neighbor*);
 
 #ifdef USE_REFERENCE_KERNEL
-double RULE_VARIANT_NAME(computeForceLJTableRef)(
+double TABLE_VARIANT_NAME(computeForceLJTableRef)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTable begin\n");

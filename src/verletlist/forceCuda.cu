@@ -470,11 +470,6 @@ static void packAtomsForForceVL(
     *par         = d_par;
 }
 
-#ifndef GPU_J_SLICES
-#error "GPU_J_SLICES is not defined"
-#endif
-
-#if GPU_J_SLICES == 0
 // Resident blocks per SM of a force kernel: one wave is N_SM of these. Queried once per kernel.
 static int residentBlocksPerSMVL(const void* kernel, int threads, size_t shmem)
 {
@@ -495,15 +490,18 @@ static int residentBlocksPerSMVL(const void* kernel, int threads, size_t shmem)
     }
     return n;
 }
-#endif
 
-// j-slices (grid.y) of this force call, T threads per atom and slice, see GPU_J_SLICES
-static int chooseJSlicesVL(
-    const Neighbor* neighbor, const void* kernel, int nblocks, int threads, size_t shmem)
+// j-slices (grid.y) of this force call, T threads per atom and slice, see --gpu-j-slices
+static int chooseJSlicesVL(const Parameter* param,
+    const Neighbor* neighbor,
+    const void* kernel,
+    int nblocks,
+    int threads,
+    size_t shmem)
 {
-#if GPU_J_SLICES > 0
-    return GPU_J_SLICES;
-#else
+    if (param->gpu_j_slices > 0) {
+        return param->gpu_j_slices;
+    }
     // S = K * sqrt(N_SM * n_tot) / N_b if K > 0, else W waves of resident blocks;
     // K and W per list layout and type, tuned on GH200 (CSR uses the AOS values)
 #if defined(NBLIST_AOS) || defined(NBLIST_CSR)
@@ -532,7 +530,6 @@ static int chooseJSlicesVL(
     if (S > neighbor->maxneighs) S = neighbor->maxneighs > 0 ? neighbor->maxneighs : 1;
     if (S > 65535) S = 65535;                         // gridDim.y limit
     return S;
-#endif
 }
 
 double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
@@ -596,7 +593,12 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
     const int bx = (int)(((long)Nlocal * lanes + num_threads_per_block - 1) /
                          num_threads_per_block);
     const dim3 grid(bx,
-        chooseJSlicesVL(neighbor, (const void*)kernel, bx, num_threads_per_block, shmem),
+        chooseJSlicesVL(param,
+            neighbor,
+            (const void*)kernel,
+            bx,
+            num_threads_per_block,
+            shmem),
         1);
     if (half || grid.y > 1) { // the kernel accumulates with atomicAdd
 #ifdef ATOM_POSITION_AOS

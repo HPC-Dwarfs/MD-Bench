@@ -12,8 +12,9 @@
  * rule (--lj-comb), every copy has one ACCURATE_RECIPROCAL: Newton-Raphson refined 1/r
  * and 1/r^2 (--accurate-recip) KERNEL_NO_PREFETCH:  no j-cluster prefetch
  * (--no-prefetch), cluster-pair only KERNEL_EXCLUSIONS:   molecular exclusions (systems
- * with molecules) A runtime flag inside the kernel instead costs 1.5-3%, as GCC then lays
- * out the kernel code differently. */
+ * with molecules) LJ_TABLE_RSQ:        tabulated LJ indexed by r^2 (--lj-table-index)
+ * A runtime flag inside the kernel instead costs 1.5-3%, as GCC then lays out the kernel
+ * code differently. */
 #ifndef __KERNEL_VARIANT_H_
 #define __KERNEL_VARIANT_H_
 
@@ -49,10 +50,18 @@
 #define KERNEL_EXCL 0
 #endif
 
+#ifdef LJ_TABLE_RSQ
+#define KV_TABLE Rsq
+#else
+#define KV_TABLE
+#endif
+
 #define KV_PASTE(name, r, a, p, x)  name##r##a##p##x
 #define KV_EXPAND(name, r, a, p, x) KV_PASTE(name, r, a, p, x)
 // Functions that only depend on the combination rule
 #define RULE_VARIANT_NAME(name) KV_EXPAND(name, KV_RULE, , , )
+// Tabulated LJ kernels: the rule and the table index
+#define TABLE_VARIANT_NAME(name) KV_EXPAND(name, KV_RULE, KV_TABLE, , )
 // Kernel entry points: the rule and the options of the copy
 #define VARIANT_NAME(name) KV_EXPAND(name, KV_RULE, KV_ACCURATE, KV_NO_PREFETCH, KV_EXCL)
 
@@ -64,6 +73,8 @@
                                                      : SEL(param, name##Matrix)))
 #define KV_SEL_NONE(param, name) name
 #define KV_SEL_EXCL(param, name) ((param)->molsize > 1 ? name##Excl : name)
+#define KV_SEL_TABLE(param, name)                                                        \
+    ((param)->lj_table_index == LJ_TABLE_INDEX_RSQ ? name##Rsq : name)
 #define KV_SEL_ACCURATE(param, name)                                                     \
     ((param)->accurate_reciprocal ? name##Accurate : name)
 #define KV_SEL_OPTIONS(param, name)                                                      \
@@ -75,6 +86,8 @@
 
 // Rule only (reference, table and EAM kernels)
 #define SELECT_RULE_VARIANT(param, name) KV_SEL_RULE(param, name, KV_SEL_NONE)
+// Rule and table index (tabulated LJ kernels)
+#define SELECT_RULE_TABLE_VARIANT(param, name) KV_SEL_RULE(param, name, KV_SEL_TABLE)
 // Rule and exclusions (verlet-list C kernels)
 #define SELECT_RULE_EXCL_VARIANT(param, name) KV_SEL_RULE(param, name, KV_SEL_EXCL)
 // Rule and --accurate-recip (verlet-list SIMD kernels)
@@ -91,6 +104,7 @@
     D(name##Matrix)
 #define KV_DECL_EXCL(name)     KV_DECL(name) KV_DECL(name##Excl)
 #define KV_DECL_ACCURATE(name) KV_DECL(name) KV_DECL(name##Accurate)
+#define KV_DECL_TABLE(name)    KV_DECL(name) KV_DECL(name##Rsq)
 #define KV_DECL_OPTIONS(name)                                                            \
     KV_DECL_EXCL(name)                                                                   \
     KV_DECL_EXCL(name##Accurate)                                                         \
@@ -98,6 +112,7 @@
     KV_DECL_EXCL(name##AccurateNoPrefetch)
 #define DECLARE_RULE_VARIANTS(name)          KV_DECL_RULES(name, KV_DECL)
 #define DECLARE_RULE_EXCL_VARIANTS(name)     KV_DECL_RULES(name, KV_DECL_EXCL)
+#define DECLARE_RULE_TABLE_VARIANTS(name)    KV_DECL_RULES(name, KV_DECL_TABLE)
 #define DECLARE_RULE_ACCURATE_VARIANTS(name) KV_DECL_RULES(name, KV_DECL_ACCURATE)
 #define DECLARE_SIMD_VARIANTS(name)          KV_DECL_RULES(name, KV_DECL_OPTIONS)
 

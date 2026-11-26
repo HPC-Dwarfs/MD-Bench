@@ -26,7 +26,7 @@ extern void initForce(Parameter*);
 // One copy per LJ combination rule (computeForceLJRefGeom, ...), see kernel_variant.h
 DECLARE_RULE_VARIANTS(computeForceLJRef)
 #ifdef USE_REFERENCE_KERNEL
-DECLARE_RULE_VARIANTS(computeForceLJTableRef)
+DECLARE_RULE_TABLE_VARIANTS(computeForceLJTableRef)
 #endif
 #ifdef CLUSTERPAIR_KERNEL_4XN
 extern double computeForceLJTable4xnHalfNeigh(Parameter*, Atom*, Neighbor*, Stats*);

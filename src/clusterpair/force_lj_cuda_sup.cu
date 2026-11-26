@@ -435,18 +435,17 @@ extern "C" void reverseGhostForcesCUDASup(Atom* atom, Parameter* param)
     cuda_assert("cudaReverseGhostForcesSup", cudaDeviceSynchronize());
 }
 
-// j-slices of the force kernel, GPU_J_SLICES > 0 fixes them
-static int chooseJSlices(const Atom* atom, const Neighbor* neighbor, const void* kernel)
+// j-slices of the force kernel, --gpu-j-slices > 0 fixes them
+static int chooseJSlices(const Parameter* param,
+    const Atom* atom,
+    const Neighbor* neighbor,
+    const void* kernel)
 {
-#if GPU_J_SLICES > 0
-    (void)atom;
-    (void)neighbor;
-    (void)kernel;
-    return GPU_J_SLICES;
-#else
+    if (param->gpu_j_slices > 0) {
+        return param->gpu_j_slices;
+    }
     const double k_half = 3.05, k_full = 2.5;
     return chooseJSlicesK(atom, neighbor, neighbor->half_neigh ? k_half : k_full, kernel);
-#endif
 }
 
 extern "C" double computeForceLJCudaSup(
@@ -478,7 +477,7 @@ extern "C" double computeForceLJCudaSup(
 
     launchPackAtomsCuda(param, atom, 0);
 
-    grid_size.y = chooseJSlices(atom, neighbor, (const void*)kernel);
+    grid_size.y = chooseJSlices(param, atom, neighbor, (const void*)kernel);
     kernel<<<grid_size, block_size>>>(nb);
 
     cuda_assert("computeForceLJCudaSup", cudaPeekAtLastError());

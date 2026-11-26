@@ -28,6 +28,7 @@ void memsetGPU(void* d_ptr, int value, size_t bytesize) {}
 // No GPU to transfer to/from on this build, so these are plain host
 // allocations; callers (e.g. growClusters()) use them unconditionally
 // regardless of target.
+void setHostPinnedMemory(int enable) {}
 void* allocateHostPinned(size_t bytesize) { return allocate(ALIGNMENT, bytesize); }
 void* reallocateHostPinned(void* ptr, size_t new_bytesize, size_t old_bytesize)
 {

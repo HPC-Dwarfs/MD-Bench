@@ -139,11 +139,6 @@ cluster-pair scheme for validation (automatically set for GPU and scalar builds,
 binary name `CP-ref` on the CPU). It uses 4x4 clusters whatever the SIMD width.
 - `USE_SCALAR_KERNEL`: Use scalar version and rely on the compiler for
 auto-vectorization
-- `USE_CUDA_HOST_MEMORY`: Enable pinned host memory for faster host-device transfers
-- `USE_PINNED_MEMORY` (default: true): Allocate the host-side buffers that are
-transferred to/from the GPU every reneighbor step (positions/velocities,
-per-type LJ params, neighbor lists) as pinned memory instead of regular
-pageable memory, for faster/more predictable `cudaMemcpy` transfers
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds (e.g. `gfx90a`).
 Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 `gfx942` (MI300X).
@@ -151,13 +146,6 @@ Must be set explicitly; common values: `gfx90a` (MI250X), `gfx940` (MI300A),
 (`auto`/`4xN`/`2xN`/`2xNN`/`gpusimple`/`supercluster`)
 - `SUPERCLUSTER_DATA_LAYOUT`: Data layout for super-clustering kernels
 (`AOS3`/`AOS4`/`SOA`)
-- `GPU_J_SLICES` (default: auto): Number of thread-block slices the GPU
-grid is split into along the j-neighbor lists of the optimized GPU kernels
-(gpusimple, supercluster and verletlist). 1 means each i-(super)cluster's neighbors
-are handled by a single block; >1 splits the neighbor list across multiple concurrent
-blocks (more parallelism/occupancy) that combine partial forces with
-atomicAdd (more atomic contention); auto chooses the slices per force call from the
-occupancy and the list sizes.
 - `XTC_OUTPUT`: Enable XTC trajectory output (GROMACS file format)
 - `MEM_TRACER`: Trace memory addresses for cache simulation (true or false)
 - `INDEX_TRACER`: Trace indexes and distances for gather-MD analysis (true or false)
@@ -166,9 +154,10 @@ verletlist kernel with `--force-simd autovec` and the cluster-pair reference ker
 count the pairs inside and outside of the cut-off.
 
 The former build options `LJ_COMB_RULE`, `ACCURATE_RECIPROCAL`, `KERNEL_PREFETCH`,
-`SORT_ATOMS`, `USE_SIMD_KERNEL`/`SIMD_COMPRESS` and `USE_SIMD_NEIGHBOR` are the runtime
-options `--lj-comb`, `--accurate-recip`, `--no-prefetch`, `--sort-every`, `--force-simd`
-and `--neighbor-simd` now, `ISA` follows from `SIMD` and `EXCLUSIONS` from the system (see
+`SORT_ATOMS`, `USE_SIMD_KERNEL`/`SIMD_COMPRESS`, `USE_SIMD_NEIGHBOR`, `LJ_TABLE_INDEX`,
+`GPU_J_SLICES` and `USE_PINNED_MEMORY` are the runtime options `--lj-comb`,
+`--accurate-recip`, `--no-prefetch`, `--sort-every`, `--force-simd`, `--neighbor-simd`,
+`--lj-table-index`, `--gpu-j-slices` and `--no-pinned-memory` now, `ISA` follows from `SIMD` and `EXCLUSIONS` from the system (see
 below); make stops with a hint when they are given on the command line or in `config.mk`.
 
 Molecular exclusions are on when the system has molecules (`atom->molsize > 1`, the
@@ -283,6 +272,19 @@ exist for `-f lj` and support neither `-energy`, `COULOMB_RULE` nor `-gmxbench`.
 them are in every binary. Parameter file key `force_simd`.
 - `--neighbor-simd <string>`: verletlist CPU neighbor-list build, `autovec` (default) or
 `intrinsics` (needs `SIMD=AVX2/AVX512/NEON/SVE`). Parameter file key `neighbor_simd`.
+- `--lj-table-index <string>`: index variable of the tabulated LJ forces (`-f lj_table`),
+`rsq` (default) or `r`, see below. Parameter file key `lj_table_index`.
+- `--gpu-j-slices <string>`: GPU builds, the number of thread-block slices (grid.y) the
+j-neighbor lists of the optimized GPU kernels (gpusimple, supercluster and verletlist) are
+split into. `auto` (default) chooses them per force call from the occupancy and the list
+sizes; 1 means each i-(super)cluster's neighbors are handled by a single block; >1 splits
+the list across concurrent blocks (more parallelism/occupancy) that combine their partial
+forces with atomicAdd (more atomic contention). Parameter file key `gpu_j_slices`.
+- `--no-pinned-memory`: GPU builds, allocate the host-side buffers transferred to/from the
+GPU every reneighbor step (positions/velocities, per-type LJ params, neighbor lists) as
+regular pageable memory instead of pinned memory. Pinned memory (default) gives
+faster/more predictable transfers and avoids stalls from NUMA balancing migrating pages
+the CPU does not touch between reneighbor steps. Parameter file key `pinned_memory`.
 - `-energy`:  also compute the LJ and Coulomb energies in the force kernels (GROMACS'
 energy kernels, `gmx nonbonded-benchmark -energy`), reported by `--kernel-bench` and
 `--dump-forces`. All LJ kernels except the verletlist explicit SIMD kernels.
@@ -450,13 +452,14 @@ the cut-off and the self energy of every charge.
 ### Tabulated Lennard-Jones potential (verletlist only)
 
 Uses cubic spline interpolation (GROMACS-style) instead of direct force computation.
-Only available with `OPT_SCHEME=verletlist`. Select the indexing mode at build
-time via `LJ_TABLE_INDEX=r` (default) or `LJ_TABLE_INDEX=rsq` (avoids sqrt,
-load-bound):
+Only available with `OPT_SCHEME=verletlist` (CPU and GPU) and the cluster-pair reference
+kernel. Select the index variable of the table at runtime with `--lj-table-index rsq`
+(default, uniform grid in r^2, avoids the sqrt, load-bound) or `--lj-table-index r`
+(uniform grid in r, as GROMACS); every binary has the kernels of both:
 
 ```shell=bash
-make OPT_SCHEME=verletlist LJ_TABLE_INDEX=rsq
-./MDBench-<TAG> -f lj_table
+make OPT_SCHEME=verletlist
+./MDBench-<TAG> -f lj_table --lj-table-index r
 ```
 
 ## Citations

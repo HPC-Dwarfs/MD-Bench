@@ -62,12 +62,13 @@ extern void memsetGPU(void* d_ptr, int value, size_t bytesize);
 
 // Host-side buffers that get cudaMemcpy'd to/from the GPU every reneighbor
 // step (atom positions/velocities, per-type LJ params, neighbor lists).
-// With USE_PINNED_MEMORY these come from page-locked memory (GPU_MALLOC_HOST)
-// instead of allocate()'s regular pageable memory, for faster/more
-// predictable transfers; without it (or on non-CUDA builds) they fall back
-// to plain allocate()/reallocate()/free(). Alignment matches allocate()'s
-// ALIGNMENT convention implicitly, since pinned allocators already return
-// page-aligned memory.
+// By default these come from page-locked memory (GPU_MALLOC_HOST) instead of
+// allocate()'s regular pageable memory, for faster/more predictable transfers;
+// with --no-pinned-memory (setHostPinnedMemory(0), before the first allocation)
+// or on non-CUDA builds they fall back to plain allocate()/reallocate()/free().
+// Alignment matches allocate()'s ALIGNMENT convention implicitly, since pinned
+// allocators already return page-aligned memory.
+extern void setHostPinnedMemory(int enable);
 extern void* allocateHostPinned(size_t bytesize);
 extern void* reallocateHostPinned(void* ptr, size_t new_bytesize, size_t old_bytesize);
 extern void freeHostPinned(void* ptr);

@@ -949,7 +949,7 @@ void growClusters(Atom* atom, int super_clustering)
         nold * sizeof(int));
     // cl_x, cl_v, cl_t, cl_sqrt_epsilon and cl_sigma3 are cudaMemcpy'd to the
     // GPU every reneighbor step (copyDataToCUDADevice()), so they come from
-    // pinned host memory when USE_PINNED_MEMORY is set; cl_x_ref/cl_f/etc.
+    // pinned host memory unless --no-pinned-memory is given; cl_x_ref/cl_f/etc.
     // never cross that boundary and stay on regular pageable memory.
     atom->cl_x            = (MD_FLOAT*)reallocateHostPinned(atom->cl_x,
         atom->Nclusters_max * CLUSTER_M * SCLUSTER_SIZE * 3 * sizeof(MD_FLOAT),

@@ -276,7 +276,7 @@ void buildNeighborSuperclusters(Atom* atom, Neighbor* neighbor)
     /* extend atom arrays if necessary */
     // numneigh, numneigh_inner and neighbors are cudaMemcpy'd to the GPU
     // every reneighbor step (copyDataToCUDADevice()), so they come from
-    // pinned host memory when USE_PINNED_MEMORY is set.
+    // pinned host memory unless --no-pinned-memory is given.
     if (atom->Nclusters_local > nmax) {
         nmax = atom->Nclusters_local;
         if (neighbor->numneigh) freeHostPinned(neighbor->numneigh);

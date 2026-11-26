@@ -35,10 +35,6 @@
 #define SHFL_UP_ROW(x, n)   SHFL_UP(x, n)
 #endif
 
-#ifndef GPU_J_SLICES
-#error "GPU_J_SLICES is not defined"
-#endif
-
 // Per-atom parameters of the optimized kernels
 typedef struct __align__(4 * sizeof(MD_FLOAT)) {
     MD_FLOAT sqrt_epsilon; // geometric rule

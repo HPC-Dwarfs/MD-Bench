@@ -70,7 +70,7 @@ void initForce(Parameter* param)
     case FF_LJ_TABLE:
 // #if defined(CLUSTERPAIR_KERNEL_REF)
 #if defined(CLUSTERPAIR_KERNEL_REF)
-        computeForce = SELECT_RULE_VARIANT(param, computeForceLJTableRef);
+        computeForce = SELECT_RULE_TABLE_VARIANT(param, computeForceLJTableRef);
 #else
         fprintf(stderr,
             "Error: Tabulated force fields for SIMD/GPU cases not yet implemented!\n");

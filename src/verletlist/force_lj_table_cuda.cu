@@ -32,8 +32,17 @@ extern "C" {
 // (see src/common/ljtable.{h,c}). The coefficient table is uploaded to the
 // device once and kept resident in ljtable.d_coeff.
 // RULE: LJ combination rule (cutforcesq, sigma6 and epsilon are only used by single)
+// RSQ: table indexed by r^2 instead of r (--lj-table-index)
 
-template <int RULE>
+// K<rule, rsq> for the combination rule and the table index
+#define SELECT_TABLE_KERNEL_R(K, rule, RSQ)                                              \
+    ((rule) == LJ_COMB_SINGLE    ? K<LJ_COMB_SINGLE, RSQ>                                \
+        : (rule) == LJ_COMB_GEOM ? K<LJ_COMB_GEOM, RSQ>                                  \
+                                 : K<LJ_COMB_MATRIX, RSQ>)
+#define SELECT_TABLE_KERNEL(K, rule, rsq)                                                \
+    ((rsq) ? SELECT_TABLE_KERNEL_R(K, rule, true) : SELECT_TABLE_KERNEL_R(K, rule, false))
+
+template <int RULE, bool RSQ>
 __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -95,7 +104,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
         }
 
         if (rsq < cutforcesq_ij) {
-            MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
+            MD_FLOAT u = (RSQ ? rsq : sqrt(rsq)) * inv_h;
             int m      = (int)u;
             if (m > nm1) m = nm1;
             MD_FLOAT eps       = u - (MD_FLOAT)m;
@@ -114,7 +123,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     atom_fz(i) = fiz;
 }
 
-template <int RULE>
+template <int RULE, bool RSQ>
 __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
     MD_FLOAT cutforcesq,
     MD_FLOAT sigma6,
@@ -176,7 +185,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
         }
 
         if (rsq < cutforcesq_ij) {
-            MD_FLOAT u = LJ_TABLE_COORD(rsq) * inv_h;
+            MD_FLOAT u = (RSQ ? rsq : sqrt(rsq)) * inv_h;
             int m      = (int)u;
             if (m > nm1) m = nm1;
             MD_FLOAT eps       = u - (MD_FLOAT)m;
@@ -255,8 +264,9 @@ double computeForceLJTableCUDA(
         memsetGPU(atom->d_atom.fy, 0, sizeof(MD_FLOAT) * Nmax);
         memsetGPU(atom->d_atom.fz, 0, sizeof(MD_FLOAT) * Nmax);
 #endif
-        auto kernel = SELECT_GPU_KERNEL_RULE(computeForceLJTableCudaHalfNeigh,
-            param->lj_comb_rule);
+        auto kernel = SELECT_TABLE_KERNEL(computeForceLJTableCudaHalfNeigh,
+            param->lj_comb_rule,
+            param->lj_table_index == LJ_TABLE_INDEX_RSQ);
         kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,
@@ -270,8 +280,9 @@ double computeForceLJTableCUDA(
             inv_h,
             coeff);
     } else {
-        auto kernel = SELECT_GPU_KERNEL_RULE(computeForceLJTableCudaFullNeigh,
-            param->lj_comb_rule);
+        auto kernel = SELECT_TABLE_KERNEL(computeForceLJTableCudaFullNeigh,
+            param->lj_comb_rule,
+            param->lj_table_index == LJ_TABLE_INDEX_RSQ);
         kernel<<<num_blocks, num_threads_per_block>>>(atom->d_atom,
             cutforcesq,
             sigma6,

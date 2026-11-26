@@ -19,18 +19,19 @@ LJTable ljtable;
 // x is r^2. Returns force-over-distance shapes so that
 //   fpair = (eps*sigma^12)*rep + (eps*sigma^6)*disp.
 static void ljShape(
-    MD_FLOAT x, MD_FLOAT* rep, MD_FLOAT* drep, MD_FLOAT* disp, MD_FLOAT* ddisp)
+    int index, MD_FLOAT x, MD_FLOAT* rep, MD_FLOAT* drep, MD_FLOAT* disp, MD_FLOAT* ddisp)
 {
-#ifdef LJ_TABLE_RSQ
-    // x = r^2 :  Hrep = 48 x^-7,  Gdisp = -24 x^-4
-    MD_FLOAT xi  = 1.0 / x;
-    MD_FLOAT xi4 = xi * xi * xi * xi;
-    MD_FLOAT xi7 = xi4 * xi * xi * xi;
-    *rep         = 48.0 * xi7;
-    *drep        = -7.0 * 48.0 * xi7 * xi; // d/dx (48 x^-7) = -336 x^-8
-    *disp        = -24.0 * xi4;
-    *ddisp       = 4.0 * 24.0 * xi4 * xi; // d/dx (-24 x^-4) = 96 x^-5
-#else
+    if (index == LJ_TABLE_INDEX_RSQ) {
+        // x = r^2 :  Hrep = 48 x^-7,  Gdisp = -24 x^-4
+        MD_FLOAT xi  = 1.0 / x;
+        MD_FLOAT xi4 = xi * xi * xi * xi;
+        MD_FLOAT xi7 = xi4 * xi * xi * xi;
+        *rep         = 48.0 * xi7;
+        *drep        = -7.0 * 48.0 * xi7 * xi; // d/dx (48 x^-7) = -336 x^-8
+        *disp        = -24.0 * xi4;
+        *ddisp       = 4.0 * 24.0 * xi4 * xi; // d/dx (-24 x^-4) = 96 x^-5
+        return;
+    }
     // x = r :  Hrep = 48 r^-14,  Gdisp = -24 r^-8
     MD_FLOAT ri   = 1.0 / x;
     MD_FLOAT ri2  = ri * ri;
@@ -40,7 +41,6 @@ static void ljShape(
     *drep         = -14.0 * 48.0 * ri14 * ri; // d/dr (48 r^-14) = -672 r^-15
     *disp         = -24.0 * ri8;
     *ddisp        = 8.0 * 24.0 * ri8 * ri; // d/dr (-24 r^-8) = 192 r^-9
-#endif
 }
 
 void initLJTable(Parameter* param)
@@ -51,14 +51,12 @@ void initLJTable(Parameter* param)
     }
 
     MD_FLOAT cut = param->cutforce;
-#ifdef LJ_TABLE_RSQ
-    MD_FLOAT xmax = cut * cut;
-#else
-    MD_FLOAT xmax = cut;
-#endif
+    const int index = param->lj_table_index;
+    MD_FLOAT xmax   = index == LJ_TABLE_INDEX_RSQ ? cut * cut : cut;
     MD_FLOAT h = xmax / (MD_FLOAT)n;
 
     ljtable.n       = n;
+    ljtable.index   = index;
     ljtable.cut     = cut;
     ljtable.h       = h;
     ljtable.inv_h   = 1.0 / h;
@@ -90,7 +88,7 @@ void initLJTable(Parameter* param)
             x = xfloor;
         }
         MD_FLOAT rep, drep, disp, ddisp;
-        ljShape(x, &rep, &drep, &disp, &ddisp);
+        ljShape(index, x, &rep, &drep, &disp, &ddisp);
         rv[i] = rep;
         dv[i] = disp;
         // derivative wrt the local coordinate eps = (x - x_m)/h is h * d/dx
@@ -129,6 +127,6 @@ void initLJTable(Parameter* param)
            "(index=%s, spacing=%.3e)\n",
         n,
         (double)cut,
-        LJ_TABLE_INDEX_NAME,
+        ljtableindex2str(index),
         (double)h);
 }

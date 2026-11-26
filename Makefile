@@ -65,10 +65,13 @@ VARIANT_FLAGS_matrix     = -DLJ_COMB_RULE=2
 VARIANT_FLAGS_accurate   = -DACCURATE_RECIPROCAL
 VARIANT_FLAGS_noprefetch = -DKERNEL_NO_PREFETCH
 VARIANT_FLAGS_excl       = -DKERNEL_EXCLUSIONS
+VARIANT_FLAGS_rsq        = -DLJ_TABLE_RSQ
 
 RULES          = single geom matrix
 RULES_EXCL     = $(foreach r,$(RULES),$(r) $(r)-excl)
 RULES_ACCURATE = $(foreach r,$(RULES),$(r) $(r)-accurate)
+# Rule x --lj-table-index
+RULES_TABLE    = $(foreach r,$(RULES),$(r) $(r)-rsq)
 # Rule x --accurate-recip x --no-prefetch x exclusions
 RULES_SIMD     = $(foreach e,$(RULES_ACCURATE),$(foreach p,$(e) $(e)-noprefetch,$(p) $(p)-excl))
 
@@ -77,7 +80,7 @@ ifeq ($(strip $(OPT_SCHEME)),clusterpair)
 TEMPLATE_FILES          = neighbor_build force_lj force_lj_table force_lj_4xn force_lj_2xnn force_lj_2xn
 VARIANTS_neighbor_build = $(RULES)
 VARIANTS_force_lj       = $(RULES)
-VARIANTS_force_lj_table = $(RULES)
+VARIANTS_force_lj_table = $(RULES_TABLE)
 ifneq ($(strip $(USE_REFERENCE_KERNEL)),true)
 VARIANTS_force_lj_4xn   = $(RULES_SIMD)
 VARIANTS_force_lj_2xnn  = $(RULES_SIMD)
@@ -87,7 +90,7 @@ else
 TEMPLATE_FILES          = neighbor_build force_lj force_lj_table force_eam force_lj_simd
 VARIANTS_neighbor_build = $(RULES)
 VARIANTS_force_lj       = $(RULES_EXCL)
-VARIANTS_force_lj_table = $(RULES)
+VARIANTS_force_lj_table = $(RULES_TABLE)
 VARIANTS_force_eam      = $(RULES)
 # Empty without a SIMD header (HAVE_SIMD_FORCE in force.h), --force-simd picks it
 VARIANTS_force_lj_simd  = $(RULES_ACCURATE)

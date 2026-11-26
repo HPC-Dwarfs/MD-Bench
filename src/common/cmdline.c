@@ -11,6 +11,7 @@
 
 #include <cmdline.h>
 #include <comm.h>
+#include <device.h>
 #include <force.h>
 #include <parameter.h>
 #include <util.h>
@@ -102,6 +103,9 @@ static void printHelp(void)
            "within the cut-off before the LJ force)\n");
     printf("  --neighbor-simd <string>  verlet-list CPU neighbor-list build: autovec "
            "(default) or intrinsics\n");
+    printf("  --lj-table-index <string> index variable of the tabulated LJ forces (-f "
+           "lj_table): rsq (default, uniform grid in r^2, no sqrt) or r (uniform grid in "
+           "r, as GROMACS)\n");
     printf("  -energy                   also compute the LJ and Coulomb energies "
            "(reported by --kernel-bench and --dump-forces)\n");
     printf("  -halflj                   LJ only for the first half of the i-clusters "
@@ -116,6 +120,11 @@ static void printHelp(void)
     printf("  -ref                      GPU builds: the reference force kernels (one "
            "thread per atom pair, no packing, slicing or warp reductions, all forces "
            "with atomicAdd) instead of the optimized ones\n");
+    printf("  --gpu-j-slices <string>   GPU builds: j-slices (grid.y) the neighbor lists "
+           "of the optimized force kernels are split into, auto (default, chosen per "
+           "force call) or a positive integer\n");
+    printf("  --no-pinned-memory        GPU builds: pageable instead of pinned host "
+           "memory for the buffers transferred to/from the GPU\n");
     printf("  --kernel-bench <int>      after the setup, only run the force kernel this "
            "many times on the fixed neighbor lists\n");
     printf("  --dump-forces <file>      write the forces of a single kernel call (atom "
@@ -221,6 +230,20 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
                     "invalid --neighbor-simd %s, use autovec or intrinsics",
                     mode);
             }
+        } else if (IS("--lj-table-index")) {
+            const char* index = NEXT_ARG();
+            if ((param->lj_table_index = str2ljtableindex(index)) < 0) {
+                cmdError(comm, "invalid --lj-table-index %s, use r or rsq", index);
+            }
+        } else if (IS("--gpu-j-slices")) {
+            const char* slices = NEXT_ARG();
+            if ((param->gpu_j_slices = str2jslices(slices)) < 0) {
+                cmdError(comm,
+                    "invalid --gpu-j-slices %s, use auto or a positive integer",
+                    slices);
+            }
+        } else if (IS("--no-pinned-memory")) {
+            param->pinned_memory = 0;
         } else if (IS("-energy")) {
             param->compute_energy = true;
         } else if (IS("-halflj")) {
@@ -353,6 +376,15 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
             param->skin = 0.0;
         }
     }
+
+#ifndef CUDA_TARGET
+    if (param->gpu_j_slices > 0 || !param->pinned_memory) {
+        cmdWarning(comm,
+            "--gpu-j-slices and --no-pinned-memory have no effect on the CPU");
+    }
+#endif
+    // Before the first host buffer is allocated
+    setHostPinnedMemory(param->pinned_memory);
 
     param->outer_skin = MAX(param->outer_skin, 0.0);
     param->cutneigh   = param->cutforce + param->skin + param->outer_skin;

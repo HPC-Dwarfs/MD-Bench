@@ -841,7 +841,7 @@ void growAtom(Atom* atom)
     atom->Nmax += DELTA;
 
 // atom->p is cudaMemcpy'd to/from the GPU (see device.c, forceCuda.cu),
-// so it comes from pinned host memory when USE_PINNED_MEMORY is set.
+// so it comes from pinned host memory unless --no-pinned-memory is given.
 #undef REALLOC
 #define REALLOC(p, t, ns, os)                                                            \
     ;                                                                                    \

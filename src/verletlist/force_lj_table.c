@@ -22,7 +22,7 @@
 // the per-pair prefactors (epsilon*sigma^12) and (epsilon*sigma^6). See
 // src/common/ljtable.{h,c} for the table layout.
 
-double RULE_VARIANT_NAME(computeForceLJTableFullNeigh)(
+double TABLE_VARIANT_NAME(computeForceLJTableFullNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTableFullNeigh begin\n");
@@ -143,7 +143,7 @@ double RULE_VARIANT_NAME(computeForceLJTableFullNeigh)(
     return timeStop - timeStart;
 }
 
-double RULE_VARIANT_NAME(computeForceLJTableHalfNeigh)(
+double TABLE_VARIANT_NAME(computeForceLJTableHalfNeigh)(
     Parameter* param, Atom* atom, Neighbor* neighbor, Stats* stats)
 {
     DEBUG_MESSAGE("computeForceLJTableHalfNeigh begin\n");
