@@ -22,23 +22,6 @@
 #include <omp.h>
 #endif
 
-// USE_SIMD_NEIGHBOR controls the vectorized neighbor-list build independently
-// of USE_SIMD_KERNEL (which only affects the force kernel). Under AOS/SOA it
-// writes surviving neighbor indices through the neighs() macro directly into
-// the padded per-atom slot; under CSR it appends them to that atom's
-// growable per-thread buffer instead (see buildNeighborCPU) -- the
-// vectorized bin-scan itself (gather candidate positions, build a lane mask,
-// scalar bit-scan over survivors) is identical either way, only the storage
-// step differs.
-#ifdef __SIMD_NEIGHBOR__
-#include <simd.h>
-#if !defined(__ISA_AVX512__) && !defined(__ISA_AVX2__) && !defined(__ISA_NEON__) &&      \
-    !defined(__ISA_SVE__) && !defined(__ISA_SVE2__)
-#error "USE_SIMD_NEIGHBOR requires SIMD=AVX2/AVX512/NEON/SVE/SVE2 (needs " \
-    "simd_mask_not/simd_mask_i32_cond_eq, not implemented for SSE/AVX so far)"
-#endif
-#endif
-
 #define SMALL  1.0e-6
 #define FACTOR 0.999
 
@@ -81,6 +64,15 @@ void initNeighbor(Neighbor* neighbor, Parameter* param)
 {
     // The list build variant, setup() sets it again after resolving --lj-comb auto
     neighbor->lj_comb_rule   = param->lj_comb_rule;
+    neighbor->simd           = param->neighbor_simd;
+#ifndef HAVE_SIMD_NEIGHBOR
+    if (neighbor->simd != SIMD_MODE_AUTOVEC) {
+        fprintf(stderr,
+            "Error: --neighbor-simd %s needs SIMD=AVX2/AVX512/NEON/SVE!\n",
+            simdmode2str(neighbor->simd));
+        exit(EXIT_FAILURE);
+    }
+#endif
     MD_FLOAT neighscale      = 5.0 / 6.0;
     xprd                     = param->nx * param->lattice;
     yprd                     = param->ny * param->lattice;
@@ -311,7 +303,15 @@ void buildNeighborCPU(Atom* atom, Neighbor* neighbor)
 
     binatoms(atom);
     // The list build is compiled once per LJ combination rule (neighbor_build.c)
+#ifdef HAVE_SIMD_NEIGHBOR
+    if (neighbor->simd == SIMD_MODE_INTRINSICS) {
+        CALL_RULE_VARIANT(neighbor->lj_comb_rule, buildNeighborListsSimd, atom, neighbor);
+    } else {
+        CALL_RULE_VARIANT(neighbor->lj_comb_rule, buildNeighborLists, atom, neighbor);
+    }
+#else
     CALL_RULE_VARIANT(neighbor->lj_comb_rule, buildNeighborLists, atom, neighbor);
+#endif
 
     if (method == eightShell) {
         CALL_RULE_VARIANT(neighbor->lj_comb_rule, neighborGhost, atom, neighbor);

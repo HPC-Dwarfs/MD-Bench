@@ -74,9 +74,9 @@ make -s OPT_SCHEME=clusterpair COULOMB_RULE=ewald print-target
 ### Binary Naming
 
 Binary names follow `MDBench-<OPT_TAG>-<TOOL_TAG>-<DATA_TYPE><TAG_SUFFIX>` (`make/options.mk`):
-- `OPT_TAG`: `VL` (+ `-SIMD`, `-NBSIMD`) or `CP-<CLUSTER_PAIR_KERNEL>`, `CP-ref` for the
+- `OPT_TAG`: `VL` or `CP-<CLUSTER_PAIR_KERNEL>`, `CP-ref` for the
   CPU reference kernel (`USE_REFERENCE_KERNEL`, forced by scalar `SIMD`)
-- `TOOL_TAG`: `<TOOLCHAIN>-<SIMD>[-CMP]` (`SIMD` resolved, e.g. `X86_SCALAR` for `NONE`),
+- `TOOL_TAG`: `<TOOLCHAIN>-<SIMD>` (`SIMD` resolved, e.g. `X86_SCALAR` for `NONE`),
   only `<TOOLCHAIN>` for GPU builds
 - `TAG_SUFFIX`: `[-<COULOMB_RULE>][-omp][-mpi]` (`-omp`/`-mpi` for
   `ENABLE_OPENMP`/`ENABLE_MPI`)
@@ -113,7 +113,8 @@ into `DEFINES` and the binary tag:
   the cut-off
 - Former build options that are runtime options now: `LJ_COMB_RULE` -> `--lj-comb`,
   `ACCURATE_RECIPROCAL` -> `--accurate-recip`, `KERNEL_PREFETCH=false` -> `--no-prefetch`,
-  `SORT_ATOMS` -> `--sort-every <n>`; `EXCLUSIONS` is inferred from the system
+  `SORT_ATOMS` -> `--sort-every <n>`, `USE_SIMD_KERNEL`/`SIMD_COMPRESS` -> `--force-simd`,
+  `USE_SIMD_NEIGHBOR` -> `--neighbor-simd`; `EXCLUSIONS` is inferred from the system
   (`molsize > 1`) and `ISA` from `SIMD`; make stops with a hint when any of them is set on
   the command line or in `config.mk`
 - `GPU_ARCH`: Target GPU architecture for HIPCC (AMD) builds; **required, no default**. Common values: `gfx90a` (MI250X), `gfx940` (MI300A), `gfx942` (MI300X), `gfx1030` (RX 6800 XT)
@@ -171,7 +172,15 @@ spline interpolation (GROMACS-style) over a precomputed force/energy table.
 Verlet-list additionally has a CUDA GPU variant (`force_lj_table_cuda.cu`);
 cluster-pair's tabulated LJ is CPU-only.
 
-The kernel selection is controlled through build-time options and affects the generated binary name.
+The cluster-pair kernel selection is controlled through build-time options and affects the generated binary name.
+
+The verlet-list CPU kernels are all in every binary and selected at runtime
+(`param->force_simd`/`param->neighbor_simd`, `SIMD_MODE_*` in `parameter.h`):
+`--force-simd autovec` (default, plain C `force_lj.c`), `intrinsics` (`force_lj_simd.c`,
+`*_simd`, or `*_simd_vla` on SVE/SVE2) or `intrinsics-compress` (`*_simd_compress`), and
+`--neighbor-simd autovec|intrinsics` (`buildNeighborLists`/`buildNeighborListsSimd`). The
+intrinsics code is compiled when the ISA has it (`HAVE_SIMD_FORCE`: AVX and up, NEON, SVE;
+`HAVE_SIMD_NEIGHBOR`: AVX2 and up, NEON, SVE), otherwise selecting it is a runtime error.
 
 Each scheme also builds a `-stub` binary variant (`main-stub.c`) for synthetic neighbor list benchmarking with configurable patterns (sequential, fixed, random).
 
@@ -232,9 +241,10 @@ one static pattern rule adds the `VARIANT_FLAGS_<option>` of the variant).
 - cluster-pair `force_lj.c` (reference kernel, eight-shell ghost routine
   `computeForceGhostShell<Rule>`), `force_lj_table.c`, `neighbor_build.c` (the list build
   `buildNeighborCPU<Rule>`): per rule
-- verlet-list `force_lj.c`: rule x exclusions; `force_lj_simd.c` (only with
-  `USE_SIMD_KERNEL`): rule x `--accurate-recip`; `force_lj_table.c`, `force_eam.c`,
-  `neighbor_build.c` (`buildNeighborLists<Rule>`, `neighborGhost<Rule>`): per rule
+- verlet-list `force_lj.c`: rule x exclusions; `force_lj_simd.c` (empty without a SIMD
+  header, `HAVE_SIMD_FORCE` in `force.h`): rule x `--accurate-recip`; `force_lj_table.c`, `force_eam.c`,
+  `neighbor_build.c` (`buildNeighborLists<Rule>`, `buildNeighborListsSimd<Rule>` with
+  `HAVE_SIMD_NEIGHBOR` in `neighbor_internal.h`, `neighborGhost<Rule>`): per rule
 The neighbor templates hold the original code with its `#if LJ_COMB_RULE` blocks; the
 state they share with `neighbor.c` is declared in `neighbor_internal.h` of each scheme.
 The prune kernels have no rule dependence and are compiled once. The GPU kernels use C++
@@ -315,11 +325,11 @@ precision. Forces of 1 to 8 ranks match the serial run exactly (checked by hand 
 OpenMPI on the alex cluster: `module load openmpi/5.0.8-gcc11.5.0-cuda12.9`).
 
 The verlet-list scheme has the same physics in its plain C kernels (`force_lj.c`, the
-default `USE_SIMD_KERNEL=false`) and its GPU kernels (`forceCuda.cu`): per-atom `q`, `mol`
+default `--force-simd autovec`) and its GPU kernels (`forceCuda.cu`): per-atom `q`, `mol`
 and `id` (`src/verletlist/atom.h`), set from the type and the original index by
 `setAtomTypeId()`, follow the atom through `copy()`, `sortAtom()`, the ghosts (`ADDGHOST`,
-`updatePbcCPU()`, `computePbcUpdate()` on the GPU) and the MPI buffers. The explicit SIMD
-kernels (`USE_SIMD_KERNEL=true`) refuse `COULOMB_RULE` and `-gmxbench` (molecules). The verlet-list half
+`updatePbcCPU()`, `computePbcUpdate()` on the GPU) and the MPI buffers. The intrinsics
+kernels (`--force-simd intrinsics[-compress]`) refuse `COULOMB_RULE` and `-gmxbench` (molecules). The verlet-list half
 kernel writes through per-thread force arrays like the cluster pairs
 (`src/verletlist/thread_forces.h`).
 
@@ -540,7 +550,7 @@ Simulation test data lives in `data/`: `data/argon/input.gro` +
 
 10. **Header Dependencies**: The force.h header contains complex macro definitions that control kernel generation.
 
-11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`. Electrostatics/exclusions exist for all cluster-pair kernels (SIMD, reference, GPU) and for the verlet-list plain C and GPU kernels, not for the verlet-list explicit SIMD kernels (`USE_SIMD_KERNEL=true`), EAM and the tabulated kernels.
+11. **Feature Parity Gaps**: Tabulated LJ CPU kernels exist for both schemes (`force_lj_table.c`), but the CUDA-accelerated variant (`force_lj_table_cuda.cu`) exists only for verlet-list. GPU PBC exists only for verlet-list (`pbcCuda.cu`); cluster-pair CUDA/HIP builds still run PBC on the CPU. EAM exists for both schemes but has no GPU kernel in either — it always runs on CPU regardless of `TOOLCHAIN`. Electrostatics/exclusions exist for all cluster-pair kernels (SIMD, reference, GPU) and for the verlet-list plain C and GPU kernels, not for the verlet-list intrinsics kernels (`--force-simd intrinsics`), EAM and the tabulated kernels.
 
 12. **Multiple Kernels Per Change**: Don't assume a single force kernel; a correctness or feature change in cluster-pair may need to be applied across reference, 4xN, 2xNN, 2xN, CUDA, and super-clustering GPU variants to stay consistent.
 

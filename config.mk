@@ -61,16 +61,6 @@ GPU_J_SLICES ?= auto
 USE_SCALAR_KERNEL ?= false
 # Use reference version (for correction and metrics purposes)
 USE_REFERENCE_KERNEL ?= false
-# Use SIMD intrinsic kernels for force computation (true or false)
-USE_SIMD_KERNEL ?= false
-# Compress cutoff-passing neighbors into full SIMD registers before running
-# the expensive LJ force stage, instead of masking out failing lanes
-# (requires USE_SIMD_KERNEL=true; AVX2/AVX512 only for now)
-SIMD_COMPRESS ?= false
-# Use SIMD intrinsics to build the Verlet-list neighbor lists (true or false).
-# Independent of USE_SIMD_KERNEL, which only affects the force kernel.
-# (AVX512 only for now; not implemented for NBLIST_DATA_LAYOUT=CSR)
-USE_SIMD_NEIGHBOR ?= false
 # Enable XTC output (a GROMACS file format for trajectories)
 XTC_OUTPUT ?= false
 

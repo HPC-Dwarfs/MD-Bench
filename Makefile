@@ -89,9 +89,8 @@ VARIANTS_neighbor_build = $(RULES)
 VARIANTS_force_lj       = $(RULES_EXCL)
 VARIANTS_force_lj_table = $(RULES)
 VARIANTS_force_eam      = $(RULES)
-ifeq ($(strip $(USE_SIMD_KERNEL)),true)
+# Empty without a SIMD header (HAVE_SIMD_FORCE in force.h), --force-simd picks it
 VARIANTS_force_lj_simd  = $(RULES_ACCURATE)
-endif
 endif
 
 VARIANT_OBJ = $(foreach f,$(TEMPLATE_FILES),$(foreach v,$(VARIANTS_$(f)),$(BUILD_DIR)/$(f).$(v).o))

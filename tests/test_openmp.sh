@@ -117,7 +117,7 @@ for scheme in verletlist clusterpair; do
     exit 1
   fi
 
-  for lj_rule in geometric full; do
+  for lj_rule in geometric matrix; do
     for half in 0 1; do
       echo "--- ${scheme}/${lj_rule}, argon, half=${half} ---"
       if ! run_case "${BIN}" "${scheme}-${lj_rule}-argon-half${half}" "${half}" \

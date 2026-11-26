@@ -90,6 +90,28 @@ const char* ljcomb2str(int rule)
     }
 }
 
+int str2simdmode(const char* name)
+{
+    if (strcmp(name, "autovec") == 0) return SIMD_MODE_AUTOVEC;
+    if (strcmp(name, "intrinsics") == 0) return SIMD_MODE_INTRINSICS;
+    if (strcmp(name, "intrinsics-compress") == 0) return SIMD_MODE_INTRINSICS_COMPRESS;
+    return -1;
+}
+
+const char* simdmode2str(int mode)
+{
+    switch (mode) {
+    case SIMD_MODE_AUTOVEC:
+        return "autovec";
+    case SIMD_MODE_INTRINSICS:
+        return "intrinsics";
+    case SIMD_MODE_INTRINSICS_COMPRESS:
+        return "intrinsics-compress";
+    default:
+        return "invalid";
+    }
+}
+
 /* Resolves --lj-comb auto and checks the rule against the atom types. The type-pair
  * matrix is always the geometric combination of the per-type parameters, so geometric and
  * matrix give the same forces; single needs every type to have the global epsilon and
@@ -195,6 +217,8 @@ void initParameter(Parameter* param)
     param->molsize             = 0;
     param->accurate_reciprocal = 1;
     param->kernel_prefetch     = 1;
+    param->force_simd          = SIMD_MODE_AUTOVEC;
+    param->neighbor_simd       = SIMD_MODE_AUTOVEC;
 #ifdef _OPENMP
     // Use static scheduling as default
     if (getenv("OMP_SCHEDULE") == NULL) {
@@ -337,6 +361,8 @@ void readParameter(Parameter* param, const char* filename)
             PARSE_PARAM(lj_comb_rule, str2ljcomb);
             PARSE_INT(accurate_reciprocal);
             PARSE_INT(kernel_prefetch);
+            PARSE_PARAM(force_simd, str2simdmode);
+            PARSE_PARAM(neighbor_simd, str2simdmode);
             PARSE_INT(ref_kernel);
         }
     }
@@ -344,6 +370,12 @@ void readParameter(Parameter* param, const char* filename)
     if (param->lj_comb_rule < 0) {
         fprintf(stderr,
             "Error: lj_comb_rule must be one of single, geometric, matrix or auto\n");
+        exit(-1);
+    }
+    if (param->force_simd < 0 || param->neighbor_simd < 0) {
+        fprintf(stderr,
+            "Error: force_simd and neighbor_simd must be one of autovec, intrinsics or "
+            "intrinsics-compress\n");
         exit(-1);
     }
 
@@ -414,7 +446,12 @@ void printParameter(Parameter* param)
     fprintf(stdout,
         "    Force field:                       %s\n",
         ff2str(param->force_field));
-#ifdef CLUSTER_M
+#if !defined(CLUSTER_PAIR) && !defined(CUDA_TARGET)
+    // Verlet-list CPU kernels (--force-simd)
+    fprintf(stdout,
+        "    Kernel:                            %s\n",
+        simdmode2str(param->force_simd));
+#elif defined(CLUSTER_M)
     fprintf(stdout,
         "    Kernel:                            %s (MxN: %dx%d, Vector width: %d)\n",
         KERNEL_NAME,
@@ -448,10 +485,12 @@ void printParameter(Parameter* param)
 #else
     fprintf(stdout, "    Minimum r^2 clamp:                 yes\n");
 #endif
-#elif defined(__SIMD_KERNEL__)
-    fprintf(stdout,
-        "    Accurate 1/r^2:                    %s\n",
-        ACCURATE_RECIP_STR(param));
+#elif !defined(CLUSTER_PAIR) && !defined(CUDA_TARGET)
+    if (param->force_simd != SIMD_MODE_AUTOVEC) {
+        fprintf(stdout,
+            "    Accurate 1/r^2:                    %s\n",
+            ACCURATE_RECIP_STR(param));
+    }
 #elif defined(CUDA_TARGET)
     fprintf(stdout,
         "    Accurate 1/r and 1/r^2:            %s\n",
@@ -459,10 +498,10 @@ void printParameter(Parameter* param)
 #endif
     fprintf(stdout, "    Atom data layout:                  %s\n", POS_DATA_LAYOUT);
     fprintf(stdout, "    Neighbor-list layout:              %s\n", NBLIST_DATA_LAYOUT);
-#ifdef __SIMD_NEIGHBOR__
-    fprintf(stdout, "    Neighbor-list build:               SIMD\n");
-#else
-    fprintf(stdout, "    Neighbor-list build:               Scalar\n");
+#if !defined(CLUSTER_PAIR) && !defined(CUDA_TARGET)
+    fprintf(stdout,
+        "    Neighbor-list build:               %s\n",
+        simdmode2str(param->neighbor_simd));
 #endif
     fprintf(stdout, "    FP precision:                      %s\n", PRECISION_STRING);
 

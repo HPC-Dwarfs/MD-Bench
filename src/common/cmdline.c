@@ -96,6 +96,12 @@ static void printHelp(void)
         "  --lj-comb <string>        LJ combination rule: matrix (default, type-pair "
         "tables), geometric (per-type parameters), single (one set of parameters, "
         "all types alike) or auto (single when all types are alike, else geometric)\n");
+    printf("  --force-simd <string>     verlet-list CPU force kernel: autovec (default, "
+           "plain C vectorized by the compiler), intrinsics (hand-written SIMD "
+           "intrinsics) or intrinsics-compress (intrinsics, compressing the lanes "
+           "within the cut-off before the LJ force)\n");
+    printf("  --neighbor-simd <string>  verlet-list CPU neighbor-list build: autovec "
+           "(default) or intrinsics\n");
     printf("  -energy                   also compute the LJ and Coulomb energies "
            "(reported by --kernel-bench and --dump-forces)\n");
     printf("  -halflj                   LJ only for the first half of the i-clusters "
@@ -199,6 +205,22 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
                     "invalid --lj-comb %s, use single, geometric, matrix or auto",
                     rule);
             }
+        } else if (IS("--force-simd")) {
+            const char* mode = NEXT_ARG();
+            if ((param->force_simd = str2simdmode(mode)) < 0) {
+                cmdError(comm,
+                    "invalid --force-simd %s, use autovec, intrinsics or "
+                    "intrinsics-compress",
+                    mode);
+            }
+        } else if (IS("--neighbor-simd")) {
+            const char* mode = NEXT_ARG();
+            if ((param->neighbor_simd = str2simdmode(mode)) < 0 ||
+                param->neighbor_simd == SIMD_MODE_INTRINSICS_COMPRESS) {
+                cmdError(comm,
+                    "invalid --neighbor-simd %s, use autovec or intrinsics",
+                    mode);
+            }
         } else if (IS("-energy")) {
             param->compute_energy = true;
         } else if (IS("-halflj")) {
@@ -257,11 +279,21 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
     if (param->gmxbenchmark && param->force_field != FF_LJ) {
         cmdError(comm, "-gmxbench needs -f lj");
     }
-#if !defined(CLUSTER_PAIR) && defined(__SIMD_KERNEL__)
-    if (param->gmxbenchmark) {
+    if (param->neighbor_simd == SIMD_MODE_INTRINSICS_COMPRESS) {
         cmdError(comm,
-            "the verlet-list SIMD kernels have no molecular exclusions for -gmxbench, "
-            "build with USE_SIMD_KERNEL=false");
+            "neighbor_simd intrinsics-compress does not exist, use intrinsics");
+    }
+#if defined(CLUSTER_PAIR) || defined(CUDA_TARGET)
+    if (param->force_simd != SIMD_MODE_AUTOVEC ||
+        param->neighbor_simd != SIMD_MODE_AUTOVEC) {
+        cmdError(comm,
+            "--force-simd and --neighbor-simd select the verlet-list CPU kernels");
+    }
+#else
+    if (param->gmxbenchmark && param->force_simd != SIMD_MODE_AUTOVEC) {
+        cmdError(comm,
+            "the verlet-list intrinsics kernels have no molecular exclusions for "
+            "-gmxbench, use --force-simd autovec");
     }
 #endif
 #if !defined(CLUSTER_PAIR) || defined(CUDA_TARGET)

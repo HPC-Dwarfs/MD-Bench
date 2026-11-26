@@ -66,6 +66,11 @@ typedef struct {
 #define LJ_COMB_MATRIX 2 // Type-pair matrix lookup (no combination formula)
 #define LJ_COMB_AUTO   3 // Inferred from the atom types (resolveLJCombRule())
 
+// Verlet-list CPU force kernel (--force-simd) and neighbor-list build (--neighbor-simd)
+#define SIMD_MODE_AUTOVEC             0 // Plain C, vectorized by the compiler
+#define SIMD_MODE_INTRINSICS          1 // Hand-written SIMD intrinsics
+#define SIMD_MODE_INTRINSICS_COMPRESS 2 // Intrinsics, compressed cut-off lanes (force)
+
 // Coulomb treatment compile-time macros
 // Use -DCOULOMB_RULE=<value> at compile time
 #define COULOMB_NONE        0 // No electrostatics (LJ only)
@@ -178,6 +183,9 @@ typedef struct {
     int accurate_reciprocal;
     // j-cluster prefetch of the CPU cluster-pair SIMD kernels (--no-prefetch disables)
     int kernel_prefetch;
+    // Verlet-list CPU force kernel and neighbor-list build (SIMD_MODE_*)
+    int force_simd;
+    int neighbor_simd;
 } Parameter;
 
 void initParameter(Parameter*);
@@ -186,6 +194,8 @@ void readTypesFile(Parameter*);
 void printParameter(Parameter*);
 int str2ljcomb(const char*);
 const char* ljcomb2str(int);
+int str2simdmode(const char*);
+const char* simdmode2str(int);
 void resolveLJCombRule(Parameter*,
     int ntypes,
     const MD_FLOAT* sqrt_epsilon_per_type,

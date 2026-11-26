@@ -28,9 +28,6 @@ SIMD_TAG := $(strip $(SIMD))
 ifeq ($(strip $(SIMD))-$(strip $(OPT_SCHEME)),SSE-clusterpair)
     $(error The cluster-pair kernels have no SSE version, use SIMD=AVX or X86_SCALAR)
 endif
-ifeq ($(strip $(SIMD))-$(strip $(USE_SIMD_KERNEL)),SSE-true)
-    $(error The verlet-list SIMD kernels have no SSE version, use USE_SIMD_KERNEL=false)
-endif
 # Scalar code is SIMD=NONE for the toolchain files and the defines below
 ifneq ($(filter %_SCALAR,$(SIMD)),)
     override SIMD := NONE
@@ -124,7 +121,7 @@ endif
 
 # Former build options that are runtime options now (an error when set in config.mk or on
 # the command line)
-RUNTIME_OPTIONS = SORT_ATOMS:--sort-every ACCURATE_RECIPROCAL:--accurate-recip KERNEL_PREFETCH:--no-prefetch LJ_COMB_RULE:--lj-comb
+RUNTIME_OPTIONS = SORT_ATOMS:--sort-every ACCURATE_RECIPROCAL:--accurate-recip KERNEL_PREFETCH:--no-prefetch LJ_COMB_RULE:--lj-comb USE_SIMD_KERNEL:--force-simd SIMD_COMPRESS:--force-simd USE_SIMD_NEIGHBOR:--neighbor-simd
 ifeq ($(origin EXCLUSIONS),command line)
     $(error EXCLUSIONS is gone, the molecular exclusions are on when the system has molecules (-gmxbench))
 endif
@@ -202,21 +199,6 @@ ifneq ($(VECTOR_WIDTH),)
     DEFINES += -DVECTOR_WIDTH=$(VECTOR_WIDTH)
 endif
 
-ifeq ($(strip $(USE_SIMD_KERNEL)),true)
-    DEFINES += -D__SIMD_KERNEL__
-    ifeq ($(strip $(SIMD_COMPRESS)),true)
-        DEFINES += -D__SIMD_COMPRESS__
-    endif
-    # SVE/SVE2 are vector-length-agnostic; use the single-loop VLA kernel there instead of the fixed-width main+tail split.
-    ifneq ($(filter $(strip $(ISA))-$(strip $(SIMD)),ARM-SVE ARM-SVE2),)
-        DEFINES += -D__SIMD_VLA__
-    endif
-endif
-
-ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)
-    DEFINES += -D__SIMD_NEIGHBOR__
-endif
-
 ifeq ($(strip $(__SSE__)),true)
     DEFINES += -D__ISA_SSE__
 endif
@@ -267,12 +249,6 @@ endif
 
 ifeq ($(strip $(OPT_SCHEME)),verletlist)
 		OPT_TAG = VL
-    ifeq ($(strip $(USE_SIMD_KERNEL)),true)
-        OPT_TAG := $(OPT_TAG)-SIMD
-    endif
-    ifeq ($(strip $(USE_SIMD_NEIGHBOR)),true)
-        OPT_TAG := $(OPT_TAG)-NBSIMD
-    endif
 else ifeq ($(strip $(OPT_SCHEME)),clusterpair)
     OPT_TAG = CP-$(CLUSTER_PAIR_KERNEL)
     # The C reference kernel of the CPU (forced without SIMD)
@@ -296,10 +272,6 @@ ifneq ($(GPU_TOOLCHAIN),)
     TOOL_TAG = $(TOOLCHAIN)
 else
     TOOL_TAG = $(TOOLCHAIN)-$(SIMD_TAG)
-endif
-
-ifeq ($(strip $(SIMD_COMPRESS)),true)
-		TOOL_TAG := $(TOOL_TAG)-CMP
 endif
 
 ifeq ($(strip $(OPT_SCHEME)),clusterpair)

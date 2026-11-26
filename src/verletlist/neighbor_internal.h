@@ -36,7 +36,18 @@ extern int half_stencil;
 int ghostZone(Atom*, int);
 int eightZone(Atom*, int);
 int halfZone(Atom*, int);
+// The intrinsics list build (--neighbor-simd) needs simd_mask_not/simd_mask_i32_cond_eq,
+// not implemented for SSE/AVX so far
+#if !defined(CUDA_TARGET) &&                                                             \
+    (defined(__ISA_AVX2__) || defined(__ISA_AVX512__) || defined(__ISA_NEON__) ||        \
+        defined(__ISA_SVE__))
+#define HAVE_SIMD_NEIGHBOR
+#endif
+
 DECLARE_RULE_VARIANT_FUNCTIONS(void, buildNeighborLists, Atom*, Neighbor*)
+#ifdef HAVE_SIMD_NEIGHBOR
+DECLARE_RULE_VARIANT_FUNCTIONS(void, buildNeighborListsSimd, Atom*, Neighbor*)
+#endif
 DECLARE_RULE_VARIANT_FUNCTIONS(void, neighborGhost, Atom*, Neighbor*)
 
 static inline int coord2bin(MD_FLOAT xin, MD_FLOAT yin, MD_FLOAT zin)

@@ -24,24 +24,17 @@
 #include <omp.h>
 #endif
 
-// USE_SIMD_NEIGHBOR controls the vectorized neighbor-list build independently
-// of USE_SIMD_KERNEL (which only affects the force kernel). Under AOS/SOA it
-// writes surviving neighbor indices through the neighs() macro directly into
-// the padded per-atom slot; under CSR it appends them to that atom's
-// growable per-thread buffer instead (see buildNeighborCPU) -- the
-// vectorized bin-scan itself (gather candidate positions, build a lane mask,
-// scalar bit-scan over survivors) is identical either way, only the storage
-// step differs.
-#ifdef __SIMD_NEIGHBOR__
+// buildNeighborLists is the plain C build, buildNeighborListsSimd the intrinsics one
+// (--neighbor-simd intrinsics). Under AOS/SOA the latter writes surviving neighbor
+// indices through the neighs() macro directly into the padded per-atom slot; under CSR it
+// appends them to that atom's growable per-thread buffer instead (see buildNeighborCPU)
+// -- the vectorized bin-scan itself (gather candidate positions, build a lane mask,
+// scalar bit-scan over survivors) is identical either way, only the storage step differs.
+#ifdef HAVE_SIMD_NEIGHBOR
 #include <simd.h>
-#if !defined(__ISA_AVX512__) && !defined(__ISA_AVX2__) && !defined(__ISA_NEON__) &&      \
-    !defined(__ISA_SVE__) && !defined(__ISA_SVE2__)
-#error "USE_SIMD_NEIGHBOR requires SIMD=AVX2/AVX512/NEON/SVE/SVE2 (needs " \
-    "simd_mask_not/simd_mask_i32_cond_eq, not implemented for SSE/AVX so far)"
-#endif
 #endif
 
-#if !defined(NBLIST_CSR) && !defined(__SIMD_NEIGHBOR__)
+#ifndef NBLIST_CSR
 
 /* AOS/SOA, scalar bin scan. Layout only affects the neighs() macro used to
  * store each surviving index, so this one function covers both. */
@@ -118,12 +111,14 @@ void RULE_VARIANT_NAME(buildNeighborLists)(Atom* atom, Neighbor* neighbor)
     }
 }
 
-#elif !defined(NBLIST_CSR) && defined(__SIMD_NEIGHBOR__)
+#endif // !NBLIST_CSR
+
+#if !defined(NBLIST_CSR) && defined(HAVE_SIMD_NEIGHBOR)
 
 /* AOS/SOA, vectorized bin scan: gather candidate positions, build a lane
  * mask from (i != j) & (half_neigh ? j >= i : true) & (rsq < cutoff), then
  * compact survivors via a scalar bit-scan. */
-void RULE_VARIANT_NAME(buildNeighborLists)(Atom* atom, Neighbor* neighbor)
+void RULE_VARIANT_NAME(buildNeighborListsSimd)(Atom* atom, Neighbor* neighbor)
 {
     int resize = 1;
 
@@ -284,7 +279,9 @@ void RULE_VARIANT_NAME(buildNeighborLists)(Atom* atom, Neighbor* neighbor)
     }
 }
 
-#elif defined(NBLIST_CSR) && !defined(__SIMD_NEIGHBOR__)
+#endif // !NBLIST_CSR && HAVE_SIMD_NEIGHBOR
+
+#ifdef NBLIST_CSR
 
 /* CSR, scalar bin scan: each thread fills its own growable buffer, then a
  * prefix sum over per-thread totals produces global offsets and buffers are
@@ -407,13 +404,15 @@ void RULE_VARIANT_NAME(buildNeighborLists)(Atom* atom, Neighbor* neighbor)
     free(t_offsets);
 }
 
-#else /* defined(NBLIST_CSR) && defined(__SIMD_NEIGHBOR__) */
+#endif // NBLIST_CSR
+
+#if defined(NBLIST_CSR) && defined(HAVE_SIMD_NEIGHBOR)
 
 /* CSR, vectorized bin scan: same per-thread growable-buffer/prefix-sum
  * structure as the scalar CSR build above, with the same vectorized scan
  * technique as the AOS/SOA SIMD build -- only the storage step differs
  * (CSR_APPEND instead of a neighs() macro write). */
-void RULE_VARIANT_NAME(buildNeighborLists)(Atom* atom, Neighbor* neighbor)
+void RULE_VARIANT_NAME(buildNeighborListsSimd)(Atom* atom, Neighbor* neighbor)
 {
     int Nlocal          = atom->Nlocal;
     int max_threads     = 1;

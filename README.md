@@ -70,11 +70,10 @@ Multiple configurations can be build at the same time. The binary is named
 different benchmark:
 
 ```
-MDBench-<scheme>-<toolchain>[-<SIMD>][-CMP]-<SP|DP>[-<Coulomb>][-omp][-mpi]
+MDBench-<scheme>-<toolchain>[-<SIMD>]-<SP|DP>[-<Coulomb>][-omp][-mpi]
 ```
 
-`<scheme>` is `VL` (with `-SIMD` and `-NBSIMD` for `USE_SIMD_KERNEL` and
-`USE_SIMD_NEIGHBOR`) or `CP-<CLUSTER_PAIR_KERNEL>`, where the C reference kernel of the CPU
+`<scheme>` is `VL` or `CP-<CLUSTER_PAIR_KERNEL>`, where the C reference kernel of the CPU
 is `CP-ref`. Other options (data layouts, tracers, statistics, GPU settings, ...) are not
 part of the name, builds that differ only in them write the same binary. Every build
 directory records the compiler and all flags in `config.stamp`, a build with other options
@@ -132,7 +131,7 @@ cluster-pair kernels (SIMD, reference and GPU) and for the verletlist plain C an
 kernels. `rf` is a reaction-field with infinite dielectric, `ewald` the real-space Ewald
 part with the analytical force correction used by GROMACS, `ewald_table` the same with
 GROMACS' tabulated correction (`gmx nonbonded-benchmark -table`, CPU kernels only). The
-verletlist explicit SIMD kernels (`USE_SIMD_KERNEL=true`), EAM and the tabulated LJ
+verletlist intrinsics kernels (`--force-simd intrinsics`), EAM and the tabulated LJ
 kernels do not support it. Atom charges are given per atom type.
 - `DEBUG`: Enable additional debug output
 - `USE_REFERENCE_KERNEL`: Enforce usage of the C reference implementation of the
@@ -140,7 +139,6 @@ cluster-pair scheme for validation (automatically set for GPU and scalar builds,
 binary name `CP-ref` on the CPU). It uses 4x4 clusters whatever the SIMD width.
 - `USE_SCALAR_KERNEL`: Use scalar version and rely on the compiler for
 auto-vectorization
-- `USE_SIMD_KERNEL`: Use hand-written SIMD intrinsic kernels for force computation
 - `USE_CUDA_HOST_MEMORY`: Enable pinned host memory for faster host-device transfers
 - `USE_PINNED_MEMORY` (default: true): Allocate the host-side buffers that are
 transferred to/from the GPU every reneighbor step (positions/velocities,
@@ -164,12 +162,13 @@ occupancy and the list sizes.
 - `MEM_TRACER`: Trace memory addresses for cache simulation (true or false)
 - `INDEX_TRACER`: Trace indexes and distances for gather-MD analysis (true or false)
 - `COMPUTE_STATS`: Compute and print additional runtime statistics. The C kernels (the
-verletlist kernel without `USE_SIMD_KERNEL` and the cluster-pair reference kernel) also
+verletlist kernel with `--force-simd autovec` and the cluster-pair reference kernel) also
 count the pairs inside and outside of the cut-off.
 
-The former build options `LJ_COMB_RULE`, `ACCURATE_RECIPROCAL`, `KERNEL_PREFETCH` and
-`SORT_ATOMS` are the runtime options `--lj-comb`, `--accurate-recip`, `--no-prefetch` and
-`--sort-every` now, `ISA` follows from `SIMD` and `EXCLUSIONS` from the system (see
+The former build options `LJ_COMB_RULE`, `ACCURATE_RECIPROCAL`, `KERNEL_PREFETCH`,
+`SORT_ATOMS`, `USE_SIMD_KERNEL`/`SIMD_COMPRESS` and `USE_SIMD_NEIGHBOR` are the runtime
+options `--lj-comb`, `--accurate-recip`, `--no-prefetch`, `--sort-every`, `--force-simd`
+and `--neighbor-simd` now, `ISA` follows from `SIMD` and `EXCLUSIONS` from the system (see
 below); make stops with a hint when they are given on the command line or in `config.mk`.
 
 Molecular exclusions are on when the system has molecules (`atom->molsize > 1`, the
@@ -274,6 +273,16 @@ combination of the per-type parameters, so the rules differ in speed, not in the
 The neighbor-list builds check the per-type cut-off for `geometric`/`matrix` and the global
 one for `single`.
 Parameter file key `lj_comb_rule`.
+- `--force-simd <string>`: verletlist CPU force kernel. `autovec` (default) is the plain C
+kernel vectorized by the compiler, `intrinsics` the hand-written SIMD intrinsics kernel
+(the single-loop vector-length-agnostic one on SVE/SVE2) and `intrinsics-compress` the
+intrinsics kernel that first compresses the pairs within the cut-off into full vectors
+and only then runs the LJ force on them, instead of masking out the lanes beyond the
+cut-off. The intrinsics kernels need a SIMD build (`SIMD=AVX/AVX2/AVX512/NEON/SVE`), only
+exist for `-f lj` and support neither `-energy`, `COULOMB_RULE` nor `-gmxbench`. All of
+them are in every binary. Parameter file key `force_simd`.
+- `--neighbor-simd <string>`: verletlist CPU neighbor-list build, `autovec` (default) or
+`intrinsics` (needs `SIMD=AVX2/AVX512/NEON/SVE`). Parameter file key `neighbor_simd`.
 - `-energy`:  also compute the LJ and Coulomb energies in the force kernels (GROMACS'
 energy kernels, `gmx nonbonded-benchmark -energy`), reported by `--kernel-bench` and
 `--dump-forces`. All LJ kernels except the verletlist explicit SIMD kernels.
@@ -281,7 +290,7 @@ energy kernels, `gmx nonbonded-benchmark -energy`), reported by `--kernel-bench`
 their atoms with LJ, whose LJ atoms are sorted to the front (`gmx nonbonded-benchmark
 -halflj`). CPU cluster-pair kernels only.
 - `--no-accurate-recip`: use the hardware reciprocal and reciprocal square root estimates
-(12-14 bits) of the SIMD kernels (cluster-pair and verletlist with `USE_SIMD_KERNEL`)
+(12-14 bits) of the SIMD kernels (cluster-pair and verletlist with `--force-simd intrinsics`)
 without refining them. By default they are refined with Newton-Raphson steps, as GROMACS
 does, so the forces agree with a code that evaluates 1/r^2 to full precision and between
 the SIMD widths (`--accurate-recip` selects the default explicitly). On the GPU it

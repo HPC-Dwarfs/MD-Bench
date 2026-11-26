@@ -6,7 +6,8 @@
  *
  * SIMD-optimized Lennard-Jones force kernels for Verlet Lists
  * Supports: AVX2, AVX512, NEON, SVE (double precision)
- * Requires: __SIMD_KERNEL__ flag. Works under NBLIST_AOS, NBLIST_SOA, and
+ * Selected with --force-simd intrinsics(-compress), compiled when the build has a SIMD
+ * header (HAVE_SIMD_FORCE, force.h). Works under NBLIST_AOS, NBLIST_SOA, and
  * NBLIST_CSR neighbor-list layouts (see the per-layout neighbor-index load
  * below, and neighbor.c for the corresponding buffer-safety guarantees each
  * layout relies on).
@@ -27,11 +28,11 @@
 #include <stats.h>
 #include <timing.h>
 
+#include <force.h>
 #include <kernel_variant.h>
-#ifdef __SIMD_KERNEL__
+#ifdef HAVE_SIMD_FORCE
 #include <simd.h>
 #include <simd_math.h>
-#endif
 
 // NBLIST_AOS/NBLIST_CSR are both contiguous per-atom (neighbors[i*maxneighs+j]
 // and neighbors[neigh_start[i]+j] respectively), so they share the same
@@ -62,10 +63,6 @@ double VARIANT_NAME(computeForceLJFullNeigh_simd)(
 
     double S = getTimeStamp();
 
-#ifndef __SIMD_KERNEL__
-    fprintf(stderr, "Error: SIMD kernel not implemented for specified instruction set!");
-    exit(-1);
-#else
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
     MD_SIMD_FLOAT sigma6_vec     = simd_real_broadcast(sigma6);
@@ -258,7 +255,6 @@ double VARIANT_NAME(computeForceLJFullNeigh_simd)(
 
         LIKWID_MARKER_STOP("force");
     }
-#endif
 
     double E = getTimeStamp();
     return E - S;
@@ -283,10 +279,6 @@ double VARIANT_NAME(computeForceLJHalfNeigh_simd)(
 
     double S = getTimeStamp();
 
-#ifndef __SIMD_KERNEL__
-    fprintf(stderr, "Error: SIMD kernel not implemented for specified instruction set!");
-    exit(-1);
-#else
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
     MD_SIMD_FLOAT cutforcesq_vec = simd_real_broadcast(cutforcesq);
     MD_SIMD_FLOAT sigma6_vec     = simd_real_broadcast(sigma6);
@@ -516,13 +508,12 @@ double VARIANT_NAME(computeForceLJHalfNeigh_simd)(
 
         LIKWID_MARKER_STOP("force");
     }
-#endif
 
     double E = getTimeStamp();
     return E - S;
 }
 
-#ifdef __SIMD_VLA__
+#ifdef SIMD_FORCE_VLA
 
 // VLA (vector-length-agnostic, SVE/SVE2): one masked loop instead of a full-width main
 // loop plus a separate masked tail block.
@@ -825,9 +816,8 @@ double VARIANT_NAME(computeForceLJHalfNeigh_simd_vla)(
     return E - S;
 }
 
-#endif // __SIMD_VLA__
+#endif // SIMD_FORCE_VLA
 
-#ifdef __SIMD_COMPRESS__
 
 // Extra per-i (and, for LJ_COMB_MATRIX, per-pair) state that ljforce_compressed() needs
 // on top of the buffered (j, delx, dely, delz) triples, depending on LJ_COMB_RULE.
@@ -1343,4 +1333,4 @@ double VARIANT_NAME(computeForceLJHalfNeigh_simd_compress)(
 #undef LJ_EXTRA_PARAMS
 #undef LJ_EXTRA_ARGS
 
-#endif // __SIMD_COMPRESS__
+#endif // HAVE_SIMD_FORCE

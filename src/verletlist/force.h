@@ -28,11 +28,21 @@ DECLARE_RULE_VARIANTS(computeForceLJTableHalfNeigh)
 DECLARE_RULE_VARIANTS(computeForceLJTableFullNeigh)
 DECLARE_RULE_VARIANTS(computeForceEam)
 
-#ifdef __SIMD_KERNEL__
-#if defined(__SIMD_COMPRESS__)
+// The intrinsics kernels (--force-simd) need a SIMD header (src/common/simd/), none for
+// SSE and scalar builds; SVE/SVE2 use the single-loop VLA kernel instead of main+tail
+#if !defined(CUDA_TARGET) &&                                                             \
+    (defined(__ISA_AVX__) || defined(__ISA_AVX2__) || defined(__ISA_AVX512__) ||         \
+        defined(__ISA_NEON__) || defined(__ISA_SVE__))
+#define HAVE_SIMD_FORCE
+#if defined(__ISA_SVE__)
+#define SIMD_FORCE_VLA
+#endif
+#endif
+
+#ifdef HAVE_SIMD_FORCE
 DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJHalfNeigh_simd_compress)
 DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJFullNeigh_simd_compress)
-#elif defined(__SIMD_VLA__)
+#ifdef SIMD_FORCE_VLA
 DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJHalfNeigh_simd_vla)
 DECLARE_RULE_ACCURATE_VARIANTS(computeForceLJFullNeigh_simd_vla)
 #else
@@ -46,12 +56,6 @@ extern double computeForceLJCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJCUDARef(Parameter*, Atom*, Neighbor*, Stats*);
 extern double computeForceLJTableCUDA(Parameter*, Atom*, Neighbor*, Stats*);
 #define KERNEL_NAME "CUDA"
-#else
-#ifdef __SIMD_KERNEL__
-#define KERNEL_NAME "SIMD"
-#else
-#define KERNEL_NAME "SCALAR"
-#endif
 #endif
 
 #endif // __FORCE_H_

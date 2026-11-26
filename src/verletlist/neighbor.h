@@ -67,6 +67,8 @@ typedef struct {
 
     // LJ combination rule: the variant of the list build (per-type or global cut-off)
     int lj_comb_rule;
+    // List build (SIMD_MODE_AUTOVEC or SIMD_MODE_INTRINSICS, --neighbor-simd)
+    int simd;
 } Neighbor;
 
 typedef struct {
