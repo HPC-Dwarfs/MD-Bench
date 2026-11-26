@@ -79,7 +79,7 @@ double RULE_VARIANT_NAME(computeForceLJTableRef)(
             int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
             MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[ci_sca_base];
             MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[ci_sca_base];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
             int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
             int* ci_t       = &atom->cl_t[ci_sca_base];
 #endif
@@ -95,13 +95,13 @@ double RULE_VARIANT_NAME(computeForceLJTableRef)(
                 int cj_sca_base       = CJ_SCALAR_BASE_INDEX(cj);
                 MD_FLOAT* cj_sqrt_eps = &atom->cl_sqrt_epsilon[cj_sca_base];
                 MD_FLOAT* cj_sigma3   = &atom->cl_sigma3[cj_sca_base];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
 
                 for (int cii = 0; cii < CLUSTER_M; cii++) {
-#if LJ_COMB_RULE == LJ_COMB_FULL
+#if LJ_COMB_RULE == LJ_COMB_MATRIX
                     int type_i = ci_t[cii];
 #endif
                     MD_FLOAT xtmp = ci_x[CL_X_INDEX_3D(cii)];
@@ -137,7 +137,7 @@ double RULE_VARIANT_NAME(computeForceLJTableRef)(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                             MD_FLOAT sigma6  = ci_sigma3[cii] * cj_sigma3[cjj];
                             MD_FLOAT epsilon = ci_sqrt_eps[cii] * cj_sqrt_eps[cjj];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                             int type_j          = cj_t[cjj];
                             int type_index      = type_i * atom->ntypes + type_j;
                             MD_FLOAT cutforcesq = atom->cutforcesq[type_index];

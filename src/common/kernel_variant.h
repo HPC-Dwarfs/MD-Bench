@@ -24,10 +24,10 @@
 #define KV_RULE Single
 #elif LJ_COMB_RULE == LJ_COMB_GEOM
 #define KV_RULE Geom
-#elif LJ_COMB_RULE == LJ_COMB_FULL
-#define KV_RULE Full
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
+#define KV_RULE Matrix
 #else
-#error "LJ_COMB_RULE must be LJ_COMB_SINGLE, LJ_COMB_GEOM or LJ_COMB_FULL"
+#error "LJ_COMB_RULE must be LJ_COMB_SINGLE, LJ_COMB_GEOM or LJ_COMB_MATRIX"
 #endif
 #endif
 
@@ -61,7 +61,7 @@
     ((param)->lj_comb_rule == LJ_COMB_SINGLE                                             \
             ? SEL(param, name##Single)                                                   \
             : ((param)->lj_comb_rule == LJ_COMB_GEOM ? SEL(param, name##Geom)            \
-                                                     : SEL(param, name##Full)))
+                                                     : SEL(param, name##Matrix)))
 #define KV_SEL_NONE(param, name) name
 #define KV_SEL_EXCL(param, name) ((param)->molsize > 1 ? name##Excl : name)
 #define KV_SEL_ACCURATE(param, name)                                                     \
@@ -88,7 +88,7 @@
 #define KV_DECL_RULES(name, D)                                                           \
     D(name##Single)                                                                      \
     D(name##Geom)                                                                        \
-    D(name##Full)
+    D(name##Matrix)
 #define KV_DECL_EXCL(name)     KV_DECL(name) KV_DECL(name##Excl)
 #define KV_DECL_ACCURATE(name) KV_DECL(name) KV_DECL(name##Accurate)
 #define KV_DECL_OPTIONS(name)                                                            \
@@ -105,10 +105,10 @@
 #define DECLARE_RULE_VARIANT_FUNCTIONS(ret, name, ...)                                   \
     ret name##Single(__VA_ARGS__);                                                       \
     ret name##Geom(__VA_ARGS__);                                                         \
-    ret name##Full(__VA_ARGS__);
+    ret name##Matrix(__VA_ARGS__);
 #define CALL_RULE_VARIANT(rule, name, ...)                                               \
     ((rule) == LJ_COMB_SINGLE ? name##Single(__VA_ARGS__)                                \
                               : ((rule) == LJ_COMB_GEOM ? name##Geom(__VA_ARGS__)        \
-                                                        : name##Full(__VA_ARGS__)))
+                                                        : name##Matrix(__VA_ARGS__)))
 
 #endif

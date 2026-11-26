@@ -93,7 +93,7 @@ __global__ void packAtomsCuda(const MD_FLOAT* cuda_cl_x,
         if (rule == LJ_COMB_GEOM) {
             p.sqrt_epsilon = cuda_cl_sqrt_epsilon[a];
             p.sigma3       = cuda_cl_sigma3[a];
-        } else if (rule == LJ_COMB_FULL) {
+        } else if (rule == LJ_COMB_MATRIX) {
             p.type = cuda_cl_t[a];
         }
         p.mol  = cuda_cl_id[a] < 0 ? -1 : (excl ? cuda_cl_mol[a] : 0);
@@ -209,7 +209,7 @@ extern "C" void copyDataToCUDADevice(Parameter* param, Atom* atom, Neighbor* nei
         (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M * 3 *
             sizeof(MD_FLOAT));
 
-    if (param->lj_comb_rule == LJ_COMB_FULL) {
+    if (param->lj_comb_rule == LJ_COMB_MATRIX) {
         memcpyToGPU(cuda_cl_t,
             atom->cl_t,
             (atom->Nclusters_local * SCLUSTER_SIZE + atom->Nclusters_ghost) * CLUSTER_M *

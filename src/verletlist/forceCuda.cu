@@ -56,16 +56,16 @@ extern "C" {
 #define VL_LANE_MASK unsigned int
 #endif
 
-// par[] is only read with geometric LJ or exclusions (the full rule reads mol directly)
+// par[] is only read with geometric LJ or exclusions (the matrix rule reads mol directly)
 template <int RULE, bool EXCL>
 static __host__ __device__ constexpr bool vlPackPar()
 {
-    return RULE == LJ_COMB_GEOM || (EXCL && RULE != LJ_COMB_FULL);
+    return RULE == LJ_COMB_GEOM || (EXCL && RULE != LJ_COMB_MATRIX);
 }
 
 static bool vlPackPar(int rule, bool excl)
 {
-    return rule == LJ_COMB_GEOM || (excl && rule != LJ_COMB_FULL);
+    return rule == LJ_COMB_GEOM || (excl && rule != LJ_COMB_MATRIX);
 }
 
 #if PRECISION == 1
@@ -90,7 +90,7 @@ static __device__ __forceinline__ MD_FLOAT4 ldg_md_float4(const MD_FLOAT4* p)
 #endif
 }
 
-// xq = {x, y, z, type (full rule) or charge}, par = {sqrt_epsilon, sigma3, mol, 0}
+// xq = {x, y, z, type (matrix rule) or charge}, par = {sqrt_epsilon, sigma3, mol, 0}
 __global__ void packAtomsVL(DeviceAtom a,
     int n,
     MD_FLOAT4* __restrict__ xq,
@@ -109,7 +109,7 @@ __global__ void packAtomsVL(DeviceAtom a,
 #else
     const MD_FLOAT q = (MD_FLOAT)0.0;
 #endif
-    const MD_FLOAT w = rule == LJ_COMB_FULL ? int_as_md_float(atom->type[i]) : q;
+    const MD_FLOAT w = rule == LJ_COMB_MATRIX ? int_as_md_float(atom->type[i]) : q;
     xq[i]            = make_md_float4(atom_x(i), atom_y(i), atom_z(i), w);
     if (pack_par) {
         const bool geom   = rule == LJ_COMB_GEOM;
@@ -159,7 +159,7 @@ static __device__ __forceinline__ void forceLJVL(const VLForceArgs& args)
     const int Nlocal   = args.Nlocal;
     const int ntypes   = args.ntypes;
     extern __shared__ MD_FLOAT4 lj_table[];
-    if constexpr (RULE == LJ_COMB_FULL) {
+    if constexpr (RULE == LJ_COMB_MATRIX) {
         for (int k = threadIdx.x; k < ntypes * ntypes; k += blockDim.x) {
             lj_table[k] = make_md_float4(args.a.cutforcesq[k],
                 args.a.sigma6[k],
@@ -192,16 +192,16 @@ static __device__ __forceinline__ void forceLJVL(const VLForceArgs& args)
     if constexpr (PAR) {
         pi = par[i];
     }
-    // Row of i in lj_table (full rule)
-    const int row_i = RULE == LJ_COMB_FULL ? md_float_as_int(xqi.w) * ntypes : 0;
+    // Row of i in lj_table (matrix rule)
+    const int row_i = RULE == LJ_COMB_MATRIX ? md_float_as_int(xqi.w) * ntypes : 0;
 #if COULOMB_RULE != COULOMB_NONE
-    const MD_FLOAT qi = args.cs.epsfac * (RULE == LJ_COMB_FULL ? atom->q[i] : xqi.w);
+    const MD_FLOAT qi = args.cs.epsfac * (RULE == LJ_COMB_MATRIX ? atom->q[i] : xqi.w);
 #else
     const MD_FLOAT qi = (MD_FLOAT)0.0;
 #endif
     int mol_i = 0;
     if constexpr (EXCL) {
-        mol_i = RULE == LJ_COMB_FULL ? atom->mol[i] : md_float_as_int(pi.z);
+        mol_i = RULE == LJ_COMB_MATRIX ? atom->mol[i] : md_float_as_int(pi.z);
     }
 
     auto pair = [&](int k) {
@@ -222,7 +222,7 @@ static __device__ __forceinline__ void forceLJVL(const VLForceArgs& args)
         if constexpr (RULE == LJ_COMB_GEOM) {
             sigma6  = pi.y * pj.y;
             epsilon = pi.x * pj.x;
-        } else if constexpr (RULE == LJ_COMB_FULL) {
+        } else if constexpr (RULE == LJ_COMB_MATRIX) {
             const MD_FLOAT4 lj = lj_table[row_i + md_float_as_int(xqj.w)];
             cutforcesq         = lj.x;
             sigma6             = lj.y;
@@ -231,13 +231,14 @@ static __device__ __forceinline__ void forceLJVL(const VLForceArgs& args)
 
         if (rsq < cutforcesq) {
 #if COULOMB_RULE != COULOMB_NONE
-            const MD_FLOAT qj = RULE == LJ_COMB_FULL ? __ldg(&atom->q[j]) : xqj.w;
+            const MD_FLOAT qj = RULE == LJ_COMB_MATRIX ? __ldg(&atom->q[j]) : xqj.w;
 #else
             const MD_FLOAT qj = (MD_FLOAT)0.0;
 #endif
             int mol_j = 0;
             if constexpr (EXCL) {
-                mol_j = RULE == LJ_COMB_FULL ? __ldg(&atom->mol[j]) : md_float_as_int(pj.z);
+                mol_j = RULE == LJ_COMB_MATRIX ? __ldg(&atom->mol[j])
+                                               : md_float_as_int(pj.z);
             }
             MD_FLOAT force = pairForceScalarAcc(
                 rsq, sigma6, epsilon, qi, qj, mol_i, mol_j, EXCL, ACCURATE, args.cs);
@@ -582,7 +583,7 @@ double computeForceLJCUDA(Parameter* param, Atom* atom, Neighbor* neighbor, Stat
         fprintf(stderr, "Error: NUM_THREADS must be a multiple of %d!\n", lanes);
         exit(EXIT_FAILURE);
     }
-    const size_t shmem = rule == LJ_COMB_FULL // the type-pair table
+    const size_t shmem = rule == LJ_COMB_MATRIX // the type-pair table
                              ? (size_t)atom->ntypes * atom->ntypes * sizeof(MD_FLOAT4)
                              : 0;
     if (shmem > 48 * 1024) {
@@ -677,7 +678,7 @@ __global__ void computeForceLJCudaRef_warp(DeviceAtom a,
         if constexpr (RULE == LJ_COMB_GEOM) {
             sigma6_ij  = atom->sigma3[i] * atom->sigma3[j];
             epsilon_ij = atom->sqrt_epsilon[i] * atom->sqrt_epsilon[j];
-        } else if constexpr (RULE == LJ_COMB_FULL) {
+        } else if constexpr (RULE == LJ_COMB_MATRIX) {
             int type_ij    = atom->type[i] * ntypes + atom->type[j];
             cutforcesq_ij  = atom->cutforcesq[type_ij];
             sigma6_ij      = atom->sigma6[type_ij];

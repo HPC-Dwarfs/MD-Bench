@@ -265,13 +265,13 @@ shell, 3 half stencil (verletlist)
 
 Force kernel:
 
-- `--lj-comb <string>`: Lennard-Jones combination rule. `full` (default) reads the
+- `--lj-comb <string>`: Lennard-Jones combination rule. `matrix` (default) reads the
 type-pair tables (gathers), `geometric` combines per-type parameters (sqrt(eps_i eps_j),
 sigma3_i sigma3_j), `single` uses one set of global parameters (fastest, no type lookup;
 all atom types must have the global epsilon and sigma), `auto` picks `single` when all
 types are alike and `geometric` otherwise. The type-pair tables are the geometric
 combination of the per-type parameters, so the rules differ in speed, not in the forces.
-The neighbor-list builds check the per-type cut-off for `geometric`/`full` and the global
+The neighbor-list builds check the per-type cut-off for `geometric`/`matrix` and the global
 one for `single`.
 Parameter file key `lj_comb_rule`.
 - `-energy`:  also compute the LJ and Coulomb energies in the force kernels (GROMACS'

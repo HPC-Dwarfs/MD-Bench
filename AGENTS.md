@@ -188,7 +188,7 @@ MD_FLOAT force = 48.0 * sr6 * (sr6 - 0.5) * sr2 * epsilon;
 Half neighbor-lists apply Newton's third law (each pair's force is added to
 both atoms from a single computation).
 
-Combination rules, a runtime option (`--lj-comb`, `param->lj_comb_rule`, default `full`;
+Combination rules, a runtime option (`--lj-comb`, `param->lj_comb_rule`, default `matrix`;
 `auto` is resolved by `resolveLJCombRule()` in `parameter.c` right after the atoms are
 created: `single` when every type has the global epsilon/sigma, else `geometric`; an
 explicit `single` with differing types is an error). Only the kernel variants (force
@@ -200,7 +200,7 @@ every rule. The neighbor-list builds keep the per-type cut-off of the real codes
 and the global one for single (`src/common/parameter.h`):
 - `LJ_COMB_SINGLE` (0): single atom type, broadcasts global epsilon/sigma — fastest, no per-type lookup
 - `LJ_COMB_GEOM` (1): per-type geometric combination — `epsilon_ij = sqrt(eps_i*eps_j)`, `sigma6_ij = sigma3_i*sigma3_j`
-- `LJ_COMB_FULL` (2): full type-pair matrix lookup (gathers; the SIMD kernels read the `ljc6x6`/`ljc12x12` tables)
+- `LJ_COMB_MATRIX` (2): type-pair matrix lookup (gathers; the SIMD kernels read the `ljc6x6`/`ljc12x12` tables)
 
 Cluster-pair kernel entry points (`force_lj.c` (reference), `force_lj_4xn.c`,
 `force_lj_2xnn.c`, `force_lj_2xn.c`, `force_lj_cuda.cu` / `force_lj_cuda_sup.cu`):
@@ -544,7 +544,7 @@ Simulation test data lives in `data/`: `data/argon/input.gro` +
 
 12. **Multiple Kernels Per Change**: Don't assume a single force kernel; a correctness or feature change in cluster-pair may need to be applied across reference, 4xN, 2xNN, 2xN, CUDA, and super-clustering GPU variants to stay consistent.
 
-13. **Per-Type Parameters**: every rule's data is always set up: per-type `sqrt(epsilon)` and `sigma^3` (flat, per-type and cluster-layout copies) for `geometric` and the full type-pair epsilon/sigma6 matrices for `full`, so `--lj-comb` needs no rebuild.
+13. **Per-Type Parameters**: every rule's data is always set up: per-type `sqrt(epsilon)` and `sigma^3` (flat, per-type and cluster-layout copies) for `geometric` and the full type-pair epsilon/sigma6 matrices for `matrix`, so `--lj-comb` needs no rebuild.
 
 ## Development Process
 

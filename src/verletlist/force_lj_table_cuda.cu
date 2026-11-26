@@ -69,7 +69,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
     if constexpr (RULE == LJ_COMB_GEOM) {
         sqrt_eps_i = atom->sqrt_epsilon[i];
         sigma3_i   = atom->sigma3[i];
-    } else if constexpr (RULE == LJ_COMB_FULL) {
+    } else if constexpr (RULE == LJ_COMB_MATRIX) {
         type_i = atom->type[i];
     }
 
@@ -86,7 +86,7 @@ __global__ void computeForceLJTableCudaFullNeigh(DeviceAtom a,
         if constexpr (RULE == LJ_COMB_GEOM) {
             sigma6_ij  = sigma3_i * atom->sigma3[j];
             epsilon_ij = sqrt_eps_i * atom->sqrt_epsilon[j];
-        } else if constexpr (RULE == LJ_COMB_FULL) {
+        } else if constexpr (RULE == LJ_COMB_MATRIX) {
             const int type_j  = atom->type[j];
             const int type_ij = type_i * ntypes + type_j;
             cutforcesq_ij     = atom->cutforcesq[type_ij];
@@ -150,7 +150,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
     if constexpr (RULE == LJ_COMB_GEOM) {
         sqrt_eps_i = atom->sqrt_epsilon[i];
         sigma3_i   = atom->sigma3[i];
-    } else if constexpr (RULE == LJ_COMB_FULL) {
+    } else if constexpr (RULE == LJ_COMB_MATRIX) {
         type_i = atom->type[i];
     }
 
@@ -167,7 +167,7 @@ __global__ void computeForceLJTableCudaHalfNeigh(DeviceAtom a,
         if constexpr (RULE == LJ_COMB_GEOM) {
             sigma6_ij  = sigma3_i * atom->sigma3[j];
             epsilon_ij = sqrt_eps_i * atom->sqrt_epsilon[j];
-        } else if constexpr (RULE == LJ_COMB_FULL) {
+        } else if constexpr (RULE == LJ_COMB_MATRIX) {
             const int type_j  = atom->type[j];
             const int type_ij = type_i * ntypes + type_j;
             cutforcesq_ij     = atom->cutforcesq[type_ij];

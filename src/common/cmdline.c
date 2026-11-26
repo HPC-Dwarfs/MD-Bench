@@ -93,7 +93,7 @@ static void printHelp(void)
            "time RCB, 3 staggered\n");
     printf("Force kernel:\n");
     printf(
-        "  --lj-comb <string>        LJ combination rule: full (default, type-pair "
+        "  --lj-comb <string>        LJ combination rule: matrix (default, type-pair "
         "tables), geometric (per-type parameters), single (one set of parameters, "
         "all types alike) or auto (single when all types are alike, else geometric)\n");
     printf("  -energy                   also compute the LJ and Coulomb energies "
@@ -196,7 +196,7 @@ void parseCommandLine(int argc, char** argv, Parameter* param, Comm* comm)
             const char* rule = NEXT_ARG();
             if ((param->lj_comb_rule = str2ljcomb(rule)) < 0) {
                 cmdError(comm,
-                    "invalid --lj-comb %s, use single, geometric, full or auto",
+                    "invalid --lj-comb %s, use single, geometric, matrix or auto",
                     rule);
             }
         } else if (IS("-energy")) {

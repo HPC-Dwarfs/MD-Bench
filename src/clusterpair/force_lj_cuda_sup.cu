@@ -597,7 +597,7 @@ __global__ void computeForceLJCudaSupRef_warp(MD_FLOAT* cuda_cl_x,
                 if constexpr (RULE == LJ_COMB_GEOM) {
                     p.sigma6  = cuda_cl_sigma3[i] * cuda_cl_sigma3[j];
                     p.epsilon = cuda_cl_sqrt_epsilon[i] * cuda_cl_sqrt_epsilon[j];
-                } else if constexpr (RULE == LJ_COMB_FULL) {
+                } else if constexpr (RULE == LJ_COMB_MATRIX) {
                     int type_index = cuda_cl_t[i] * ntypes + cuda_cl_t[j];
                     p.cutforcesq   = atom_cutforcesq[type_index];
                     p.sigma6       = atom_sigma6[type_index];

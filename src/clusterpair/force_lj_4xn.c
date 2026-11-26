@@ -46,7 +46,7 @@ static inline IRows load4xnIRows(const Atom* atom, const int ci, const PairConst
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         ir.a6.v[r]  = simd_real_broadcast(atom->cl_sqrt6c6[sca + r]);
         ir.b12.v[r] = simd_real_broadcast(atom->cl_sqrt12c12[sca + r]);
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
         ir.type.v[r] = simd_i32_broadcast(atom->cl_t[sca + r] * atom->ntypes);
 #endif
 #if KERNEL_EXCL
@@ -75,7 +75,7 @@ static inline JData load4xnJData(const Atom* atom, const int cj)
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     jd.a6  = simd_real_load(&atom->cl_sqrt6c6[sca]);
     jd.b12 = simd_real_load(&atom->cl_sqrt12c12[sca]);
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
     jd.type = simd_i32_load(&atom->cl_t[sca]);
 #endif
 #if KERNEL_EXCL
@@ -247,7 +247,7 @@ double VARIANT_NAME(computeForceLJ4xnHalfNeigh)(
     const PairConstants pc = pairConstants(param);
     const int energy       = param->compute_energy;
     double ec = 0.0, elj = 0.0;
-#if LJ_COMB_RULE == LJ_COMB_FULL
+#if LJ_COMB_RULE == LJ_COMB_MATRIX
     setupTypePairC6C12(atom);
 #endif
 
@@ -419,7 +419,7 @@ double VARIANT_NAME(computeForceLJ4xnFullNeigh)(
     const PairConstants pc = pairConstants(param);
     const int energy       = param->compute_energy;
     double ec = 0.0, elj = 0.0;
-#if LJ_COMB_RULE == LJ_COMB_FULL
+#if LJ_COMB_RULE == LJ_COMB_MATRIX
     setupTypePairC6C12(atom);
 #endif
 

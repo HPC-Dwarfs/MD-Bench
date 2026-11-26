@@ -88,7 +88,7 @@ double RULE_VARIANT_NAME(computeForceLJTableFullNeigh)(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = sqrt_epsilon_ptr[i];
             const MD_FLOAT sigma3_i   = sigma3_ptr[i];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
             const int type_i = atom->type[i];
 #endif
 
@@ -103,7 +103,7 @@ double RULE_VARIANT_NAME(computeForceLJTableFullNeigh)(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * sigma3_ptr[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * sqrt_epsilon_ptr[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -208,7 +208,7 @@ double RULE_VARIANT_NAME(computeForceLJTableHalfNeigh)(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sqrt_eps_i = sqrt_epsilon_ptr[i];
             const MD_FLOAT sigma3_i   = sigma3_ptr[i];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
             const int type_i = atom->type[i];
 #endif
 
@@ -223,7 +223,7 @@ double RULE_VARIANT_NAME(computeForceLJTableHalfNeigh)(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                 const MD_FLOAT sigma6  = sigma3_i * sigma3_ptr[j];
                 const MD_FLOAT epsilon = sqrt_eps_i * sqrt_epsilon_ptr[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                 const int type_j          = atom->type[j];
                 const int type_ij         = type_i * atom->ntypes + type_j;
                 const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

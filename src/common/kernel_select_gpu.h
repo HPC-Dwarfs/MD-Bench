@@ -17,7 +17,7 @@
 #define SELECT_GPU_KERNEL_RULE(K, rule)                                                  \
     ((rule) == LJ_COMB_SINGLE    ? K<LJ_COMB_SINGLE>                                     \
         : (rule) == LJ_COMB_GEOM ? K<LJ_COMB_GEOM>                                       \
-                                 : K<LJ_COMB_FULL>)
+                                 : K<LJ_COMB_MATRIX>)
 
 // K<R, E, excl, accurate> for a fixed rule R and energies E
 #define SELECT_GPU_KERNEL_XA(K, R, E, excl, accurate)                                    \
@@ -36,6 +36,6 @@
             ? SELECT_GPU_KERNEL_EXA(K, LJ_COMB_SINGLE, energy, excl, accurate)           \
         : (rule) == LJ_COMB_GEOM                                                         \
             ? SELECT_GPU_KERNEL_EXA(K, LJ_COMB_GEOM, energy, excl, accurate)             \
-            : SELECT_GPU_KERNEL_EXA(K, LJ_COMB_FULL, energy, excl, accurate))
+            : SELECT_GPU_KERNEL_EXA(K, LJ_COMB_MATRIX, energy, excl, accurate))
 
 #endif

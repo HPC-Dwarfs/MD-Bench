@@ -120,7 +120,7 @@ typedef struct {
     // eps sigma^12
     MD_FLOAT* cl_sqrt6c6;
     MD_FLOAT* cl_sqrt12c12;
-    // Type-pair tables of 6 C6 and 12 C12 for the full combination rule (built on demand)
+    // Type-pair tables of 6 C6 and 12 C12 for the matrix combination rule (built on demand)
     MD_FLOAT* ljc6x6;
     MD_FLOAT* ljc12x12;
     // Force arrays of threads 1..n-1 for the half-list kernels (see thread_forces.h)

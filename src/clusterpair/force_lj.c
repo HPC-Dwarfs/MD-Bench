@@ -86,7 +86,7 @@ double RULE_VARIANT_NAME(
             int ci_sca_base       = CI_SCALAR_BASE_INDEX(ci);
             MD_FLOAT* ci_sqrt_eps = &atom->cl_sqrt_epsilon[ci_sca_base];
             MD_FLOAT* ci_sigma3   = &atom->cl_sigma3[ci_sca_base];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
             int ci_sca_base = CI_SCALAR_BASE_INDEX(ci);
             int* ci_t       = &atom->cl_t[ci_sca_base];
 #endif
@@ -105,7 +105,7 @@ double RULE_VARIANT_NAME(
                 int cj_sca_base       = CJ_SCALAR_BASE_INDEX(cj);
                 MD_FLOAT* cj_sqrt_eps = &atom->cl_sqrt_epsilon[cj_sca_base];
                 MD_FLOAT* cj_sigma3   = &atom->cl_sigma3[cj_sca_base];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                 int cj_sca_base = CJ_SCALAR_BASE_INDEX(cj);
                 int* cj_t       = &atom->cl_t[cj_sca_base];
 #endif
@@ -115,7 +115,7 @@ double RULE_VARIANT_NAME(
                     if (atom->cl_id[ci_sca] < 0) {
                         continue;
                     }
-#if LJ_COMB_RULE == LJ_COMB_FULL
+#if LJ_COMB_RULE == LJ_COMB_MATRIX
                     int type_i = ci_t[cii];
 #endif
                     const MD_FLOAT qi = cs.epsfac * atom->cl_q[ci_sca];
@@ -157,7 +157,7 @@ double RULE_VARIANT_NAME(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
                             MD_FLOAT sigma6  = ci_sigma3[cii] * cj_sigma3[cjj];
                             MD_FLOAT epsilon = ci_sqrt_eps[cii] * cj_sqrt_eps[cjj];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                             int type_j          = cj_t[cjj];
                             int type_index      = type_i * atom->ntypes + type_j;
                             MD_FLOAT cutforcesq = atom->cutforcesq[type_index];
@@ -260,7 +260,7 @@ void RULE_VARIANT_NAME(
     DEBUG_MESSAGE("computeForceLJ begin\n");
 
     int Nshell = neighbor->Nshell;
-#if LJ_COMB_RULE != LJ_COMB_FULL
+#if LJ_COMB_RULE != LJ_COMB_MATRIX
     MD_FLOAT cutforcesq = param->cutforce * param->cutforce;
 #endif
 #if LJ_COMB_RULE == LJ_COMB_SINGLE
@@ -308,7 +308,7 @@ void RULE_VARIANT_NAME(
                     MD_FLOAT sigma6  = atom->cl_sigma3[cs_sca] * atom->cl_sigma3[cj_sca];
                     MD_FLOAT epsilon = atom->cl_sqrt_epsilon[cs_sca] *
                                        atom->cl_sqrt_epsilon[cj_sca];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
                     int type_index = atom->cl_t[cs_sca] * atom->ntypes +
                                      atom->cl_t[cj_sca];
                     MD_FLOAT cutforcesq = atom->cutforcesq[type_index];

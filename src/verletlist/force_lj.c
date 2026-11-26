@@ -24,12 +24,12 @@ void RULE_VARIANT_NAME(computeForceGhostShell)(Parameter*, Atom*, Neighbor*);
 #define VL_ALWAYS_INLINE static inline
 #endif
 
-// GCC (tested 13.3 on SVE2) does not vectorize the full-rule neighbor loop when it honors
+// GCC (tested 13.3 on SVE2) does not vectorize the matrix-rule neighbor loop when it honors
 // "#pragma omp simd" (-fopenmp or -fopenmp-simd): the conditional sigma6/epsilon loads
 // are then "not supported" as masked gathers and the loop stays scalar, with a
 // data-dependent branch. Without the pragma GCC vectorizes it with SVE gathers. Clang
 // needs the pragma to vectorize it.
-#if defined(__GNUC__) && !defined(__clang__) && LJ_COMB_RULE == LJ_COMB_FULL
+#if defined(__GNUC__) && !defined(__clang__) && LJ_COMB_RULE == LJ_COMB_MATRIX
 #define MD_OMP_SIMD_REDUCTION_F
 #else
 #define MD_OMP_SIMD_REDUCTION_F _Pragma("omp simd reduction(+ : fix, fiy, fiz, vlj, vc)")
@@ -123,7 +123,7 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
     const MD_FLOAT sqrt_eps_i = sqrt_epsilon_ptr[i];
     const MD_FLOAT sigma3_i   = sigma3_ptr[i];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
     const int type_i = atom->type[i];
 #endif
     const MD_FLOAT qi = cs.epsfac * q_ptr[i];
@@ -139,7 +139,7 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         const MD_FLOAT sigma6  = sigma3_i * sigma3_ptr[j];
         const MD_FLOAT epsilon = sqrt_eps_i * sqrt_epsilon_ptr[j];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
         const int type_j          = atom->type[j];
         const int type_ij         = type_i * atom->ntypes + type_j;
         const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];
@@ -200,7 +200,7 @@ VL_ALWAYS_INLINE void neighborLoop(const int energy,
         const MD_FLOAT delx = xtmp - atom_access_x(x_ptr, j);
         const MD_FLOAT dely = ytmp - atom_access_y(y_ptr, j);
         const MD_FLOAT delz = ztmp - atom_access_z(z_ptr, j);
-#if LJ_COMB_RULE == LJ_COMB_FULL
+#if LJ_COMB_RULE == LJ_COMB_MATRIX
         const MD_FLOAT cutforcesq =
             atom->cutforcesq[type_i * atom->ntypes + atom->type[j]];
 #endif
@@ -439,7 +439,7 @@ void RULE_VARIANT_NAME(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
         const MD_FLOAT sqrt_eps_i = atom->sqrt_epsilon[iatom];
         const MD_FLOAT sigma3_i   = atom->sigma3[iatom];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
         const int type_i = atom->type[iatom];
 #endif
         const MD_FLOAT qi = cs.epsfac * atom->q[iatom];
@@ -455,7 +455,7 @@ void RULE_VARIANT_NAME(
 #if LJ_COMB_RULE == LJ_COMB_GEOM
             const MD_FLOAT sigma6  = sigma3_i * atom->sigma3[jatom];
             const MD_FLOAT epsilon = sqrt_eps_i * atom->sqrt_epsilon[jatom];
-#elif LJ_COMB_RULE == LJ_COMB_FULL
+#elif LJ_COMB_RULE == LJ_COMB_MATRIX
             const int type_j          = atom->type[jatom];
             const int type_ij         = type_i * atom->ntypes + type_j;
             const MD_FLOAT cutforcesq = atom->cutforcesq[type_ij];

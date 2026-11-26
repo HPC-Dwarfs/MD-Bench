@@ -44,7 +44,7 @@ typedef struct __align__(4 * sizeof(MD_FLOAT)) {
     MD_FLOAT sqrt_epsilon; // geometric rule
     MD_FLOAT sigma3;       // geometric rule
     int mol;               // molecule with exclusions, else 0; -1 marks a padding slot
-    int type;              // full rule
+    int type;              // matrix rule
 } AtomParam;
 
 // Both slots hold atoms (padding slots have mol -1, see packAtomsCuda)
@@ -94,7 +94,7 @@ typedef struct {
     const int2* cj_mask; // super-cluster: {cj, mask}
     int maxneighs;
     // LJ parameters: single rule (cutforcesq also for the geometric rule) and the
-    // {cutforcesq, sigma6, epsilon} type-pair table of the full rule
+    // {cutforcesq, sigma6, epsilon} type-pair table of the matrix rule
     MD_FLOAT cutforcesq, sigma6, epsilon;
     const MD_FLOAT4* nbfp;
     int ntypes;

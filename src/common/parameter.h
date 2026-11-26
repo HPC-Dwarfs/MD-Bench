@@ -63,7 +63,7 @@ typedef struct {
 // other code reads the rule at runtime and must not use LJ_COMB_RULE.
 #define LJ_COMB_SINGLE 0 // Single atom type: broadcast global epsilon/sigma
 #define LJ_COMB_GEOM   1 // Geometric: sqrt(eps_i*eps_j), sigma3_i*sigma3_j
-#define LJ_COMB_FULL   2 // Full type-pair matrix lookup (no combination formula)
+#define LJ_COMB_MATRIX 2 // Type-pair matrix lookup (no combination formula)
 #define LJ_COMB_AUTO   3 // Inferred from the atom types (resolveLJCombRule())
 
 // Coulomb treatment compile-time macros

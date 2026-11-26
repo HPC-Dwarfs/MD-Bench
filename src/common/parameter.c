@@ -69,7 +69,7 @@ int str2ljcomb(const char* name)
 {
     if (strcmp(name, "single") == 0) return LJ_COMB_SINGLE;
     if (strcmp(name, "geometric") == 0) return LJ_COMB_GEOM;
-    if (strcmp(name, "full") == 0) return LJ_COMB_FULL;
+    if (strcmp(name, "matrix") == 0) return LJ_COMB_MATRIX;
     if (strcmp(name, "auto") == 0) return LJ_COMB_AUTO;
     return -1;
 }
@@ -81,8 +81,8 @@ const char* ljcomb2str(int rule)
         return "single";
     case LJ_COMB_GEOM:
         return "geometric";
-    case LJ_COMB_FULL:
-        return "full";
+    case LJ_COMB_MATRIX:
+        return "matrix";
     case LJ_COMB_AUTO:
         return "auto";
     default:
@@ -92,7 +92,7 @@ const char* ljcomb2str(int rule)
 
 /* Resolves --lj-comb auto and checks the rule against the atom types. The type-pair
  * matrix is always the geometric combination of the per-type parameters, so geometric and
- * full give the same forces; single needs every type to have the global epsilon and
+ * matrix give the same forces; single needs every type to have the global epsilon and
  * sigma. */
 void resolveLJCombRule(Parameter* param,
     int ntypes,
@@ -115,7 +115,7 @@ void resolveLJCombRule(Parameter* param,
         fprintf(stderr,
             "Error: --lj-comb single needs atom types with the same epsilon and sigma, "
             "use "
-            "geometric, full or auto\n");
+            "geometric, matrix or auto\n");
         exit(EXIT_FAILURE);
     }
 }
@@ -134,7 +134,7 @@ void initParameter(Parameter* param)
     param->sigma6               = 1.0;
     param->rho                  = 0.8442;
     param->ntypes               = 4;
-    param->lj_comb_rule         = LJ_COMB_FULL;
+    param->lj_comb_rule         = LJ_COMB_MATRIX;
     param->epsilon_per_type     = NULL;
     param->sigma_per_type       = NULL;
     param->ntimes               = 200;
@@ -343,7 +343,7 @@ void readParameter(Parameter* param, const char* filename)
 
     if (param->lj_comb_rule < 0) {
         fprintf(stderr,
-            "Error: lj_comb_rule must be one of single, geometric, full or auto\n");
+            "Error: lj_comb_rule must be one of single, geometric, matrix or auto\n");
         exit(-1);
     }
 

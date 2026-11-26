@@ -61,8 +61,8 @@ for rule in rf ewald ewald_table none; do
     esac
     make "${cfg[@]}" >/dev/null
     bin="$(make -s "${cfg[@]}" print-target)"
-    # Each kernel option set with the geometric rule, the plain forces also with full
-    OPTIONS=("--lj-comb geometric" "--lj-comb full" "--lj-comb geometric -energy")
+    # Each kernel option set with the geometric rule, the plain forces also with matrix
+    OPTIONS=("--lj-comb geometric" "--lj-comb matrix" "--lj-comb geometric -energy")
     case "${kernel}" in
       VL*) ;;
       *) OPTIONS+=("--lj-comb geometric -halflj -energy") ;;

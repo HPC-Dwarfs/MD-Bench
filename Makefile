@@ -58,15 +58,15 @@ endif
 
 # Kernel variants (src/common/kernel_variant.h): a template file is compiled once per
 # variant instead of once on its own, as <file>.<variant>.o. A variant is the LJ rule
-# (single, geom, full) and options, joined by '-', each one adds the flags below.
+# (single, geom, matrix) and options, joined by '-', each one adds the flags below.
 VARIANT_FLAGS_single     = -DLJ_COMB_RULE=0
 VARIANT_FLAGS_geom       = -DLJ_COMB_RULE=1
-VARIANT_FLAGS_full       = -DLJ_COMB_RULE=2
+VARIANT_FLAGS_matrix     = -DLJ_COMB_RULE=2
 VARIANT_FLAGS_accurate   = -DACCURATE_RECIPROCAL
 VARIANT_FLAGS_noprefetch = -DKERNEL_NO_PREFETCH
 VARIANT_FLAGS_excl       = -DKERNEL_EXCLUSIONS
 
-RULES          = single geom full
+RULES          = single geom matrix
 RULES_EXCL     = $(foreach r,$(RULES),$(r) $(r)-excl)
 RULES_ACCURATE = $(foreach r,$(RULES),$(r) $(r)-accurate)
 # Rule x --accurate-recip x --no-prefetch x exclusions

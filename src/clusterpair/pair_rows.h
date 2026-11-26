@@ -68,7 +68,7 @@ typedef struct {
     Rows x, y, z;
     Rows q;       // charge times the Coulomb prefactor
     Rows a6, b12; // sqrt(6 C6) and sqrt(12 C12), geometric combination rule
-    RowInts type; // type * ntypes, full combination rule
+    RowInts type; // type * ntypes, matrix combination rule
     RowInts mol;  // molecule index, exclusions
     RowInts id;   // original atom index, -1 for padding slots
 } IRows;
@@ -182,7 +182,7 @@ MD_ALWAYS_INLINE PairForces pairForces(const int nr,
             simd_real_fma(dy.v[r], dy.v[r], simd_real_mul(dz.v[r], dz.v[r])));
     }
 
-#if LJ_COMB_RULE == LJ_COMB_FULL
+#if LJ_COMB_RULE == LJ_COMB_MATRIX
     for (int r = 0; r < nr; r++) {
         const MD_SIMD_INT tvec = simd_i32_add(ir->type.v[r], jd->type);
         cutsq.v[r] = simd_real_gather(tvec, atom->cutforcesq, sizeof(MD_FLOAT));
@@ -493,8 +493,8 @@ MD_ALWAYS_INLINE void prefetchAhead(const Atom* atom,
 #endif
 }
 
-/* Type-pair tables of 6*C6 and 12*C12 of the full combination rule, built on first use */
-#if LJ_COMB_RULE == LJ_COMB_FULL
+/* Type-pair tables of 6*C6 and 12*C12 of the matrix combination rule, built on first use */
+#if LJ_COMB_RULE == LJ_COMB_MATRIX
 static inline void setupTypePairC6C12(Atom* atom)
 {
     if (atom->ljc6x6 != NULL) {
