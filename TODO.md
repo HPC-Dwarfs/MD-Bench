@@ -4,3 +4,4 @@
 * Evaluate performance of SIMD compressed kernels and see if they can be improved
 * Implement LJ case from https://ieeexplore.ieee.org/document/11370954 for ARM and x86
 * Evaluate stubbed case for GPUs and implement super-cluster case
+* Use the same "GPU slicing" idea with MPI to improve strong scaling
